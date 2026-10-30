@@ -1,0 +1,12 @@
+# dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+
+# local infra and tooling state
+.codegraph/
+.DS_Store
+coverage/

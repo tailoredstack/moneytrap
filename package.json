@@ -1,0 +1,13 @@
+{
+  "name": "moneytrap",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "check:docs": "bun scripts/check-docs.ts"
+  }
+}
