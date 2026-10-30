@@ -19,7 +19,7 @@ A cache hit is served only when both hold:
 
 A missing version key does not force a read on its own. Freshness rule 1 covers that case.
 
-Any change that affects routing, including revocation, suspension, and eligibility or destination changes, updates Postgres first. It then publishes a monotonic version to Redis directly from the command after commit. This revises Blueprint §5.3 item 3, which routes invalidation through the outbox. The direct publish is safe because the freshness bound in rule 1 does not depend on it: a missed publish only delays the change to the three-second bound. Cache writes never create or refresh the version key. If Redis fails, read Postgres. If both stores fail, return 503 without `Location`. Write a click event to a Postgres outbox asynchronously so the redirect response does not wait for that write.
+Any change that affects routing, including revocation, suspension, and eligibility or destination changes, updates Postgres first. It then publishes a monotonic version to Redis directly from the command after commit. This revises Blueprint §5.3 item 3, which routes invalidation through the outbox. The direct publish is safe because the freshness bound in rule 1 does not depend on it: a missed publish only delays the change to the three-second bound. Cache writes never create or refresh the version key. If Redis fails, read Postgres. If both stores fail, return 503 without `Location`. Write a click event to the queue asynchronously, not inline, so the redirect response does not wait for that write (Blueprint §5.3 item 6). The spike wrote a Postgres outbox row as a stand-in. WP-5.8 chooses the durable ingestion path.
 
 ## Revision
 

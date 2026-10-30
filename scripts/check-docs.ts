@@ -57,7 +57,10 @@ for (const [id, n] of wpSeen) {
 // The first Status line must be "Accepted, <date>" or "Rejected, <date>", with a real calendar date.
 const adrDir = join(docsDir, "adr");
 // Every entry in docs/adr except README.md must be a file named ADR-NNN-<slug>.md. Subdirectories fail.
-const adrEntries = existsSync(adrDir) ? readdirSync(adrDir, { withFileTypes: true }) : [];
+// Hidden files such as macOS .DS_Store are ignored.
+const adrEntries = existsSync(adrDir)
+  ? readdirSync(adrDir, { withFileTypes: true }).filter((e) => !e.name.startsWith("."))
+  : [];
 const adrNames = adrEntries.filter((e) => e.isFile() && e.name !== "README.md").map((e) => e.name);
 const adrFiles = adrNames.filter((n) => /^ADR-\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(n));
 for (const entry of adrEntries) {
@@ -120,10 +123,12 @@ for (const f of files.filter((f) => f.includes(join("test-plans", "wave-")))) {
 for (const id of testSeen.keys()) defined.add(id);
 
 // 3. Every reference in non-legacy docs must point at something defined.
-const refRe = /\b(UC\d{2}|API-\d{3}|DM-\d{3}|UI-\d{3}|CT-\d{3}|WP-\d+\.\d+|WP-X\.\d+|TP-W\d+-\d{3}|ADR-\d+)\b/g;
+// "ADR 099" in prose is the same reference as "ADR-099", so both forms are normalized.
+const refRe = /\b(UC\d{2}|API-\d{3}|DM-\d{3}|UI-\d{3}|CT-\d{3}|WP-\d+\.\d+|WP-X\.\d+|TP-W\d+-\d{3}|ADR[- ]\d+)\b/g;
 for (const f of files.filter((f) => !isLegacy(f))) {
   for (const m of read(f).matchAll(refRe)) {
-    if (!defined.has(m[1])) errors.push(`${rel(f)}: reference to undefined ${m[1]}`);
+    const id = m[1].replace(" ", "-");
+    if (!defined.has(id)) errors.push(`${rel(f)}: reference to undefined ${id}`);
   }
 }
 
