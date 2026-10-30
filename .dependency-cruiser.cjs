@@ -19,6 +19,12 @@ module.exports = {
       to: { path: "(?:^|/)(?:elysia|@elysiajs)(?:/|$)" },
     },
     {
+      name: "domain-no-database-imports",
+      severity: "error",
+      from: { path: "^packages/domain/" },
+      to: { path: "(?:^|/)(?:pg|postgres|kysely|@redis/client)(?:/|$)" },
+    },
+    {
       name: "app-only-domain-and-schema",
       severity: "error",
       from: { path: "^packages/app/" },
@@ -34,7 +40,7 @@ module.exports = {
       name: "app-no-redis-or-elysia",
       severity: "error",
       from: { path: "^packages/app/" },
-      to: { path: "(?:^|/)(?:redis|@redis/client|elysia)(?:/|$)" },
+      to: { path: "(?:^|/)(?:redis|@redis/client|elysia|@elysiajs)(?:/|$)" },
     },
     {
       name: "adapters-no-cross-imports",
