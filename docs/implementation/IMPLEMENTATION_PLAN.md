@@ -158,7 +158,7 @@ Goal: the first user-visible value. Approved publishers create links, visitors a
 | WP-5.5 | Version invalidation and revocation | B | 5.4, 1.7 | `app/src/routing/invalidate.ts` | CT-014 | Revocation effective ≤ 5 s; stale allow loses to effective deny |
 | WP-5.6 | Redirect handler | B | 5.4, 5.5, 5.8 | `server/src/http/redirect.ts` | UC13; UI-036; API-043 | 302 / 410 / 503 mapped; no wait on storage; fail closed |
 | WP-5.7 | Destination re-validation at redirect | B | 5.6 | `domain/src/links/destination.ts` | CT-011 | Unsafe or unapproved host blocked at redirect time, not only at creation |
-| WP-5.8 | Click ingestion | C | 1.7, 5.6 | `app/src/attribution/record-click.ts`, `pg/src/attribution/click-store.ts`, migration `0006_clicks.ts` | API-044; DM-030; CT-013 | At-most-one logical click per dedup key; distinct legitimate clicks kept |
+| WP-5.8 | Click ingestion | C | 1.7 | `app/src/attribution/record-click.ts`, `pg/src/attribution/click-store.ts`, migration `0006_clicks.ts` | API-044; DM-030; CT-013 | At-most-one logical click per dedup key; distinct legitimate clicks kept |
 | WP-5.9 | Click analytics queries | C | 5.8 | `app/src/reporting/clicks.ts`, `server/src/http/reports.ts` | API-045; UI-037; §8 data_stale | Cursor pagination; `as_of` and `data_stale` returned |
 | WP-5.10 | Baseline risk flags | C | 5.8 | `app/src/risk/flag-clicks.ts`, `pg/src/risk/` | DM-060; R7 | Duplicate and self-click heuristics raise flags; flags do not block clicks yet |
 | WP-5.11 | Link and analytics screens | D | 1.14, 5.2, 5.3, 5.9 | `web/src/features/links/`, `web/src/features/analytics/` | UI-031 to UI-035, UI-037 | Screens in [ui/SKELETONS.md](../ui/SKELETONS.md) §5 render all states |
