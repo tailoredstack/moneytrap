@@ -12,7 +12,8 @@
     "format": "biome format --write .",
     "boundaries": "depcruise --config .dependency-cruiser.cjs apps packages",
     "typecheck": "bun run --filter '*' typecheck",
-    "check:docs": "bun scripts/check-docs.ts"
+    "check:docs": "bun scripts/check-docs.ts",
+    "build:binary": "bun build --compile apps/server/src/index.ts --outfile dist/moneytrap"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
