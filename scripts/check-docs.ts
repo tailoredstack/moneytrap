@@ -52,6 +52,20 @@ for (const [id, n] of wpSeen) {
   defined.add(id);
 }
 
+// ADRs: one file per decision, named ADR-NNN-<slug>.md, ending in Accepted or Rejected with a date.
+const adrDir = join(docsDir, "adr");
+const adrFiles = existsSync(adrDir) ? readdirSync(adrDir).filter((n) => /^ADR-\d{3}-.*\.md$/.test(n)) : [];
+for (const name of adrFiles) {
+  defined.add(name.slice(0, "ADR-NNN".length));
+  const status = read(join(adrDir, name)).match(/^- Status: (?:Accepted|Rejected)\b.*?\d{4}-\d{2}-\d{2}/m);
+  if (!status) errors.push(`docs/adr/${name}: status must be Accepted or Rejected, with a date`);
+}
+// ADRs the implementation plan reserves for later work packages. Each WP writes its own file.
+for (const id of ["ADR-012", "ADR-013"]) defined.add(id);
+for (const m of read(join(docsDir, "MONEYTRAP_IMPLEMENTATION_BLUEPRINT.md")).matchAll(/^\| (ADR-\d{3}) \|/gm)) {
+  if (!adrFiles.some((n) => n.startsWith(`${m[1]}-`))) errors.push(`Blueprint §11: ${m[1]} has no file in docs/adr/`);
+}
+
 // Test IDs: defined once each across all test plans.
 const testSeen = new Map<string, string>();
 for (const f of files.filter((f) => f.includes(join("test-plans", "wave-")))) {
@@ -64,7 +78,7 @@ for (const f of files.filter((f) => f.includes(join("test-plans", "wave-")))) {
 for (const id of testSeen.keys()) defined.add(id);
 
 // 3. Every reference in non-legacy docs must point at something defined.
-const refRe = /\b(UC\d{2}|API-\d{3}|DM-\d{3}|UI-\d{3}|CT-\d{3}|WP-\d+\.\d+|WP-X\.\d+|TP-W\d+-\d{3})\b/g;
+const refRe = /\b(UC\d{2}|API-\d{3}|DM-\d{3}|UI-\d{3}|CT-\d{3}|WP-\d+\.\d+|WP-X\.\d+|TP-W\d+-\d{3}|ADR-\d{3})\b/g;
 for (const f of files.filter((f) => !isLegacy(f))) {
   for (const m of read(f).matchAll(refRe)) {
     if (!defined.has(m[1])) errors.push(`${rel(f)}: reference to undefined ${m[1]}`);
