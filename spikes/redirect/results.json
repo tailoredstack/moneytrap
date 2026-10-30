@@ -1,0 +1,32 @@
+{
+  "measuredAt": "2026-10-30T19:46:58.830Z",
+  "runtime": "Bun 1.4.4",
+  "host": "darwin arm64 Apple M3 Pro",
+  "profile": "single hot token, 1000 requests, 16 concurrent clients, local Docker Compose; HTTP round-trip time includes client overhead",
+  "targets": {
+    "p95Ms": 50,
+    "p99Ms": 150,
+    "revocationMs": 5000
+  },
+  "baseline": {
+    "count": 1000,
+    "concurrency": 16,
+    "p95Ms": 3.96,
+    "p99Ms": 7.41,
+    "maxMs": 7.44
+  },
+  "outboxClicksAfterBaseline": 1001,
+  "delayedClick500Ms": {
+    "count": 1000,
+    "concurrency": 16,
+    "p95Ms": 1.72,
+    "p99Ms": 2.39,
+    "maxMs": 2.62
+  },
+  "outboxClicksAfterDelay": 2002,
+  "revocationMs": 6.74,
+  "dualStoreOutage": {
+    "status": 503,
+    "locationHeader": null
+  }
+}
