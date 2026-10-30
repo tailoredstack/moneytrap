@@ -58,8 +58,9 @@ for (const [id, n] of wpSeen) {
 const adrDir = join(docsDir, "adr");
 // Every entry in docs/adr except README.md must be a file named ADR-NNN-<slug>.md. Subdirectories fail.
 // Finder's .DS_Store file is ignored. A directory with that name is not Finder metadata, so it fails.
+// A symlink named .DS_Store is not a file, so it is kept and fails the naming rule.
 const adrEntries = existsSync(adrDir)
-  ? readdirSync(adrDir, { withFileTypes: true }).filter((e) => e.name !== ".DS_Store" || e.isDirectory())
+  ? readdirSync(adrDir, { withFileTypes: true }).filter((e) => e.name !== ".DS_Store" || !e.isFile())
   : [];
 const adrNames = adrEntries.filter((e) => e.isFile() && e.name !== "README.md").map((e) => e.name);
 const adrFiles = adrNames.filter((n) => /^ADR-\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(n));
@@ -123,15 +124,19 @@ for (const f of files.filter((f) => f.includes(join("test-plans", "wave-")))) {
 for (const id of testSeen.keys()) defined.add(id);
 
 // 3. Every reference in non-legacy docs must point at something defined.
-const refRe = /\b(UC\d{2}|API-\d{3}|DM-\d{3}|UI-\d{3}|CT-\d{3}|WP-\d+\.\d+|WP-X\.\d+|TP-W\d+-\d{3})\b/g;
-// Prose ADR references in any case. Any run of non-letter, non-digit characters may sit between ADR and the number,
-// including zero-width and fullwidth separators. The captured number keeps trailing letters, so ADR-999a is an ID
-// that does not exist and fails.
-const adrRefRe = /\bADR[^\p{L}\p{N}\n]*(\p{N}[\p{L}\p{N}]*)/giu;
+// Each reference captures the whole token, including trailing letters, so UC123 or WP-0.8a is checked as written.
+// Matches are not bounded by \b, which treats underscore as a word character. Lookbehind rejects a letter or digit
+// directly before the token instead.
+const refRe =
+  /(?<![\p{L}\p{N}])(?:UC\d+|API-\d+|DM-\d+|UI-\d+|CT-\d+|WP-\d+\.\d+|WP-[A-Z]\.\d+|TP-W\d+-\d+)[\p{L}\p{N}]*/gu;
+// Prose ADR references in any case. Any run of characters other than letters or digits may sit between ADR and the
+// number, including newlines. NFKC folds fullwidth letters and digits to ASCII first. Trailing letters stay in the
+// captured number, so ADR-999a is an ID that does not exist and fails.
+const adrRefRe = /(?<![\p{L}\p{N}])ADR[^\p{L}\p{N}]*(\p{N}[\p{L}\p{N}]*)/giu;
 for (const f of files.filter((f) => !isLegacy(f))) {
-  const text = read(f);
+  const text = read(f).normalize("NFKC");
   for (const m of text.matchAll(refRe)) {
-    if (!defined.has(m[1])) errors.push(`${rel(f)}: reference to undefined ${m[1]}`);
+    if (!defined.has(m[0])) errors.push(`${rel(f)}: reference to undefined ${m[0]}`);
   }
   for (const m of text.matchAll(adrRefRe)) {
     const id = `ADR-${m[1]}`;
