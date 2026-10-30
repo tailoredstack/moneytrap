@@ -59,7 +59,7 @@ const adrDir = join(docsDir, "adr");
 // Every entry in docs/adr except README.md must be a file named ADR-NNN-<slug>.md. Subdirectories fail.
 const adrEntries = existsSync(adrDir) ? readdirSync(adrDir, { withFileTypes: true }) : [];
 const adrNames = adrEntries.filter((e) => e.isFile() && e.name !== "README.md").map((e) => e.name);
-const adrFiles = adrNames.filter((n) => /^ADR-\d{3}-.*\.md$/.test(n));
+const adrFiles = adrNames.filter((n) => /^ADR-\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(n));
 for (const entry of adrEntries) {
   if (entry.name === "README.md" && entry.isFile()) continue;
   if (!entry.isFile() || !adrFiles.includes(entry.name)) {
