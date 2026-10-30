@@ -1,6 +1,6 @@
 # ADR-005: Money as bigint minor units, with largest-remainder allocation
 
-- Status: Accepted, 2026-10-31
+- Status: Accepted, 2026-10-31 (gate: WP-1.1 domain tests green)
 - Date: 2026-10-31
 - Spike: none. Decided from Blueprint §5.1 and the specification's invariants (§5.1, §7.2).
 

@@ -4,7 +4,7 @@
 // Add a check here whenever a review finds the same mistake twice.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
 const docsDir = join(root, "docs");
@@ -19,7 +19,8 @@ function walk(dir: string): string[] {
 
 const rel = (p: string) => p.slice(root.length + 1);
 const files = walk(docsDir);
-const isLegacy = (f: string) => f.includes(`${join("docs", "legacy")}`);
+const legacyDir = join(docsDir, "legacy") + sep;
+const isLegacy = (f: string) => f.startsWith(legacyDir);
 const read = (f: string) => readFileSync(f, "utf8");
 
 // 1. Relative markdown links must resolve.
@@ -52,18 +53,37 @@ for (const [id, n] of wpSeen) {
   defined.add(id);
 }
 
-// ADRs: one file per decision, named ADR-NNN-<slug>.md, ending in Accepted or Rejected with a date.
+// ADRs: docs/adr holds README.md plus one file per decision, named ADR-NNN-<slug>.md.
+// The first Status line must be "Accepted, <date>" or "Rejected, <date>", with a real calendar date.
 const adrDir = join(docsDir, "adr");
-const adrFiles = existsSync(adrDir) ? readdirSync(adrDir).filter((n) => /^ADR-\d{3}-.*\.md$/.test(n)) : [];
+const adrNames = existsSync(adrDir) ? readdirSync(adrDir).filter((n) => n.endsWith(".md") && n !== "README.md") : [];
+const adrFiles = adrNames.filter((n) => /^ADR-\d{3}-.*\.md$/.test(n));
+for (const name of adrNames) {
+  if (!adrFiles.includes(name)) errors.push(`docs/adr/${name}: name must be ADR-NNN-<slug>.md`);
+}
+const adrStatus = new Map<string, string>();
 for (const name of adrFiles) {
-  defined.add(name.slice(0, "ADR-NNN".length));
-  const status = read(join(adrDir, name)).match(/^- Status: (?:Accepted|Rejected)\b.*?\d{4}-\d{2}-\d{2}/m);
-  if (!status) errors.push(`docs/adr/${name}: status must be Accepted or Rejected, with a date`);
+  const id = name.slice(0, "ADR-NNN".length);
+  defined.add(id);
+  const statuses = [...read(join(adrDir, name)).matchAll(/^- Status: (.*)$/gm)];
+  const status = /^(Accepted|Rejected), (\d{4}-\d{2}-\d{2})(?:\s|\(|$)/.exec(statuses[0]?.[1] ?? "");
+  const realDate = status !== null && !Number.isNaN(Date.parse(`${status[2]}T00:00:00Z`));
+  if (statuses.length !== 1 || !status || !realDate) {
+    errors.push(`docs/adr/${name}: status must be one "Accepted, <date>" or "Rejected, <date>" line`);
+  } else {
+    adrStatus.set(id, status[1]);
+  }
 }
 // ADRs the implementation plan reserves for later work packages. Each WP writes its own file.
 for (const id of ["ADR-012", "ADR-013"]) defined.add(id);
-for (const m of read(join(docsDir, "MONEYTRAP_IMPLEMENTATION_BLUEPRINT.md")).matchAll(/^\| (ADR-\d{3}) \|/gm)) {
+// Blueprint §11 must list each ADR, with a file whose status matches the table.
+const blueprint = read(join(docsDir, "MONEYTRAP_IMPLEMENTATION_BLUEPRINT.md"));
+const section11 = blueprint.slice(blueprint.indexOf("## 11."), blueprint.indexOf("## 12."));
+for (const m of section11.matchAll(/^\| \**(ADR-\d{3})\** \| .* \| (.*) \|$/gm)) {
+  const tableStatus = /^(Accepted|Rejected)\b/.exec(m[2])?.[1];
+  const fileStatus = adrStatus.get(m[1]);
   if (!adrFiles.some((n) => n.startsWith(`${m[1]}-`))) errors.push(`Blueprint §11: ${m[1]} has no file in docs/adr/`);
+  else if (tableStatus !== fileStatus) errors.push(`Blueprint §11: ${m[1]} status "${m[2]}" differs from its ADR file`);
 }
 
 // Test IDs: defined once each across all test plans.
@@ -78,7 +98,7 @@ for (const f of files.filter((f) => f.includes(join("test-plans", "wave-")))) {
 for (const id of testSeen.keys()) defined.add(id);
 
 // 3. Every reference in non-legacy docs must point at something defined.
-const refRe = /\b(UC\d{2}|API-\d{3}|DM-\d{3}|UI-\d{3}|CT-\d{3}|WP-\d+\.\d+|WP-X\.\d+|TP-W\d+-\d{3}|ADR-\d{3})\b/g;
+const refRe = /\b(UC\d{2}|API-\d{3}|DM-\d{3}|UI-\d{3}|CT-\d{3}|WP-\d+\.\d+|WP-X\.\d+|TP-W\d+-\d{3}|ADR-\d+)\b/g;
 for (const f of files.filter((f) => !isLegacy(f))) {
   for (const m of read(f).matchAll(refRe)) {
     if (!defined.has(m[1])) errors.push(`${rel(f)}: reference to undefined ${m[1]}`);

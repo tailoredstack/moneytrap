@@ -1,6 +1,6 @@
 # ADR-009: Better Auth for authentication, organizations, two-factor, and API keys
 
-- Status: Accepted, 2026-10-31
+- Status: Accepted, 2026-10-31 (feature gates in WP-2.2)
 - Date: 2026-10-31
 - Spike: WP-0.7 (library compatibility)
 
@@ -24,6 +24,8 @@ WP-0.7 results, passing under `bun test` and in the compiled binary:
 - Organization plugin: creates an organization.
 - Two-factor plugin: enables TOTP.
 - API key plugin: a key resolves a session through `x-api-key`.
+
+Not covered by the spike: email verification, password reset, backup codes, invitations, and the role-to-permission mapping through `can()`. These are acceptance criteria for WP-2.2, not evidence already in hand. Until WP-2.2 passes them, the decision to use Better Auth for these features is accepted, but they are unverified.
 
 ## Known behavior
 
