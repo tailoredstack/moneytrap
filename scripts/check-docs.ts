@@ -57,9 +57,9 @@ for (const [id, n] of wpSeen) {
 // The first Status line must be "Accepted, <date>" or "Rejected, <date>", with a real calendar date.
 const adrDir = join(docsDir, "adr");
 // Every entry in docs/adr except README.md must be a file named ADR-NNN-<slug>.md. Subdirectories fail.
-// macOS metadata (.DS_Store and AppleDouble ._* files) is ignored. Other hidden files still get checked.
+// Finder's .DS_Store is ignored. Every other entry, hidden or not, must match the naming rule.
 const adrEntries = existsSync(adrDir)
-  ? readdirSync(adrDir, { withFileTypes: true }).filter((e) => e.name !== ".DS_Store" && !e.name.startsWith("._"))
+  ? readdirSync(adrDir, { withFileTypes: true }).filter((e) => e.name !== ".DS_Store")
   : [];
 const adrNames = adrEntries.filter((e) => e.isFile() && e.name !== "README.md").map((e) => e.name);
 const adrFiles = adrNames.filter((n) => /^ADR-\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(n));
@@ -124,15 +124,16 @@ for (const id of testSeen.keys()) defined.add(id);
 
 // 3. Every reference in non-legacy docs must point at something defined.
 const refRe = /\b(UC\d{2}|API-\d{3}|DM-\d{3}|UI-\d{3}|CT-\d{3}|WP-\d+\.\d+|WP-X\.\d+|TP-W\d+-\d{3})\b/g;
-// Prose ADR references in any case, with a space, hyphen, or U+2011 separator. They normalize to ADR-<digits>.
-const adrRefRe = /\bADR[- ‑]\d+\b/gi;
+// Prose ADR references in any case, with no separator or any whitespace, hyphen, or dash (U+2010–U+2015, U+2011
+// included) between ADR and the number. They normalize to ADR-<digits>.
+const adrRefRe = /\bADR[\s\-‐-―]*\d+\b/gi;
 for (const f of files.filter((f) => !isLegacy(f))) {
   const text = read(f);
   for (const m of text.matchAll(refRe)) {
     if (!defined.has(m[1])) errors.push(`${rel(f)}: reference to undefined ${m[1]}`);
   }
   for (const m of text.matchAll(adrRefRe)) {
-    const id = `ADR-${m[0].slice(4)}`;
+    const id = `ADR-${m[0].replace(/\D/g, "")}`;
     if (!defined.has(id)) errors.push(`${rel(f)}: reference to undefined ${id}`);
   }
 }
