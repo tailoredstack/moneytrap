@@ -10,7 +10,7 @@ The redirect path must return quickly on a cache hit, deny revoked routes within
 
 ## Proposed decision
 
-Cache a route view containing destination, eligibility, state, and version in Redis for 60 seconds. On every hit, compare its version with a separate Redis version key. A mismatch or missing version key forces a Postgres read. Expire the version key after three seconds, so a failed invalidation cannot leave a cached allow valid for the full route-view TTL. Revocation updates Postgres first, then publishes a monotonic version to Redis. If Redis fails, read Postgres; if both stores fail, return 503 without `Location`. Write a click event to a Postgres outbox asynchronously so the redirect response does not wait for that write.
+Cache a route view containing destination, eligibility, state, and version in Redis for 60 seconds. On every hit, compare its version with a separate Redis version key. A mismatch or missing version key forces a Postgres read. Expire the version key after three seconds, so a failed invalidation cannot leave a cached allow valid for the full route-view TTL (a stale write that stalls past that expiry is the exception; see Open limit below). Revocation updates Postgres first, then publishes a monotonic version to Redis. If Redis fails, read Postgres; if both stores fail, return 503 without `Location`. Write a click event to a Postgres outbox asynchronously so the redirect response does not wait for that write.
 
 ## Spike evidence
 
@@ -18,9 +18,9 @@ The [WP-0.6 results](../../spikes/redirect/results.json) come from the compiled 
 
 | Check | Result | Provisional target |
 |---|---:|---:|
-| Cache-hit p95 / p99 | 6.48 / 9.57 ms | ≤ 50 / 150 ms |
-| With 500 ms click-write delay, p95 / p99 | 2.44 / 3.29 ms | ≤ 50 / 150 ms, p95 within 5 ms of baseline |
-| Revoke to denied response | 5.17 ms | ≤ 5,000 ms |
+| Cache-hit p95 / p99 | 10.83 / 15.04 ms | ≤ 50 / 150 ms |
+| With 500 ms click-write delay, p95 / p99 | 3.09 / 4.91 ms | ≤ 50 / 150 ms, p95 within 5 ms of baseline |
+| Revoke to denied response | 20.67 ms | ≤ 5,000 ms |
 | Redis and Postgres stopped | 503; no `Location` | 503; no `Location` |
 | Click outbox rows after each phase drains | 1,001 / 2,002 | Every tested redirect eventually recorded |
 
