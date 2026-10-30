@@ -56,10 +56,15 @@ for (const [id, n] of wpSeen) {
 // ADRs: docs/adr holds README.md plus one file per decision, named ADR-NNN-<slug>.md.
 // The first Status line must be "Accepted, <date>" or "Rejected, <date>", with a real calendar date.
 const adrDir = join(docsDir, "adr");
-const adrNames = existsSync(adrDir) ? readdirSync(adrDir).filter((n) => /\.md$/i.test(n) && n !== "README.md") : [];
+// Every entry in docs/adr except README.md must be a file named ADR-NNN-<slug>.md. Subdirectories fail.
+const adrEntries = existsSync(adrDir) ? readdirSync(adrDir, { withFileTypes: true }) : [];
+const adrNames = adrEntries.filter((e) => e.isFile() && e.name !== "README.md").map((e) => e.name);
 const adrFiles = adrNames.filter((n) => /^ADR-\d{3}-.*\.md$/.test(n));
-for (const name of adrNames) {
-  if (!adrFiles.includes(name)) errors.push(`docs/adr/${name}: name must be ADR-NNN-<slug>.md`);
+for (const entry of adrEntries) {
+  if (entry.name === "README.md" && entry.isFile()) continue;
+  if (!entry.isFile() || !adrFiles.includes(entry.name)) {
+    errors.push(`docs/adr/${entry.name}: must be a file named ADR-NNN-<slug>.md`);
+  }
 }
 const adrStatus = new Map<string, string>();
 const adrIdCount = new Map<string, number>();
