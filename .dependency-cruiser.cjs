@@ -31,10 +31,22 @@ module.exports = {
       to: { path: "^packages/adapter-", pathNot: "^packages/adapter-$1/" },
     },
     {
-      name: "web-only-contracts",
+      name: "web-only-contracts-and-ui",
       severity: "error",
       from: { path: "^apps/web/" },
-      to: { path: "^(?:packages/(?!contracts/)|apps/(?!web/))" },
+      to: { path: "^(?:packages/(?!contracts/|ui/)|apps/(?!web/))" },
+    },
+    {
+      name: "ui-only-contracts",
+      severity: "error",
+      from: { path: "^packages/ui/" },
+      to: { path: "^(?:packages/(?!contracts/|ui/)|apps/)" },
+    },
+    {
+      name: "adapters-only-from-server",
+      severity: "error",
+      from: { path: "^(?!apps/server/|packages/adapter-|packages/conformance/)" },
+      to: { path: "^packages/adapter-" },
     },
   ],
   options: {
