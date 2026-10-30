@@ -19,17 +19,22 @@ Format:
 - **brief descriptive message:** lowercase, imperative, no trailing period, under 72 characters.
 - **LINEAR_ID:** the issue ID, for example `OZE-3123`. Use the work package's issue.
 
-### Closing the issue
+### Linking and closing the issue
 
-A bare `#OZE-3123` links the commit to the issue but does not close it. To close the issue when the PR merges, add a footer:
+Linear links a commit to an issue only when the message contains a magic word before the issue ID. The `#OZE-3123` in the subject is a reference for humans, not a link. Add a footer:
 
 ```
 feat(identity): register and verify email #OZE-3123
 
-Closes OZE-3123
+Refs OZE-3123
 ```
 
-With rebase-merge, each commit lands on `main` with its message, so the footer is what Linear reads. Put `Closes` on the commit that completes the work package.
+- `Refs OZE-3123` links the commit to the issue and leaves its status alone.
+- `Closes OZE-3123` links the commit and moves the issue to Done when it reaches `main`.
+
+Commit linking needs a one-time setup in Linear's GitHub settings: enable **Link commits to issues with magic words**, then add the webhook Linear provides. An admin does this once per workspace.
+
+With rebase-merge, each commit lands on `main` with its message, so Linear reads the footer there. Put `Closes` on the commit that completes the work package. Use `Refs` on the others.
 
 ### Breaking changes
 
@@ -51,4 +56,4 @@ BREAKING CHANGE: amounts are now encoded as decimal strings, not integers.
 - Body starts with the WP ID and `Closes OZE-<id>`.
 - Squash is off. Use rebase-merge so each commit keeps its message on `main`.
 - Do not add co-author or generated-by trailers.
-- CI must pass: `bun run check:docs`, typecheck, lint, boundary rules, tests.
+- Checks that must pass before merge: `bun run check:docs` and `bun run typecheck`. Lint, boundary rules, tests, and CI are added in WP-0.2 and WP-0.3. Until then, these two checks are the gate.
