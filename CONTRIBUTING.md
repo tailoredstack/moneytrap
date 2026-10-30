@@ -29,8 +29,8 @@ feat(identity): register and verify email #OZE-3123
 Refs OZE-3123
 ```
 
-- `Refs OZE-3123` links the commit to the issue and leaves its status alone.
-- `Closes OZE-3123` links the commit and moves the issue to Done when it reaches `main`.
+- `Refs OZE-3123` links the commit. Linear can move the issue through its configured pre-merge statuses.
+- `Closes OZE-3123` links the commit and applies the status Linear is configured to use on merge, usually Done.
 
 Commit linking needs a one-time setup in Linear's GitHub settings: enable **Link commits to issues with magic words**, then add the webhook Linear provides. An admin does this once per workspace.
 
@@ -44,6 +44,7 @@ Add `!` after the scope and a `BREAKING CHANGE:` footer:
 feat(contracts)!: change money encoding to decimal string #OZE-3114
 
 BREAKING CHANGE: amounts are now encoded as decimal strings, not integers.
+Closes OZE-3114
 ```
 
 ## Branches
@@ -56,4 +57,4 @@ BREAKING CHANGE: amounts are now encoded as decimal strings, not integers.
 - Body starts with the WP ID and `Closes OZE-<id>`.
 - Squash is off. Use rebase-merge so each commit keeps its message on `main`.
 - Do not add co-author or generated-by trailers.
-- Checks that must pass before merge: `bun run check:docs` and `bun run typecheck`. Lint, boundary rules, tests, and CI are added in WP-0.2 and WP-0.3. Until then, these two checks are the gate.
+- Checks that must pass before merge: `bun run check:docs`, plus `bun run typecheck` once the workspace skeleton (WP-0.1) has merged. Lint, boundary rules, tests, and CI are added in WP-0.2 and WP-0.3.
