@@ -170,7 +170,7 @@ Each folder is a unit of ownership. A change to `finance/` needs a finance revie
 1. `GET /r/{token}` resolves token → link ID through a Redis key, falling back to Postgres on miss.
 2. A **route view** (destination, eligibility decision, link state, `version`) is cached with a short TTL (policy value, initially 60 s).
 3. Every state change that affects routing bumps the link's `version` and publishes an invalidation. Revocation publishes directly after commit, not through the outbox (ADR-007). The redirect checks the cached `version` against a version key in Redis; a mismatch forces a DB read.
-4. **Revocation guarantee:** a revoked or suspended link is denied within the documented window (initially ≤ 5 s, enforced by the version check, not by TTL alone). This satisfies CT-014.
+4. **Revocation guarantee:** a revoked or suspended link is denied within the documented window (initially ≤ 5 s). The version check gives the fast path. The three-second freshness bound in ADR-007 is the backstop when a publish is missed, so the window does not depend on the publish alone. This satisfies CT-014.
 5. **Fail closed:** if Redis and Postgres are both unreachable, return `503` with a neutral page. Never redirect on a guess.
 6. The click event is written to the queue, not inline. The 302 does not wait on storage.
 
