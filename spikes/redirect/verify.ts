@@ -118,7 +118,7 @@ async function waitForOutbox(db: ReturnType<typeof connect>["db"], expected: num
     await Bun.sleep(20);
     count = await outboxCount(db);
   }
-  if (count < expected) throw new Error(`outbox has ${count} click events; expected at least ${expected}`);
+  if (count !== expected) throw new Error(`outbox has ${count} click events; expected exactly ${expected}`);
   return count;
 }
 
