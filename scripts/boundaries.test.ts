@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
@@ -39,8 +39,16 @@ test("domain cannot import Elysia", () => {
   expectViolation("domain", "elysia", "domain-no-framework-imports");
 });
 
+test("domain cannot import the Postgres client", () => {
+  expectViolation("domain", "pg", "domain-no-database-imports");
+});
+
 test("app cannot import the Redis client", () => {
   expectViolation("app", "@redis/client", "app-no-redis-or-elysia");
+});
+
+test("app cannot import Elysia plugins", () => {
+  expectViolation("app", "@elysiajs/cors", "app-no-redis-or-elysia");
 });
 
 function probeFile(relDir: string, source: string) {
@@ -63,16 +71,22 @@ test("contracts cannot import an adapter (only apps/server wires adapters)", () 
 });
 
 test("apps/web may import packages/ui", () => {
+  const uiRoot = join(root, "packages/ui");
   const uiDir = join(root, "packages/ui/src");
   const uiIndex = join(uiDir, "index.ts");
+  const hadUiRoot = existsSync(uiRoot);
+  const hadUiDir = existsSync(uiDir);
+  const hadUiIndex = existsSync(uiIndex);
   const file = probeFile("apps/web/src", 'import "../../../packages/ui/src/index.ts";\n');
   try {
     mkdirSync(uiDir, { recursive: true });
-    writeFileSync(uiIndex, "export {};\n");
+    if (!hadUiIndex) writeFileSync(uiIndex, "export {};\n");
     const result = boundaries();
     expect(result.status, result.output).toBe(0);
   } finally {
     unlinkSync(file);
-    rmSync(join(root, "packages/ui"), { recursive: true, force: true });
+    if (!hadUiIndex) unlinkSync(uiIndex);
+    if (!hadUiDir) rmdirSync(uiDir);
+    if (!hadUiRoot) rmdirSync(uiRoot);
   }
 });
