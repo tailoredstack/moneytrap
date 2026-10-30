@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src", "compat.test.ts", "build.ts"],
+  "compilerOptions": {
+    "allowImportingTsExtensions": true
+  }
+}
