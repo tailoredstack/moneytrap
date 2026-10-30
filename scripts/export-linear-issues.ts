@@ -8,7 +8,9 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
 const planPath = join(root, "docs", "implementation", "IMPLEMENTATION_PLAN.md");
-const rows = readFileSync(planPath, "utf8").split("\n").filter((l) => /^\| WP-/.test(l));
+const rows = readFileSync(planPath, "utf8")
+  .split("\n")
+  .filter((l) => /^\| WP-/.test(l));
 
 const cells = (row: string) => row.split(" | ").map((c) => c.replace(/^\| ?/, "").replace(/ ?\|$/, "").trim());
 const csv = (v: string) => `"${v.replace(/"/g, '""')}"`;
@@ -29,9 +31,7 @@ for (const row of rows) {
     `**Plan:** docs/implementation/IMPLEMENTATION_PLAN.md`,
   ].join("\n\n");
   const labels = [wave, `lane-${lane}`].filter((l) => !l.startsWith("lane--")).join(";");
-  out.push(
-    [`${id} ${title}`, description, "Moneytrap", labels, "3", "Backlog"].map(csv).join(","),
-  );
+  out.push([`${id} ${title}`, description, "Moneytrap", labels, "3", "Backlog"].map(csv).join(","));
 }
 
 console.log(out.join("\n"));
