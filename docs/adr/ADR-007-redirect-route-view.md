@@ -14,12 +14,12 @@ Cache a route view containing destination, eligibility, state, version, and `loa
 
 A cache hit is served only when both hold:
 
-1. `0 <= now - loadedAt < 3 s`, where both `now` and `loadedAt` come from the Redis server clock (`TIME`), not from an application host. `loadedAt` is read from Redis before the Postgres read starts, and it is stored in the view. This bounds staleness from the source read, not from the cache write. A Lua script performs the check, so the hit path needs one Redis round trip. Because no host clock is compared, skew between app hosts cannot extend a view.
+1. `0 <= now - loadedAt < 3 s`, where both `now` and `loadedAt` come from the Redis server clock (`TIME`), not from an application host. A Lua script sets `loadedAt` from `TIME` when it writes the view, so callers cannot supply it. The source read must go to the Postgres primary, and it must start after `loadedAt` is captured. A replica can return a snapshot older than the timestamp, so replica reads are not allowed for the redirect source read. Under those conditions the bound runs from the source read, not from the cache write. A Lua script performs the check, so the hit path needs one Redis round trip. Because no host clock is compared, skew between app hosts cannot extend a view.
 2. If a Redis version key exists for the link, it equals the view's `version`. A mismatch forces a Postgres read.
 
 A missing version key does not force a read on its own. Freshness rule 1 covers that case.
 
-Revocation updates Postgres first, then publishes a monotonic version to Redis. Cache writes never create or refresh the version key. If Redis fails, read Postgres. If both stores fail, return 503 without `Location`. Write a click event to a Postgres outbox asynchronously so the redirect response does not wait for that write.
+Revocation updates Postgres first, then publishes a monotonic version to Redis directly from the command after commit. This revises Blueprint §5.3 item 3, which routes invalidation through the outbox. The direct publish is safe because the freshness bound in rule 1 does not depend on it: a missed publish only delays revocation to the three-second bound. Cache writes never create or refresh the version key. If Redis fails, read Postgres. If both stores fail, return 503 without `Location`. Write a click event to a Postgres outbox asynchronously so the redirect response does not wait for that write.
 
 ## Revision
 

@@ -69,12 +69,13 @@ for (const name of adrFiles) {
   adrIdCount.set(id, (adrIdCount.get(id) ?? 0) + 1);
   const statuses = [...read(join(adrDir, name)).matchAll(/^- Status: (.*)$/gm)];
   const status = /^(Accepted|Rejected), (\d{4}-\d{2}-\d{2})(?:\s|\(|$)/.exec(statuses[0]?.[1] ?? "");
-  // Round-trip the date so impossible days such as 2026-02-30 fail.
-  const realDate = status !== null && new Date(`${status[2]}T00:00:00Z`).toISOString().slice(0, 10) === status[2];
+  // Round-trip the date so impossible days (2026-02-30) and months (2026-13-01) fail without throwing.
+  const parsed = status ? Date.parse(`${status[2]}T00:00:00Z`) : Number.NaN;
+  const realDate = !Number.isNaN(parsed) && new Date(parsed).toISOString().slice(0, 10) === status?.[2];
   if (statuses.length !== 1 || !status || !realDate) {
     errors.push(`docs/adr/${name}: status must be one "Accepted, <date>" or "Rejected, <date>" line`);
   } else {
-    adrStatus.set(id, status[1]);
+    adrStatus.set(id, `${status[1]}, ${status[2]}`);
   }
 }
 // ADRs the implementation plan reserves for later work packages. Each WP writes its own file.
@@ -91,7 +92,8 @@ const section11 = sec11Start < 0 || sec11End < sec11Start ? "" : blueprint.slice
 const listedInSection11 = new Set<string>();
 for (const m of section11.matchAll(/^\| \**(ADR-\d{3})\** \| .* \| (.*?) \|\s*$/gm)) {
   listedInSection11.add(m[1]);
-  const tableStatus = /^(Accepted|Rejected)\b/.exec(m[2])?.[1];
+  // Compare the status and date, ignoring any parenthetical note after them.
+  const tableStatus = /^((?:Accepted|Rejected), \d{4}-\d{2}-\d{2})(?:\s|\(|$)/.exec(m[2])?.[1];
   const fileStatus = adrStatus.get(m[1]);
   if (!adrFiles.some((n) => n.startsWith(`${m[1]}-`))) errors.push(`Blueprint §11: ${m[1]} has no file in docs/adr/`);
   else if (tableStatus !== fileStatus) errors.push(`Blueprint §11: ${m[1]} status "${m[2]}" differs from its ADR file`);
