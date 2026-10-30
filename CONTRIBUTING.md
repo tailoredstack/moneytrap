@@ -57,4 +57,4 @@ Closes OZE-3114
 - Body starts with the WP ID and `Closes OZE-<id>`.
 - Squash is off. Use rebase-merge so each commit keeps its message on `main`.
 - Do not add co-author or generated-by trailers.
-- Checks that must pass before merge: `bun run check:docs`, plus `bun run typecheck` once WP-0.1 has merged. Once WP-0.2 and WP-0.3 have merged, lint, boundary rules, and the wave's tests must pass too. The implementation plan's definition of done requires them for every work package.
+- Checks that must pass before merge: `bun run check:docs`, plus `bun run typecheck` once WP-0.1 has merged. Once WP-0.2 and WP-0.3 have merged, lint, boundary rules, the wave's tests, and the binary build on macOS and Linux must pass too. The implementation plan's definition of done requires them for every work package.
