@@ -8,6 +8,7 @@ Start here. Everything needed to begin building is in this folder.
 | [Implementation blueprint](MONEYTRAP_IMPLEMENTATION_BLUEPRINT.md) | Stack, repo layout, actions/queries model, auth and permissions, test layers, ADR list, first two weeks |
 | [Implementation plan](implementation/IMPLEMENTATION_PLAN.md) | Work packages WP-0.1 … WP-9.7 with paths, dependencies, and done-when criteria |
 | [Waves](implementation/WAVES.md) | How work packages group into waves and parallel lanes, with the critical path |
+| [Decision records](adr/README.md) | ADR-001 … ADR-011 with status, evidence, and fallbacks |
 | [Test plans](test-plans/README.md) | One test plan per wave, test IDs `TP-W<wave>-<nnn>` |
 | [UI skeletons](ui/SKELETONS.md) | Layout wireframes for the screens, by wave |
 
@@ -33,10 +34,10 @@ Start here. Everything needed to begin building is in this folder.
 | Launch country and currency (plan Q2) | Wave 6 FX scope | Product |
 | Load profile and latency SLO (plan Q5, WP-0.10) | Spike B pass or fail | Product + Platform |
 | Optimize in scope for the year (plan Q6) | Wave 9 | Product |
-| Better Auth + Kysely verified (ADR-009) | Wave 2 | Eng lead (spike C) |
-| Frontend bundler: Vite confirmed (ADR-008) | Wave 1 web shell | Eng lead (spike A) |
+| Better Auth + Kysely verified (ADR-009) | Resolved 2026-10-31 (accepted) | Eng lead (spike C) |
+| Frontend bundler: Vite confirmed (ADR-008) | Resolved 2026-10-31; embedding gate at WP-1.14 | Eng lead (spike A) |
 
 ## Working conventions
 
 - Project skills live in `.claude/skills/`: `moneytrap-architecture`, `moneytrap-auth`, `moneytrap-frontend`, `moneytrap-doc-consistency`.
-- ADRs live in `docs/adr/` (none written yet; WP-0.8 creates them).
+- ADRs live in `docs/adr/`. ADR-001 … ADR-011 were accepted in WP-0.8; the index is `docs/adr/README.md`.

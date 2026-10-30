@@ -279,17 +279,17 @@ These are starting points. Each is recorded as configurable policy with a versio
 
 | ADR | Decision | Status |
 |---|---|---|
-| ADR-001 | Bun as runtime, package manager, test runner, and binary builder | Proposed |
-| ADR-002 | Elysia 2 as HTTP layer; adapter boundary keeps it replaceable | Proposed, pending spike C |
-| ADR-009 | Better Auth for authentication, organizations, two-factor, API keys; org access control for roles | Proposed, pending spike C |
-| ADR-010 | shadcn/ui, TanStack Query/Router/Table/Form, Vite for the frontend | Proposed |
-| ADR-011 | Deferred: OAuth 2.0 for user-delegated client access. M7 ships org-scoped API keys only | Proposed |
-| ADR-003 | Postgres + Kysely; migrations statically bundled | Proposed |
-| ADR-004 | Postgres outbox → Redis queue; at-least-once with consumer dedupe | Proposed, pending spike B |
-| ADR-005 | Money as `bigint` minor units with largest-remainder allocation | Proposed |
-| ADR-006 | Actions and queries (Laravel-style) over Kysely; pure domain; ports only at external seams; no repositories; no DI container | Proposed |
-| ADR-007 | Redirect path: Redis route view with version check; fail closed | Proposed, pending spike B |
-| ADR-008 | Frontend bundler (Bun HTML bundler vs Vite) | Open until M0 |
+| ADR-001 | Bun as runtime, package manager, test runner, and binary builder | Accepted, 2026-10-31 |
+| ADR-002 | Elysia 2 as HTTP layer; adapter boundary keeps it replaceable | Accepted, 2026-10-31 (pre-release pins) |
+| ADR-009 | Better Auth for authentication, organizations, two-factor, API keys; org access control for roles | Accepted, 2026-10-31 |
+| ADR-010 | shadcn/ui, TanStack Query/Router/Table/Form, Vite for the frontend | Accepted, 2026-10-31 |
+| ADR-011 | Deferred: OAuth 2.0 for user-delegated client access. M7 ships org-scoped API keys only | Accepted, 2026-10-31 (deferred) |
+| ADR-003 | Postgres + Kysely; migrations statically bundled | Accepted, 2026-10-31 |
+| ADR-004 | Postgres outbox → Redis queue; at-least-once with consumer dedupe | Accepted, 2026-10-31 (relay gated to WP-1.7) |
+| ADR-005 | Money as `bigint` minor units with largest-remainder allocation | Accepted, 2026-10-31 |
+| ADR-006 | Actions and queries (Laravel-style) over Kysely; pure domain; ports only at external seams; no repositories; no DI container | Accepted, 2026-10-31 |
+| ADR-007 | Redirect path: Redis route view with version check; fail closed | Accepted, 2026-10-31 (revised; gated to WP-5.4) |
+| ADR-008 | Frontend bundler (Bun HTML bundler vs Vite) | Accepted, 2026-10-31 (Vite; gated to WP-1.14) |
 
 ---
 
