@@ -90,3 +90,34 @@ test("apps/web may import packages/ui", () => {
     if (!hadUiRoot) rmdirSync(uiRoot);
   }
 });
+
+test("scripts cannot import an adapter", () => {
+  const probe = join(root, "scripts", `__boundary_violation_${randomUUID()}.ts`);
+  writeFileSync(probe, 'import "../packages/adapter-postgres/src/index.ts";\n');
+  try {
+    const result = boundaries();
+    expect(result.status, result.output).not.toBe(0);
+    expect(result.output).toContain("adapters-only-from-server");
+  } finally {
+    unlinkSync(probe);
+  }
+});
+
+test("packages/ui cannot import domain (ui-only-contracts)", () => {
+  const uiRoot = join(root, "packages/ui");
+  const uiDir = join(root, "packages/ui/src");
+  const hadUiRoot = existsSync(uiRoot);
+  const hadUiDir = existsSync(uiDir);
+  const probe = join(uiDir, `__boundary_violation_${randomUUID()}.ts`);
+  mkdirSync(uiDir, { recursive: true });
+  writeFileSync(probe, 'import "../../domain/src/index.ts";\n');
+  try {
+    const result = boundaries();
+    expect(result.status, result.output).not.toBe(0);
+    expect(result.output).toContain("ui-only-contracts");
+  } finally {
+    unlinkSync(probe);
+    if (!hadUiDir) rmdirSync(uiDir);
+    if (!hadUiRoot) rmdirSync(uiRoot);
+  }
+});
