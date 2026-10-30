@@ -54,6 +54,7 @@ Closes OZE-3114
 ## Pull requests
 
 - One work package per PR.
+- No stacked PRs. Every PR targets `main`. Open the next PR only after the previous one has merged, and branch it from the updated `main`.
 - Body starts with the WP ID and `Closes OZE-<id>`.
 - Squash is off. Use rebase-merge so each commit keeps its message on `main`.
 - Do not add co-author or generated-by trailers.
