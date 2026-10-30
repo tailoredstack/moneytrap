@@ -10,7 +10,7 @@
   "scripts": {
     "lint": "biome check .",
     "format": "biome format --write .",
-    "boundaries": "depcruise --config .dependency-cruiser.cjs apps packages",
+    "boundaries": "depcruise --config .dependency-cruiser.cjs apps packages scripts",
     "typecheck": "bun run --filter '*' typecheck",
     "check:docs": "bun scripts/check-docs.ts"
   },
