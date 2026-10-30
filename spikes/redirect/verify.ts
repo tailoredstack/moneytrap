@@ -150,6 +150,9 @@ try {
     const delayedClick = await load(1000, 16);
     if (delayedClick.p95Ms > 50 || delayedClick.p99Ms > 150)
       throw new Error(`delayed-click target failed: ${JSON.stringify(delayedClick)}`);
+    // TP-W0-017 requires the delayed p95 to stay unchanged from baseline; 5 ms is the spike's tolerance.
+    if (delayedClick.p95Ms > baseline.p95Ms + 5)
+      throw new Error(`delayed-click p95 moved from baseline: ${JSON.stringify({ baseline, delayedClick })}`);
     const outboxClicksAfterDelay = await waitForOutbox(db, outboxClicks + 1001);
 
     const revokedAt = performance.now();

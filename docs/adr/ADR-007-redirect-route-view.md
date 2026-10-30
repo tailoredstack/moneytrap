@@ -18,9 +18,9 @@ The [WP-0.6 results](../../spikes/redirect/results.json) come from the compiled 
 
 | Check | Result | Provisional target |
 |---|---:|---:|
-| Cache-hit p95 / p99 | 3.96 / 7.41 ms | ≤ 50 / 150 ms |
-| With 500 ms click-write delay, p95 / p99 | 1.72 / 2.39 ms | ≤ 50 / 150 ms |
-| Revoke to denied response | 6.74 ms | ≤ 5,000 ms |
+| Cache-hit p95 / p99 | 6.48 / 9.57 ms | ≤ 50 / 150 ms |
+| With 500 ms click-write delay, p95 / p99 | 2.44 / 3.29 ms | ≤ 50 / 150 ms, p95 within 5 ms of baseline |
+| Revoke to denied response | 5.17 ms | ≤ 5,000 ms |
 | Redis and Postgres stopped | 503; no `Location` | 503; no `Location` |
 | Click outbox rows after each phase drains | 1,001 / 2,002 | Every tested redirect eventually recorded |
 
@@ -29,6 +29,8 @@ The test and runner are in `spikes/redirect/`. The first outage run revealed an 
 ## Consequences and open work
 
 The three-second version key bounds stale allows when the invalidation write fails, but it also forces a Postgres read at least every three seconds per active route. WP-5.4 and WP-5.5 must test this under the signed-off 10,000-link, 80/20 hot/cold load profile and the true revocation command path. This spike does not prove monthly availability, cross-host latency, or a production queue relay.
+
+Open limit: a cache write that stalls past the three-second version TTL can republish an older version after the newer version key expires. `put` then re-arms that stale view for up to another three seconds, which can exceed the five-second revocation target. The spike harness does not exercise this race. This must be fixed or the design revised before the ADR is accepted.
 
 The click outbox insertion is scheduled after resolution and can be lost if the process exits before the write finishes. WP-5.8 must choose a durable ingestion design and measure loss and retry behavior. ADR-004 remains Proposed until the outbox relay and queue are proven. WP-0.8 owns the final ADR decision.
 
