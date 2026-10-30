@@ -1,6 +1,6 @@
 # ADR-010: Frontend stack, shadcn/ui, TanStack, and Vite
 
-- Status: Accepted, 2026-10-31
+- Status: Accepted, 2026-10-31 (gate: WP-1.14 web shell verification)
 - Date: 2026-10-31
 - Spike: none. The frontend stack was not part of spikes A to C.
 

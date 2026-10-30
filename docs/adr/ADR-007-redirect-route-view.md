@@ -14,7 +14,7 @@ Cache a route view containing destination, eligibility, state, version, and `loa
 
 A cache hit is served only when both hold:
 
-1. `now - loadedAt < 3 s`. This bounds staleness from the time of the source read, not from the time of the cache write.
+1. `0 <= now - loadedAt < 3 s`. This bounds staleness from the time of the source read, not from the time of the cache write. A negative age, meaning `loadedAt` is ahead of the serving host's clock, is not fresh and forces a read.
 2. If a Redis version key exists for the link, it equals the view's `version`. A mismatch forces a Postgres read.
 
 A missing version key does not force a read on its own. Freshness rule 1 covers that case.
@@ -25,7 +25,7 @@ Revocation updates Postgres first, then publishes a monotonic version to Redis. 
 
 The spike design (WP-0.6) let `put` publish the version key with a three-second TTL. A cache write that stalled past that TTL could republish an older version after the newer key had expired, and the stale view was then served for up to another three seconds. That breaks the five-second revocation target. This ADR replaces the spike rule with the two conditions above. A write that stalls cannot extend a view's life, because the bound runs from `loadedAt`, which is set by the source read.
 
-The revised rule costs about the same as the spike. A hot route still reads Postgres about once every three seconds, as the spike did.
+The revised rule is expected to read Postgres about once every three seconds per hot route, as the spike did. That cost is not measured. WP-5.4 measures it.
 
 ## Spike evidence
 
@@ -39,13 +39,16 @@ The [WP-0.6 results](../../spikes/redirect/results.json) come from the compiled 
 | Redis and Postgres stopped | 503; no `Location` | 503; no `Location` |
 | Click outbox rows after each phase drains | 1,001 / 2,002 | Every tested redirect eventually recorded |
 
+The client versions in that run are `ioredis` 6.0.0, `pg` 8.x (`^8.23.1`), and `kysely` `^0.29.7`. They differ from the pins in ADR-003 (`pg` 8.16.3) and ADR-004 (`ioredis` 5.10.0). The numbers describe the spike's stack, not the production pins. The revocation figure is a single run, and the table presents it without spread. The harness checks outage and revocation once each. Outage and crash cases were not measured. Outbox counts were checked on fault-free runs only.
+
 The test and runner are in `spikes/redirect/`. The first outage run revealed an unhandled idle Postgres pool error that exited the server; the pool error listener fixed it, and the full harness then passed.
 
 ## Consequences and gates
 
 - **Gate for WP-5.4 (route view and Redis cache):** implement the Revision rule and add a test that stalls the cache write past three seconds after a revocation. The test must show the revoked route denied within five seconds. The spike code still implements the old rule and does not exercise this race.
 - **Gate for WP-5.4 and WP-5.5:** test the Revision rule under the signed-off 10,000-link, 80/20 hot/cold load profile and the true revocation command path.
-- Freshness depends on clocks. `loadedAt` is set by the reading host and compared on the host that serves the hit, so the design assumes host clocks agree within tens of milliseconds. WP-5.4 must record that assumption, and WP-5.4 or WP-5.5 must check it with a skew test before the design is relied on across hosts.
+- Clock skew fails safe. The lower bound in rule 1 means a serving host whose clock is behind the reading host ages the view out early, and a host whose clock is ahead rejects the view as not fresh. Neither extends a view past three seconds from its source read. Skew costs extra Postgres reads only. WP-5.4 or WP-5.5 must still run a skew test to confirm that cost is acceptable across hosts.
+- Gate for the spike numbers: WP-5.4 reruns the redirect harness with the production client pins from ADR-003 and ADR-004, and records them in the results.
 - The click outbox insertion is scheduled after resolution and can be lost if the process exits before the write finishes. Until WP-5.8 ships a durable ingestion design, click counts are best-effort. WP-5.8 must measure loss and retry behavior.
 - This spike does not prove monthly availability, cross-host latency, or a production queue relay. ADR-004 covers the relay.
 - This spike uses Elysia 1.4.30, the version available in this checkout. ADR-002 owns the Elysia 2 decision, and WP-5.4 must measure the redirect route on the framework that ADR selects.

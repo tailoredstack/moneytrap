@@ -1,6 +1,6 @@
 # ADR-001: Bun as runtime, package manager, test runner, and binary builder
 
-- Status: Accepted, 2026-10-31
+- Status: Accepted, 2026-10-31 (gate: Linux run, TP-W0-019)
 - Date: 2026-10-31
 - Spike: WP-0.5 (binary shape), WP-0.7 (library compatibility)
 
