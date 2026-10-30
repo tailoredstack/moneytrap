@@ -14,7 +14,7 @@ Cache a route view containing destination, eligibility, state, version, and `loa
 
 A cache hit is served only when both hold:
 
-1. `0 <= now - loadedAt < 3 s`. This bounds staleness from the time of the source read, not from the time of the cache write. A negative age, meaning `loadedAt` is ahead of the serving host's clock, is not fresh and forces a read.
+1. `0 <= now - loadedAt < 3 s`, where both `now` and `loadedAt` come from the Redis server clock (`TIME`), not from an application host. `loadedAt` is read from Redis before the Postgres read starts, and it is stored in the view. This bounds staleness from the source read, not from the cache write. A Lua script performs the check, so the hit path needs one Redis round trip. Because no host clock is compared, skew between app hosts cannot extend a view.
 2. If a Redis version key exists for the link, it equals the view's `version`. A mismatch forces a Postgres read.
 
 A missing version key does not force a read on its own. Freshness rule 1 covers that case.
@@ -47,7 +47,7 @@ The test and runner are in `spikes/redirect/`. The first outage run revealed an 
 
 - **Gate for WP-5.4 (route view and Redis cache):** implement the Revision rule and add a test that stalls the cache write past three seconds after a revocation. The test must show the revoked route denied within five seconds. The spike code still implements the old rule and does not exercise this race.
 - **Gate for WP-5.4 and WP-5.5:** test the Revision rule under the signed-off 10,000-link, 80/20 hot/cold load profile and the true revocation command path.
-- Clock skew fails safe. The lower bound in rule 1 means a serving host whose clock is behind the reading host ages the view out early, and a host whose clock is ahead rejects the view as not fresh. Neither extends a view past three seconds from its source read. Skew costs extra Postgres reads only. WP-5.4 or WP-5.5 must still run a skew test to confirm that cost is acceptable across hosts.
+- Clock source: the freshness check uses only the Redis server clock. Comparing a host clock with a reader's clock would let a lagging serving host extend a view by its lag, so the design avoids that comparison. WP-5.4 must test a serving host with a skewed clock to show the check does not depend on it.
 - Gate for the spike numbers: WP-5.4 reruns the redirect harness with the production client pins from ADR-003 and ADR-004, and records them in the results.
 - The click outbox insertion is scheduled after resolution and can be lost if the process exits before the write finishes. Until WP-5.8 ships a durable ingestion design, click counts are best-effort. WP-5.8 must measure loss and retry behavior.
 - This spike does not prove monthly availability, cross-host latency, or a production queue relay. ADR-004 covers the relay.

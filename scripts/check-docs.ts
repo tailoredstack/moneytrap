@@ -56,18 +56,21 @@ for (const [id, n] of wpSeen) {
 // ADRs: docs/adr holds README.md plus one file per decision, named ADR-NNN-<slug>.md.
 // The first Status line must be "Accepted, <date>" or "Rejected, <date>", with a real calendar date.
 const adrDir = join(docsDir, "adr");
-const adrNames = existsSync(adrDir) ? readdirSync(adrDir).filter((n) => n.endsWith(".md") && n !== "README.md") : [];
+const adrNames = existsSync(adrDir) ? readdirSync(adrDir).filter((n) => /\.md$/i.test(n) && n !== "README.md") : [];
 const adrFiles = adrNames.filter((n) => /^ADR-\d{3}-.*\.md$/.test(n));
 for (const name of adrNames) {
   if (!adrFiles.includes(name)) errors.push(`docs/adr/${name}: name must be ADR-NNN-<slug>.md`);
 }
 const adrStatus = new Map<string, string>();
+const adrIdCount = new Map<string, number>();
 for (const name of adrFiles) {
   const id = name.slice(0, "ADR-NNN".length);
   defined.add(id);
+  adrIdCount.set(id, (adrIdCount.get(id) ?? 0) + 1);
   const statuses = [...read(join(adrDir, name)).matchAll(/^- Status: (.*)$/gm)];
   const status = /^(Accepted|Rejected), (\d{4}-\d{2}-\d{2})(?:\s|\(|$)/.exec(statuses[0]?.[1] ?? "");
-  const realDate = status !== null && !Number.isNaN(Date.parse(`${status[2]}T00:00:00Z`));
+  // Round-trip the date so impossible days such as 2026-02-30 fail.
+  const realDate = status !== null && new Date(`${status[2]}T00:00:00Z`).toISOString().slice(0, 10) === status[2];
   if (statuses.length !== 1 || !status || !realDate) {
     errors.push(`docs/adr/${name}: status must be one "Accepted, <date>" or "Rejected, <date>" line`);
   } else {
@@ -77,13 +80,25 @@ for (const name of adrFiles) {
 // ADRs the implementation plan reserves for later work packages. Each WP writes its own file.
 for (const id of ["ADR-012", "ADR-013"]) defined.add(id);
 // Blueprint §11 must list each ADR, with a file whose status matches the table.
+for (const [id, n] of adrIdCount) if (n > 1) errors.push(`docs/adr: ${id} is defined by ${n} files`);
 const blueprint = read(join(docsDir, "MONEYTRAP_IMPLEMENTATION_BLUEPRINT.md"));
-const section11 = blueprint.slice(blueprint.indexOf("## 11."), blueprint.indexOf("## 12."));
-for (const m of section11.matchAll(/^\| \**(ADR-\d{3})\** \| .* \| (.*) \|$/gm)) {
+const sec11Start = blueprint.indexOf("## 11.");
+const sec11End = blueprint.indexOf("## 12.");
+if (sec11Start < 0 || sec11End < sec11Start) {
+  errors.push("Blueprint: section 11 heading not found, so ADR status rows cannot be checked");
+}
+const section11 = sec11Start < 0 || sec11End < sec11Start ? "" : blueprint.slice(sec11Start, sec11End);
+const listedInSection11 = new Set<string>();
+for (const m of section11.matchAll(/^\| \**(ADR-\d{3})\** \| .* \| (.*?) \|\s*$/gm)) {
+  listedInSection11.add(m[1]);
   const tableStatus = /^(Accepted|Rejected)\b/.exec(m[2])?.[1];
   const fileStatus = adrStatus.get(m[1]);
   if (!adrFiles.some((n) => n.startsWith(`${m[1]}-`))) errors.push(`Blueprint §11: ${m[1]} has no file in docs/adr/`);
   else if (tableStatus !== fileStatus) errors.push(`Blueprint §11: ${m[1]} status "${m[2]}" differs from its ADR file`);
+}
+for (const name of adrFiles) {
+  const id = name.slice(0, "ADR-NNN".length);
+  if (!listedInSection11.has(id)) errors.push(`Blueprint §11: ${id} (${name}) has no row`);
 }
 
 // Test IDs: defined once each across all test plans.
