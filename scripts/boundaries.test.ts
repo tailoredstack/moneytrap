@@ -121,3 +121,35 @@ test("packages/ui cannot import domain (ui-only-contracts)", () => {
     if (!hadUiRoot) rmdirSync(uiRoot);
   }
 });
+
+function expectProbeViolation(relDir: string, source: string, ruleName: string) {
+  const file = join(root, relDir, `__boundary_violation_${randomUUID()}.ts`);
+  writeFileSync(file, source);
+  try {
+    const result = boundaries();
+    expect(result.status, result.output).not.toBe(0);
+    expect(result.output).toContain(ruleName);
+  } finally {
+    unlinkSync(file);
+  }
+}
+
+test("web cannot import the app package (web-only-contracts-and-ui)", () => {
+  expectProbeViolation("apps/web/src", 'import "../../../packages/app/src/index.ts";\n', "web-only-contracts-and-ui");
+});
+
+test("app cannot import contracts (app-only-domain-and-schema)", () => {
+  expectProbeViolation("packages/app/src", 'import "../../contracts/src/index.ts";\n', "app-only-domain-and-schema");
+});
+
+test("app may import schema only as types (app-schema-types-only)", () => {
+  expectProbeViolation("packages/app/src", 'import "../../schema/src/index.ts";\n', "app-schema-types-only");
+});
+
+test("adapters cannot import each other (adapters-no-cross-imports)", () => {
+  expectProbeViolation(
+    "packages/adapter-redis/src",
+    'import "../../adapter-postgres/src/index.ts";\n',
+    "adapters-no-cross-imports",
+  );
+});
