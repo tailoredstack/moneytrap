@@ -17,6 +17,10 @@
       "name": "@moneytrap/web",
       "version": "0.0.0",
     },
+    "packages/adapter-notify": {
+      "name": "@moneytrap/adapter-notify",
+      "version": "0.0.0",
+    },
     "packages/adapter-postgres": {
       "name": "@moneytrap/adapter-postgres",
       "version": "0.0.0",
@@ -51,6 +55,8 @@
     },
   },
   "packages": {
+    "@moneytrap/adapter-notify": ["@moneytrap/adapter-notify@workspace:packages/adapter-notify"],
+
     "@moneytrap/adapter-postgres": ["@moneytrap/adapter-postgres@workspace:packages/adapter-postgres"],
 
     "@moneytrap/adapter-redis": ["@moneytrap/adapter-redis@workspace:packages/adapter-redis"],

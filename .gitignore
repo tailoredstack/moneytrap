@@ -7,6 +7,5 @@ dist/
 !.env.example
 
 # local infra and tooling state
-.codegraph/
 .DS_Store
 coverage/
