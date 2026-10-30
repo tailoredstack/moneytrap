@@ -5,11 +5,21 @@ import { mkdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
-const violation = join(root, "packages/domain/src", `__boundary_violation_${randomUUID()}.ts`);
-
 function boundaries() {
   const result = spawnSync("bun", ["run", "boundaries"], { cwd: root, encoding: "utf8" });
   return { status: result.status, output: `${result.stdout}\n${result.stderr}` };
+}
+
+function expectViolation(packageName: string, moduleName: string, ruleName: string) {
+  const violation = join(root, `packages/${packageName}/src`, `__boundary_violation_${randomUUID()}.ts`);
+  writeFileSync(violation, `import "${moduleName}";\n`);
+  try {
+    const result = boundaries();
+    expect(result.status, result.output).not.toBe(0);
+    expect(result.output).toContain(ruleName);
+  } finally {
+    unlinkSync(violation);
+  }
 }
 
 test("clean workspace passes boundary checks", () => {
@@ -18,14 +28,19 @@ test("clean workspace passes boundary checks", () => {
 });
 
 test("domain cannot import the Postgres adapter", () => {
-  writeFileSync(violation, 'import "../../adapter-postgres/src/index.ts";\n');
-  try {
-    const result = boundaries();
-    expect(result.status, result.output).not.toBe(0);
-    expect(result.output).toContain("domain-no-workspace-imports");
-  } finally {
-    unlinkSync(violation);
-  }
+  expectViolation("domain", "../../adapter-postgres/src/index.ts", "domain-no-workspace-imports");
+});
+
+test("domain cannot import Node I/O", () => {
+  expectViolation("domain", "node:fs", "domain-no-core-imports");
+});
+
+test("domain cannot import Elysia", () => {
+  expectViolation("domain", "elysia", "domain-no-framework-imports");
+});
+
+test("app cannot import the Redis client", () => {
+  expectViolation("app", "@redis/client", "app-no-redis-or-elysia");
 });
 
 function probeFile(relDir: string, source: string) {

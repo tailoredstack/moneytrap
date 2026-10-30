@@ -7,6 +7,18 @@ module.exports = {
       to: { path: "^(?:packages/(?!domain/)|apps/)" },
     },
     {
+      name: "domain-no-core-imports",
+      severity: "error",
+      from: { path: "^packages/domain/" },
+      to: { dependencyTypes: ["core"] },
+    },
+    {
+      name: "domain-no-framework-imports",
+      severity: "error",
+      from: { path: "^packages/domain/" },
+      to: { path: "(?:^|/)(?:elysia|@elysiajs)(?:/|$)" },
+    },
+    {
       name: "app-only-domain-and-schema",
       severity: "error",
       from: { path: "^packages/app/" },
@@ -22,7 +34,7 @@ module.exports = {
       name: "app-no-redis-or-elysia",
       severity: "error",
       from: { path: "^packages/app/" },
-      to: { path: "(?:^|/)(?:redis|elysia)(?:/|$)" },
+      to: { path: "(?:^|/)(?:redis|@redis/client|elysia)(?:/|$)" },
     },
     {
       name: "adapters-no-cross-imports",
