@@ -116,7 +116,8 @@ describe("auth rate limits (WP-2.14)", () => {
       "/request-password-reset",
       "/sign-in/email",
     ]);
-    expect(options.rateLimit?.customStorage).toBeDefined();
+    // Better Auth 1.7.14 accepts only a consume(key, rule) storage; separate get/set storage is refused.
+    expect(typeof options.rateLimit?.customStorage?.consume).toBe("function");
   });
 
   test("refuses a login once the email has used up its failed attempts, before the password is checked", async () => {
