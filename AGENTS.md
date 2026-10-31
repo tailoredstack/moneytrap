@@ -80,5 +80,8 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - The coordinating thread keeps a fallback wake-up scheduled, so the loop runs without a PR event.
 - A thread waiting on a decision or an event stays in the waiting state and keeps its PR watched. It doesn't end its turn or unwatch.
 - Keep Linear's blocked-by relations in sync with the plan's "Depends on" column.
+- When two packages claim the same migration file, split it by owner (one file per package, own sequence number) and make the later package depend on the earlier one. Update the plan row and the Linear blocked-by relation together. Example: WP-2.2 owns `0002_better_auth.ts`; WP-2.12 owns `0003_identity.ts` with a foreign key to Better Auth's `user` table, so WP-2.12 depends on WP-2.2.
+- When the plan changes mid-wave, notify every running thread on the affected packages with the change. Running threads keep their PR watched and continue their work.
+- When a coordinator decides a blocking question for a thread, it chooses the recommended option itself and tells the thread. It doesn't wait for a reply when the choice is reversible.
 - Set each Linear issue to Done when its PR merges, and check that every wave parent matches its children: Done when all children are Done, In Progress when any child is In Progress, otherwise Todo.
 - Loop the work package sequence until no eligible package remains.
