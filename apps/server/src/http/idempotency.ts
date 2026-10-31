@@ -28,14 +28,16 @@ export function idempotency(options: { store: IdempotencyStore; scopeOf: (reques
       );
       const decision = decideReplay(await store.find(scope, keyHash), requestHash);
 
-      if (decision.kind === "replay") return jsonResponse(decision.body, decision.status);
+      if (decision.kind === "replay") {
+        return new Response(decision.body, { status: decision.status, headers: decision.headers });
+      }
       if (decision.kind === "conflict") {
         const { status, body } = errorResponse(
           "STATE_CONFLICT",
           requestIdOf(request),
           "Idempotency key was reused with a different request",
         );
-        return jsonResponse(JSON.stringify(body), status);
+        return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
       }
       pending.set(request, { scope, keyHash, requestHash });
     })
@@ -43,21 +45,26 @@ export function idempotency(options: { store: IdempotencyStore; scopeOf: (reques
       const record = pending.get(request);
       if (!record) return;
 
-      const status = Number(set.status ?? 200);
+      // A handler that returns its own Response decides the status and headers, so take them from that Response.
+      const own = responseValue instanceof Response ? responseValue : null;
+      const status = own ? own.status : Number(set.status ?? 200);
       if (status >= 500) return;
 
-      const body =
-        responseValue instanceof Response
-          ? await responseValue.clone().text()
-          : typeof responseValue === "string"
-            ? responseValue
-            : JSON.stringify(responseValue);
-      await store.save(record.scope, record.keyHash, { requestHash: record.requestHash, status, body });
+      const body = own
+        ? await own.clone().text()
+        : typeof responseValue === "string"
+          ? responseValue
+          : JSON.stringify(responseValue);
+      const headers = own
+        ? storable(own.headers)
+        : { "content-type": typeof responseValue === "string" ? "text/plain;charset=utf-8" : "application/json" };
+      await store.save(record.scope, record.keyHash, { requestHash: record.requestHash, status, headers, body });
     });
 }
 
-function jsonResponse(body: string, status: number): Response {
-  return new Response(body, { status, headers: { "content-type": "application/json" } });
+// The request ID is per request and is never replayed. Everything else the handler set is part of the response.
+function storable(headers: Headers): Record<string, string> {
+  return Object.fromEntries([...headers].filter(([name]) => name !== "x-request-id"));
 }
 
 async function sha256Hex(text: string): Promise<string> {
