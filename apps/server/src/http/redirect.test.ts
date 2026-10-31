@@ -114,7 +114,10 @@ describe("GET /r/:token (UC13, API-043)", () => {
   test("is not served when the composition root supplies no deps", async () => {
     const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth));
     const response = await app.handle(new Request(`http://localhost/r/${TOKEN}`));
-    // Without the route, the shell catch-all answers. It never redirects.
+    // Without the route, the web shell catch-all answers the path. It must be neither a redirect nor one of the
+    // redirect's own answers, so no visitor can reach a destination through an unwired route.
+    expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
+    expect(await response.text()).not.toBe("Gone");
   });
 });
