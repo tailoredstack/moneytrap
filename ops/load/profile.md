@@ -1,6 +1,6 @@
 # Load profile and SLO (WP-0.10)
 
-**Status:** Draft. Pending product owner sign-off (plan open question Q5). Until signed, the targets below are placeholders taken from the Blueprint.
+**Status:** Signed off by the product owner (plan open question Q5), 2026-10-31.
 
 ## Redirect path (spec §8, Blueprint §8)
 
@@ -22,7 +22,5 @@ The spike measured p95 10.83 ms and p99 15.04 ms at this profile, with client ro
 
 ## Sign-off
 
-- [ ] Product owner confirms the latency targets above.
-- [ ] Product owner confirms the availability target.
-
-Once signed, update the status line and tick both boxes.
+- [x] Product owner confirms the latency targets above.
+- [x] Product owner confirms the availability target.
