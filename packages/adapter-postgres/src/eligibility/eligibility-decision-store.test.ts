@@ -122,7 +122,7 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     expect(result.decision.inputs).toEqual(denied);
     expect(result.decision.checks.find((check) => check.reason === "geography")?.passed).toBe(false);
 
-    const stored = await store.find(result.decision.id);
+    const stored = await store.find(orgId, result.decision.id);
     expect(stored?.reasons).toEqual(["geography"]);
     expect(stored?.inputs).toEqual(denied);
   });
@@ -151,7 +151,7 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     const result = await store.record(writeFor(allowed));
 
     expect(result.outcome).toBe("recorded");
-    const history = await store.listForPair(propertyId, programId);
+    const history = await store.listForPair(orgId, propertyId, programId);
     expect(history.map((decision) => decision.policyVersion)).toEqual([0, 1]);
     expect(history[0]?.id).toBe("eld_old");
   });
@@ -160,7 +160,7 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     const store = createEligibilityDecisionStore(db);
     const { decision } = await store.record(writeFor(denied));
 
-    expect(await store.replay(decision.id)).toBe("reproduced");
+    expect(await store.replay(orgId, decision.id)).toBe("reproduced");
   });
 
   test("a decision under a policy version this build lacks cannot be replayed", async () => {
@@ -170,8 +170,54 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
         ${JSON.stringify(allowed)}::jsonb, 'hash-v0', ${now})`.execute(db);
 
     const store = createEligibilityDecisionStore(db);
-    expect(await store.replay("eld_old")).toBe("policy_unavailable");
-    expect(await store.replay("eld_missing")).toBeNull();
+    expect(await store.replay(orgId, "eld_old")).toBe("policy_unavailable");
+    expect(await store.replay(orgId, "eld_missing")).toBeNull();
+  });
+
+  test("a stored decision that no longer matches its inputs replays as a mismatch", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const { decision } = await store.record(writeFor(denied));
+    // Tamper with the stored evidence, as an out-of-band edit would. The replay must notice.
+    await sql`update eligibility_decisions set checks = '[]'::jsonb where id = ${decision.id}`.execute(db);
+
+    expect(await store.replay(orgId, decision.id)).toBe("mismatch");
+  });
+
+  test("reads and writes are scoped to the organization", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const { decision } = await store.record(writeFor(allowed));
+
+    expect(await store.find("org_other", decision.id)).toBeNull();
+    expect(await store.listForPair("org_other", propertyId, programId)).toEqual([]);
+    expect(await store.replay("org_other", decision.id)).toBeNull();
+    // A decision cannot be written for a property that belongs to another organization.
+    await expect(store.record({ ...writeFor(allowed), organizationId: "org_other" })).rejects.toThrow(
+      "not in the organization",
+    );
+    expect(await countRows("eligibility_decisions")).toBe(1);
+  });
+
+  test("the same inputs written concurrently record one row and one audit row", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const results = await Promise.all([store.record(writeFor(allowed)), store.record(writeFor(allowed))]);
+
+    expect(results.map((result) => result.outcome).sort()).toEqual(["existing", "recorded"]);
+    expect(await countRows("eligibility_decisions")).toBe(1);
+    expect(await countRows("audit_logs")).toBe(1);
+  });
+
+  test("the same set of list values in another order is the same evaluation", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const reordered: EligibilityInput = {
+      ...allowed,
+      program: { ...allowed.program, countries: ["IE", "GB"] },
+      contract: { ...allowed.contract, countries: ["IE", "GB"] },
+    };
+    await store.record(writeFor(allowed));
+    const second = await store.record(writeFor(reordered));
+
+    expect(second.outcome).toBe("existing");
+    expect(await countRows("eligibility_decisions")).toBe(1);
   });
 
   test("the decision and its audit row commit together (no partial write)", async () => {
