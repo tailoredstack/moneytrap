@@ -3,7 +3,8 @@ import type { Migration } from "kysely/migration";
 
 // Eligibility decisions (DM-024, WP-4.9). Each row is one evaluation of the pure policy: the inputs it ran on, the
 // policy version, and the decision with its reasons and checks. Rows are never updated. A repeat of the same inputs under
-// the same policy version and source revision hits input_hash and adds nothing (TP-W4-023). A new policy version adds a row beside the old one
+// the same policy version and source revision hits input_hash and adds nothing (TP-W4-023). A new policy version, or the
+// same facts under a later source revision, adds a row beside the old one
 // (TP-W4-022), so earlier decisions stay reproducible.
 export const eligibility: Migration = {
   async up(db: Kysely<unknown>) {
@@ -31,7 +32,8 @@ export const eligibility: Migration = {
       .addColumn("checks", "jsonb", (column) => column.notNull())
       // The exact EligibilityInput the policy ran on, copied from the source facts. Replaying it reproduces the decision.
       .addColumn("inputs", "jsonb", (column) => column.notNull())
-      // SHA-256 of the policy version and the canonical inputs. Equal hashes mean an identical evaluation.
+      // SHA-256 of the policy version, the canonical inputs, and the source revision they were read from. Equal hashes
+      // mean an identical evaluation of the same facts.
       .addColumn("input_hash", "text", (column) => column.notNull())
       .addColumn("evaluated_at", "timestamptz", (column) => column.notNull())
       .addUniqueConstraint("eligibility_decisions_evaluation_uq", [

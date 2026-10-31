@@ -12,8 +12,9 @@ import { type Kysely, type RawBuilder, sql, type Transaction } from "kysely";
 import { withTx } from "../transaction";
 
 // Eligibility decisions are persisted from the pure policy (WP-4.8, DM-024). The store runs evaluateEligibility itself, so
-// every row is the policy's output for the inputs it stores. A repeat of the same inputs under the same policy version is
-// a no-op and reports the existing row. A row is never updated, so an earlier decision is never overwritten.
+// every row is the policy's output for the inputs it stores. A repeat of the same inputs and revision under the same
+// policy version is a no-op and reports the existing row. A row is never updated, so an earlier decision is never
+// overwritten.
 
 export type DecisionOutcome = "allow" | "deny";
 
@@ -186,7 +187,8 @@ async function selectOne(
 }
 
 // Records a decision and its audit row in one transaction (TP-W3-006 pattern). If either write fails, neither commits.
-// The insert is idempotent on (property, program, policy version, input hash), so the same inputs add no second row.
+// The insert is idempotent on (property, program, policy version, input hash). The hash covers the revision too, so the
+// same inputs read from a later revision add a row that names that revision.
 export function createEligibilityDecisionStore(db: Kysely<unknown>): EligibilityDecisionStore {
   return {
     async record(write) {
