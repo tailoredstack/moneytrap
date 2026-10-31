@@ -71,9 +71,17 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Use a unique container name and a free port for each test run. Don't reuse a port that another process holds.
 - Remove temporary branches, worktrees, and probe files you created.
 
-**Self-sufficiency**
-- Resolve blockers from the repo docs and the transcript before asking the user. Ask only for decisions that are genuinely the user's.
-- Improve this sequence as you go. When the same problem appears twice, add a rule for it here.
+**Autonomy**
+- Work-package agents decide for themselves. They know the best practice for their package and choose the approach. They do not ask the user anything.
+- Resolve blockers from the repo docs, the test plans, the review docs, and the thread transcript. If the answer is in those, act on it.
+- When a choice is open, pick the recommended option, record the reason in the PR body or a Linear comment, and continue. Reverse it later only if new evidence shows it is wrong.
+- Fix your own failures: failing checks, review findings, merge conflicts, and transient CI. Rebase, re-run, or change the code as needed. Repeat until the gate passes.
+- Communicate with other threads, not the user. Use `t3_thread_send` to notify the coordinating thread, dependent package threads, and any thread whose package shares a file or port with yours. Send a message when you hit a blocker, when you merge, and when the plan changes under you.
+- A blocker that no thread can clear (for example, a GitHub outage or a missing secret) is recorded in Linear and sent to the coordinating thread. The thread keeps its PR watched and waits. It does not end its turn asking for help.
+- Hard-to-reverse or outward-facing actions outside this sequence (force-pushing to `main`, deleting another package's branch, changing production data) are not taken by a package agent. Record the need in Linear and let the coordinating thread decide.
+
+**Improve the sequence**
+- Improve this sequence as you go. When the same problem appears twice, add a rule for it here and in the matching memory file.
 
 **Loop control**
 - Before any thread ends its turn, the coordinating thread checks Linear for newly eligible packages and starts them. It doesn't settle while eligible work remains.
