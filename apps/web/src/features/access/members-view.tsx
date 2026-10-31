@@ -1,4 +1,17 @@
-import { Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@moneytrap/ui";
+import {
+  Button,
+  Form,
+  FormLabel,
+  FormMessage,
+  Input,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@moneytrap/ui";
+import type { FormEvent } from "react";
 
 // UI-011. A viewer who may not see members gets a permission message, not an empty table.
 export type MemberRole = "owner" | "admin" | "member";
@@ -10,12 +23,18 @@ export function MembersView({
   state,
   members,
   canInvite,
+  inviteOpen = false,
+  inviteError,
   onInvite,
+  onInviteSubmit,
 }: {
   state: "ready" | "denied";
   members: Member[];
   canInvite: boolean;
+  inviteOpen?: boolean;
+  inviteError?: string | undefined;
   onInvite?: () => void;
+  onInviteSubmit?: (input: { email: string; role: "admin" | "member" }) => void;
 }) {
   if (state === "denied") {
     return (
@@ -25,12 +44,40 @@ export function MembersView({
       </section>
     );
   }
+  const handleInvite = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const role = data.get("role") === "admin" ? "admin" : "member";
+    onInviteSubmit?.({ email: String(data.get("email") ?? ""), role });
+  };
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Members</h1>
         {canInvite ? <Button onClick={onInvite}>Invite</Button> : null}
       </div>
+      {inviteOpen ? (
+        <Form onSubmit={handleInvite} className="max-w-sm rounded-md border p-4">
+          <div className="space-y-1">
+            <FormLabel htmlFor="invite-email">Email</FormLabel>
+            <Input id="invite-email" name="email" type="email" autoComplete="off" required />
+          </div>
+          <div className="space-y-1">
+            <FormLabel htmlFor="invite-role">Role</FormLabel>
+            <select
+              id="invite-role"
+              name="role"
+              className="h-9 w-full rounded-md border px-3 text-sm"
+              defaultValue="member"
+            >
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <FormMessage>{inviteError}</FormMessage>
+          <Button type="submit">Send invite</Button>
+        </Form>
+      ) : null}
       <Table>
         <TableHeader>
           <TableRow>

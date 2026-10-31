@@ -83,7 +83,7 @@ describe("sign-in (TP-W2-013, TP-W2-015, TP-W2-042)", () => {
     const { client } = fakeClient({
       "signIn.email": {
         data: null,
-        error: { status: 429, headers: new Headers({ "retry-after": "42" }) },
+        error: { status: 429, retryAfter: 42 },
       },
     });
     expect(await signIn(client, { email: "ana@example.com", password: "p" })).toEqual({

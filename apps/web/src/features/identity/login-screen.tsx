@@ -41,7 +41,7 @@ export function LoginView({
         </div>
         <FormMessage>{message}</FormMessage>
         <div className="flex items-center gap-4">
-          <Button type="submit" disabled={submitting || status === "rate-limited"}>
+          <Button type="submit" disabled={submitting}>
             Log in
           </Button>
           <a href="/forgot-password" className="text-sm">

@@ -46,6 +46,11 @@ describe("LoginView (UI-003, TP-W2-042)", () => {
     expect(html).not.toContain('value="hunter2"');
   });
 
+  test("after a rate limit the submit button stays enabled, so the user can retry once the wait is over", () => {
+    const html = renderToStaticMarkup(<LoginView status="rate-limited" retryAfterSeconds={1} />);
+    expect(html).toMatch(/<button(?![^>]*disabled="")[^>]*type="submit"[^>]*>Log in<\/button>/);
+  });
+
   test("a rate limit with no retry time says to wait before trying again", () => {
     const html = renderToStaticMarkup(<LoginView status="rate-limited" retryAfterSeconds={null} />);
     expect(html).toContain("Too many attempts. Try again later.");
@@ -78,6 +83,11 @@ describe("StepUpView (UI-004, TP-W2-043)", () => {
     expect(html).toContain("2 wrong codes so far");
   });
 
+  test("a rate-limited challenge keeps the code button enabled for a retry", () => {
+    const html = renderToStaticMarkup(<StepUpView status="rate-limited" mode="totp" retryAfterSeconds={30} />);
+    expect(html).toMatch(/<button(?![^>]*disabled="")[^>]*type="submit"[^>]*>Confirm<\/button>/);
+  });
+
   test("a rate-limited challenge shows the retry time", () => {
     const html = renderToStaticMarkup(<StepUpView status="rate-limited" mode="totp" retryAfterSeconds={30} />);
     expect(html).toContain("Too many attempts. Try again in 30 seconds.");
@@ -88,6 +98,11 @@ describe("recovery screens (UI-007, UI-008, TP-W2-023)", () => {
   test("the request confirmation is the same for every address", () => {
     const html = renderToStaticMarkup(<RecoveryRequestView status="sent" />);
     expect(html).toContain("If an account exists, we sent a link.");
+  });
+
+  test("a rate-limited request keeps the send button enabled for a retry", () => {
+    const html = renderToStaticMarkup(<RecoveryRequestView status="rate-limited" retryAfterSeconds={60} />);
+    expect(html).toMatch(/<button(?![^>]*disabled="")[^>]*type="submit"[^>]*>Send reset link<\/button>/);
   });
 
   test("an expired or used link asks the user to request a new one", () => {

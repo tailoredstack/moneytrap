@@ -61,7 +61,7 @@ export function StepUpView({
           <FormMessage>{error}</FormMessage>
         </div>
         <div className="flex items-center gap-4">
-          <Button type="submit" disabled={submitting || status === "rate-limited"}>
+          <Button type="submit" disabled={submitting}>
             Confirm
           </Button>
           <a href={recovery ? "/step-up" : "/step-up?mode=recovery"} className="text-sm">

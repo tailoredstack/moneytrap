@@ -36,7 +36,7 @@ export function RecoveryRequestView({
           <Input id="recovery-email" name="email" type="email" autoComplete="email" required />
         </div>
         <FormMessage>{status === "rate-limited" ? rateLimitMessage(retryAfterSeconds) : undefined}</FormMessage>
-        <Button type="submit" disabled={submitting || status === "rate-limited"}>
+        <Button type="submit" disabled={submitting}>
           Send reset link
         </Button>
       </Form>
