@@ -19,12 +19,13 @@ function principalFrom(headers: Headers): Promise<Principal | null> {
 
 class RecordingStore implements ClickReportStore {
   queries: ClickCountQuery[] = [];
+  constructor(private readonly latest: Date | null = new Date("2026-11-01T11:59:00.000Z")) {}
   async countByLink(query: ClickCountQuery) {
     this.queries.push(query);
     return [{ linkId: "lnk_a", clicks: 4 }];
   }
-  async latestRecordedAt() {
-    return new Date("2026-11-01T11:59:00.000Z");
+  async latestRecordedAt(_organizationId: Id<"organization">, since: Date) {
+    return this.latest !== null && this.latest >= since ? this.latest : null;
   }
 }
 
@@ -48,6 +49,35 @@ describe("GET /api/organizations/:organizationId/reports/clicks (API-045, WP-5.9
       data_stale: false,
     });
     expect(store.queries[0]?.organizationId).toBe(orgA);
+  });
+
+  test("data_stale is true when the newest click is over a day older than as_of and the window reaches past it", async () => {
+    const { server } = app(new RecordingStore(new Date("2026-10-30T08:00:00.000Z")));
+    const response = await server.handle(new Request(url(orgA), { headers: { "x-role": "owner" } }));
+    expect(await response.json()).toMatchObject({ data_stale: true });
+  });
+
+  test("cursor and limit reach the store, and the next cursor is the last link of the page", async () => {
+    const link = "lnk_01arz3ndektsv4rrffq69g5fav";
+    const { server, store } = app();
+    const response = await server.handle(
+      new Request(url(orgA, `from=2026-10-01T00:00:00.000Z&to=2026-11-01T00:00:00.000Z&cursor=${link}&limit=5`), {
+        headers: { "x-role": "owner" },
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(store.queries[0]).toMatchObject({ afterLinkId: link, limit: 6 });
+  });
+
+  test("a limit that is not a whole number in range is a validation failure", async () => {
+    const { server, store } = app();
+    const response = await server.handle(
+      new Request(url(orgA, "from=2026-10-01T00:00:00.000Z&to=2026-11-01T00:00:00.000Z&limit=abc"), {
+        headers: { "x-role": "owner" },
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(store.queries).toHaveLength(0);
   });
 
   test("no session is UNAUTHENTICATED", async () => {

@@ -2,7 +2,8 @@ import type { ClickCountRow, ClickReportStore } from "@moneytrap/app/src/ports/c
 import { type Kysely, sql } from "kysely";
 
 // Reads only. Every query joins clicks to links and filters by the links' organization, so a click of another tenant
-// never counts (WP-5.9). The clicks_link_occurred_idx index covers the window, and the links primary key covers the join.
+// never counts (WP-5.9). The window query has no index on occurred_at alone, so its scan is bounded by the links of the
+// organization; clicks_link_occurred_idx serves the join when the link filter is selective.
 export function createClickReportStore(db: Kysely<unknown>): ClickReportStore {
   return {
     async countByLink(query): Promise<readonly ClickCountRow[]> {
@@ -20,12 +21,15 @@ export function createClickReportStore(db: Kysely<unknown>): ClickReportStore {
       return result.rows.map((row) => ({ linkId: row.link_id, clicks: row.clicks }));
     },
 
-    async latestRecordedAt(organizationId): Promise<Date | null> {
+    // Looks back at most lookbackDays, the widest window a report can ask for, so the freshness check does not read the
+    // organization's whole history on every page.
+    async latestRecordedAt(organizationId, lookback): Promise<Date | null> {
       const result = await sql<{ latest: Date | null }>`
         select max(c.recorded_at) as latest
         from clicks c
         join links l on l.id = c.link_id
-        where l.organization_id = ${organizationId}`.execute(db);
+        where l.organization_id = ${organizationId}
+          and c.recorded_at >= ${lookback}`.execute(db);
       return result.rows[0]?.latest ?? null;
     },
   };

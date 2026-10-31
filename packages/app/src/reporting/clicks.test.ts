@@ -10,6 +10,7 @@ const window = { from: "2026-10-01T00:00:00.000Z", to: "2026-11-01T00:00:00.000Z
 // A store that keeps every row sorted by link ID and applies the keyset cursor and limit the way Postgres does.
 class FakeClickReports implements ClickReportStore {
   queries: ClickCountQuery[] = [];
+  lookbacks: Date[] = [];
   constructor(
     private readonly rows: ClickCountRow[],
     private readonly latest: Date | null = null,
@@ -23,16 +24,17 @@ class FakeClickReports implements ClickReportStore {
       .slice(0, query.limit);
   }
 
-  async latestRecordedAt(): Promise<Date | null> {
-    return this.latest;
+  async latestRecordedAt(_organizationId: Id<"organization">, since: Date): Promise<Date | null> {
+    this.lookbacks.push(since);
+    return this.latest !== null && this.latest >= since ? this.latest : null;
   }
 }
 
 const clock = { now: () => now };
 const rows = [
-  { linkId: "lnk_a", clicks: 3 },
-  { linkId: "lnk_b", clicks: 1 },
-  { linkId: "lnk_c", clicks: 7 },
+  { linkId: "lnk_01arz3ndektsv4rrffq69g5fa1", clicks: 3 },
+  { linkId: "lnk_01arz3ndektsv4rrffq69g5fa2", clicks: 1 },
+  { linkId: "lnk_01arz3ndektsv4rrffq69g5fa3", clicks: 7 },
 ];
 
 describe("click counts per link (API-045, WP-5.9)", () => {
@@ -57,17 +59,20 @@ describe("click counts per link (API-045, WP-5.9)", () => {
     const store = new FakeClickReports(rows);
     const first = await listClickCounts({ clicks: store, clock }, { organizationId: orgA, ...window, limit: 2 });
     if (!first.ok) throw new Error("expected a page");
-    expect(first.value.data.map((row) => row.linkId)).toEqual(["lnk_a", "lnk_b"]);
-    expect(first.value.nextCursor).toBe("lnk_b");
+    expect(first.value.data.map((row) => row.linkId)).toEqual([
+      "lnk_01arz3ndektsv4rrffq69g5fa1",
+      "lnk_01arz3ndektsv4rrffq69g5fa2",
+    ]);
+    expect(first.value.nextCursor).toBe("lnk_01arz3ndektsv4rrffq69g5fa2");
 
     const second = await listClickCounts(
       { clicks: store, clock },
       { organizationId: orgA, ...window, limit: 2, cursor: first.value.nextCursor },
     );
     if (!second.ok) throw new Error("expected a page");
-    expect(second.value.data.map((row) => row.linkId)).toEqual(["lnk_c"]);
+    expect(second.value.data.map((row) => row.linkId)).toEqual(["lnk_01arz3ndektsv4rrffq69g5fa3"]);
     expect(second.value.nextCursor).toBeNull();
-    expect(store.queries[1]?.afterLinkId).toBe("lnk_b");
+    expect(store.queries[1]?.afterLinkId).toBe("lnk_01arz3ndektsv4rrffq69g5fa2");
   });
 
   test("an empty window returns no rows and no cursor", async () => {
@@ -95,7 +100,18 @@ describe("click counts per link (API-045, WP-5.9)", () => {
     }
   });
 
-  test("refuses a page size outside 1 to the maximum, and an empty or oversized cursor", async () => {
+  test("refuses loose date forms that Date.parse would accept", async () => {
+    const deps = { clicks: new FakeClickReports(rows), clock };
+    const loose = ["1", "Nov 1 2026", "2026-11-01", "2026-11-01 10:00:00Z", "2026-13-40T00:00:00Z"];
+    for (const from of loose) {
+      expect(await listClickCounts(deps, { organizationId: orgA, from, to: window.to })).toEqual({
+        ok: false,
+        code: "VALIDATION_FAILED",
+      });
+    }
+  });
+
+  test("refuses a page size outside 1 to the maximum, and a cursor that is not a link ID", async () => {
     const deps = { clicks: new FakeClickReports(rows), clock };
     const bad: Array<Record<string, unknown>> = [
       { limit: 0 },
@@ -103,8 +119,10 @@ describe("click counts per link (API-045, WP-5.9)", () => {
       { limit: 1.5 },
       { limit: "10" },
       { cursor: "" },
+      { cursor: "null" },
       { cursor: "x".repeat(201) },
       { cursor: 7 },
+      { cursor: "org_01arz3ndektsv4rrffq69g5fav" },
     ];
     for (const extra of bad) {
       expect(await listClickCounts(deps, { organizationId: orgA, ...window, ...extra })).toEqual({
@@ -142,5 +160,11 @@ describe("click counts per link (API-045, WP-5.9)", () => {
     );
     if (!result.ok) throw new Error("expected a page");
     expect(result.value.dataStale).toBe(false);
+  });
+
+  test("the freshness lookup is bounded to the widest window a report can ask for", async () => {
+    const store = new FakeClickReports(rows);
+    await listClickCounts({ clicks: store, clock }, { organizationId: orgA, ...window });
+    expect(store.lookbacks[0]?.getTime()).toBe(now.getTime() - 366 * 24 * 60 * 60 * 1000);
   });
 });
