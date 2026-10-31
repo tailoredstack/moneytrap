@@ -1,5 +1,15 @@
-import { createClickReportStore, createMembershipReader, migrate } from "@moneytrap/adapter-postgres";
-import { createRedisConnection, createRedisRateLimitCounter } from "@moneytrap/adapter-redis";
+import {
+  createClickReportStore,
+  createMembershipReader,
+  createRouteSource,
+  migrate,
+} from "@moneytrap/adapter-postgres";
+import {
+  createClickQueue,
+  createRedisConnection,
+  createRedisRateLimitCounter,
+  createRouteCache,
+} from "@moneytrap/adapter-redis";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { NotifyDev } from "./adapters/notify-dev";
@@ -47,12 +57,14 @@ function serve(): void {
     .split(",")
     .map((cidr) => cidr.trim())
     .filter(Boolean);
+  // One Redis connection serves the rate limits, the route view cache, and the click queue.
+  const redis = createRedisConnection(requiredEnv("REDIS_URL"));
   const auth = createAuth({
     pool: new Pool({ connectionString: requiredEnv("DATABASE_URL") }),
     secret: requiredEnv("BETTER_AUTH_SECRET"),
     baseURL: requiredEnv("BASE_URL"),
     // Login and recovery limits are shared across instances, so their counters live in Redis (WP-2.14).
-    rateLimitCounter: createRedisRateLimitCounter(createRedisConnection(requiredEnv("REDIS_URL"))),
+    rateLimitCounter: createRedisRateLimitCounter(redis),
     rateLimitPolicy: rateLimitPolicy(Bun.env),
     trustedProxies,
     // Dev sink: messages stay in memory until the production Notifier adapter lands. Verification and
@@ -69,9 +81,17 @@ function serve(): void {
     clock: systemClock,
     principal: (headers: Headers) => authenticate(auth, headers, createMembershipReader(db)),
   };
+  // The visitor redirect (ADR-007). A cache miss reads the primary; a click is enqueued after the answer, never awaited.
+  const redirect = {
+    cache: createRouteCache(redis),
+    source: createRouteSource(db),
+    clicks: createClickQueue(redis),
+    clock: systemClock,
+    onClickError: (error: unknown) => console.error("click enqueue failed", error),
+  };
 
   createApp({ clock: systemClock, ids: randomIds, readiness: [] })
-    .use(apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }, reports))
+    .use(apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }, reports, redirect))
     .listen({ hostname, port });
   console.log(`Listening on ${hostname}:${port}`);
 }
