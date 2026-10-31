@@ -6,6 +6,7 @@ import {
   registerAccount,
   requestPasswordReset,
   resetPassword,
+  revokeSession,
   signIn,
   validateRegistration,
   verifyRecoveryCode,
@@ -32,6 +33,7 @@ function fakeClient(replies: Partial<Record<string, { data?: unknown; error?: un
     requestPasswordReset: reply("requestPasswordReset"),
     resetPassword: reply("resetPassword"),
     organization: { acceptInvitation: reply("organization.acceptInvitation") },
+    revokeSession: reply("revokeSession"),
   } as unknown as IdentityClient;
   return { client, calls };
 }
@@ -243,5 +245,18 @@ describe("invitations (TP-W2-030)", () => {
       "organization.acceptInvitation": { data: null, error: { status: 400, code: "INVITATION_EXPIRED" } },
     });
     expect(await acceptInvitation(client, "inv_1")).toEqual({ kind: "expired" });
+  });
+});
+
+describe("sessions (TP-W2-021)", () => {
+  test("revoking a session sends its token through the client", async () => {
+    const { client, calls } = fakeClient();
+    expect(await revokeSession(client, "tok_other")).toEqual({ kind: "ok" });
+    expect(calls).toEqual([{ method: "revokeSession", input: { token: "tok_other" } }]);
+  });
+
+  test("a failed revoke is reported as failed", async () => {
+    const { client } = fakeClient({ revokeSession: { data: null, error: { status: 500 } } });
+    expect(await revokeSession(client, "tok_other")).toEqual({ kind: "failed" });
   });
 });
