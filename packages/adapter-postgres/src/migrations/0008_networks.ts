@@ -16,11 +16,11 @@ export const networks: Migration = {
       .addColumn("updated_at", "timestamptz", (column) => column.notNull())
       .execute();
 
-    // 0004 stored network_id before this table existed. The reference is enforced now that the parent exists.
-    await db.schema
-      .alterTable("network_advertisers")
-      .addForeignKeyConstraint("network_advertisers_network_fk", ["network_id"], "networks", ["id"])
-      .execute();
+    // 0004 stored network_id before this table existed. NOT VALID enforces the reference on every new or updated row
+    // without scanning existing rows, so a database with orphaned advertiser rows can still migrate. Those rows must be
+    // reconciled before the constraint is validated (ALTER TABLE ... VALIDATE CONSTRAINT).
+    await sql`alter table network_advertisers add constraint network_advertisers_network_fk
+      foreign key (network_id) references networks (id) not valid`.execute(db);
 
     await db.schema
       .createTable("network_accounts")

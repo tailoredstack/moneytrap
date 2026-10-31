@@ -14,6 +14,7 @@ export interface SecretKeyring {
 
 const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
+const TAG_BYTES = 16;
 
 // AES-256-GCM with a fresh random nonce per seal. The key ID is stored next to the ciphertext, so older values keep
 // opening after the active key changes. The row context is authenticated data, so a ciphertext copied to another row
@@ -42,7 +43,10 @@ export function createSecretBox(keyring: SecretKeyring): SecretBox {
       const key = keys.get(sealed.keyId);
       if (!key) throw new Error("secret key is not in the keyring");
       const [nonce, tag, body] = sealed.ciphertext.split(".").map((part) => Buffer.from(part, "base64url"));
-      if (!nonce || !tag || !body || nonce.length !== NONCE_BYTES) throw new Error("secret could not be opened");
+      // A truncated tag would weaken authentication, so the length is checked before decryption, not left to Node.
+      if (!nonce || !tag || !body || nonce.length !== NONCE_BYTES || tag.length !== TAG_BYTES) {
+        throw new Error("secret could not be opened");
+      }
       try {
         const decipher = createDecipheriv("aes-256-gcm", key, nonce);
         decipher.setAAD(Buffer.from(context, "utf8"));

@@ -133,6 +133,8 @@ describeWithDatabase("network account store (TP-W4-007, WP-4.4)", () => {
 
     const sealed = await store.readSealedCredential("nac_one" as Id<"networkAccount">);
     expect(sealed).toEqual(write.sealedCredential);
+    // Opening the value under its own account proves the stored ciphertext is the one that was sealed.
+    expect(sealed ? new FakeSecretBox().open(sealed, "nac_one") : null).toBe(credential);
     expect(await store.readSealedCredential("nac_missing" as Id<"networkAccount">)).toBeNull();
   });
 });
