@@ -15,5 +15,7 @@ export interface Notifier {
 
 // Shared by every adapter and fake so a blank key fails the same way everywhere.
 export function assertDedupKey(message: NotificationMessage): void {
-  if (message.dedupKey.trim() === "") throw new RangeError("dedupKey is required");
+  if (typeof message.dedupKey !== "string" || message.dedupKey.trim() === "") {
+    throw new RangeError("dedupKey is required");
+  }
 }
