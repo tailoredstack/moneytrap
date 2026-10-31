@@ -77,4 +77,32 @@ describe("reverse", () => {
     expect(second.ok).toBe(false);
     if (!second.ok) expect(second.error.code).toBe("VALIDATION_FAILED");
   });
+
+  test("the reversal copies each posting's account ID and currency", () => {
+    const original = record("j-1", [
+      Posting.debit("cash-usd", usd(700n)),
+      Posting.credit("revenue-usd", usd(700n)),
+      Posting.debit("cash-eur", eur(250n)),
+      Posting.credit("revenue-eur", eur(250n)),
+    ]);
+
+    const r = reverse(original, "j-2", false);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    const pairs = r.value.journal.postings.map((p) => [p.accountId, p.money.currency]);
+    expect(pairs).toEqual(original.journal.postings.map((p) => [p.accountId, p.money.currency]));
+  });
+
+  test("the reversal does not share Money objects with the original", () => {
+    const original = record("j-1", [Posting.debit("cash", usd(1000n)), Posting.credit("revenue", usd(1000n))]);
+
+    const r = reverse(original, "j-2", false);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    for (const p of r.value.journal.postings) {
+      for (const o of original.journal.postings) expect(p.money).not.toBe(o.money);
+    }
+  });
 });
