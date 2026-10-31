@@ -143,6 +143,19 @@ describeWithDatabase("program approval store (TP-W4-024, TP-W4-025)", () => {
     expect(await count("outbox_events")).toBe(1);
   });
 
+  test("two properties can request the same program, each with its own event", async () => {
+    const store = createProgramApprovalStore(db);
+    await sql`insert into properties (id, organization_id, publisher_id, type, canonical_identifier, normalized_identifier,
+        status, version, created_at, updated_at)
+      values (${"prp_pga_three"}, ${orgId}, 'pub_pga_three', 'website', 'three.example.com',
+        'three.example.com', 'approved', 1, ${now}, ${now})`.execute(db);
+
+    expect((await store.request(writeFor())).kind).toBe("recorded");
+    expect((await store.request(writeFor("prp_pga_three" as Id<"property">))).kind).toBe("recorded");
+    expect(await count("publisher_program_approvals")).toBe(2);
+    expect(await count("outbox_events")).toBe(2);
+  });
+
   test("the status follows the network's approval, not the request (TP-W4-025)", async () => {
     const store = createProgramApprovalStore(db);
     await store.request(writeFor());

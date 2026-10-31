@@ -84,7 +84,9 @@ export function createProgramApprovalStore(db: Kysely<unknown>): ProgramApproval
         await appendOutboxEvent(tx, {
           id: write.event.id,
           topic: "program.approval_requested",
-          aggregateId: write.programId,
+          // Outbox uniqueness is (topic, aggregate, version). Keying on the program alone would reject the second property
+          // that requests it, so the aggregate is the property-program pair.
+          aggregateId: `${write.propertyId}|${write.programId}`,
           aggregateVersion: 0,
           payload: write.event.payload,
         });
