@@ -281,6 +281,42 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       expect(resetSent().map((message) => message.to)).toEqual(["ada@example.test"]);
     });
 
+    test("a concurrent failing attempt on the same link does not stop its sibling links from being retired", async () => {
+      await verifiedUser();
+      await requestReset();
+      await requestReset();
+      const [older = "", newer = ""] = resetSent().map(
+        (message) => new URL(message.url).pathname.split("/").at(-1) ?? "",
+      );
+
+      // The short password fails validation right away; the valid one hashes and then succeeds.
+      const [failed, succeeded] = await Promise.all([redeem(newer, "short"), redeem(newer, NEW_PASSWORD)]);
+      const sibling = await redeem(older, "yet another long passphrase");
+
+      expect(failed.status).toBeGreaterThanOrEqual(400);
+      expect(succeeded.status).toBe(200);
+      expect(sibling.status).toBeGreaterThanOrEqual(400);
+    });
+
+    test("a reset token sent in the query string also retires the other outstanding reset links", async () => {
+      await verifiedUser();
+      await requestReset();
+      await requestReset();
+      const [older = "", newer = ""] = resetSent().map(
+        (message) => new URL(message.url).pathname.split("/").at(-1) ?? "",
+      );
+
+      const redeemed = await auth.api.resetPassword({
+        body: { newPassword: NEW_PASSWORD },
+        query: { token: newer },
+        asResponse: true,
+      });
+      const sibling = await redeem(older, "yet another long passphrase");
+
+      expect(redeemed.status).toBe(200);
+      expect(sibling.status).toBeGreaterThanOrEqual(400);
+    });
+
     test("redeeming one reset link retires the other outstanding reset links of the user", async () => {
       await verifiedUser();
       await requestReset();

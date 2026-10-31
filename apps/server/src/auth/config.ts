@@ -53,22 +53,24 @@ function canonicalClaimId(token: string): string | null {
   return `verify-email-used:${createHash("sha256").update(token).digest("hex")}`;
 }
 
-// Reset links are one token each, and Better Auth consumes only the token that is redeemed. The before-hook records
-// which user a reset token belongs to, and the after-hook retires that user's other reset links once a reset succeeds
-// (TP-W2-026). The entry lives for one request and is removed by the after-hook.
-const resetOwnerByToken = new Map<string, string>();
+// Reset links are one token each, and Better Auth consumes only the token that is redeemed. The before-hook looks up
+// which user the token belongs to and hands that owner to this request's endpoint context. The after-hook then
+// retires that user's other reset links once the reset succeeds (TP-W2-026). Keeping the owner on the request, not in
+// shared state, means a concurrent request cannot clear it.
+const RESET_OWNER = "resetOwnerId";
 
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
 function claimVerificationLink(db: Kysely<any>) {
   return createAuthMiddleware(async (ctx) => {
     if (ctx.path === "/reset-password") {
-      const token = ctx.body?.token;
+      // Better Auth reads the body token first and falls back to the query string, so both must be checked.
+      const token = ctx.body?.token || ctx.query?.token;
       if (typeof token !== "string") return;
       const row = await sql<{ value: string }>`
         select "value" from "verification"
         where "identifier" = ${`reset-password:${token}`} and "expiresAt" > now()`.execute(db);
       const owner = row.rows[0]?.value;
-      if (owner) resetOwnerByToken.set(token, owner);
+      if (owner) return { context: { [RESET_OWNER]: owner } };
       return;
     }
     if (ctx.path !== "/verify-email") return;
@@ -114,10 +116,8 @@ function settleVerificationLink(db: Kysely<any>) {
       return;
     }
     if (ctx.path === "/reset-password") {
-      const token = ctx.body?.token;
-      const owner = typeof token === "string" ? resetOwnerByToken.get(token) : undefined;
-      if (typeof token === "string") resetOwnerByToken.delete(token);
-      if (owner && !isAPIError(ctx.context.returned)) await retireResetLinks(db, owner);
+      const owner = (ctx as unknown as Record<string, unknown>)[RESET_OWNER];
+      if (typeof owner === "string" && !isAPIError(ctx.context.returned)) await retireResetLinks(db, owner);
       return;
     }
     if (ctx.path !== "/verify-email") return;
