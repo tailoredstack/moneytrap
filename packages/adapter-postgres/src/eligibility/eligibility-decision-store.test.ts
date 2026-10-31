@@ -170,13 +170,22 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     expect(rows.rows.map((row) => row.decision_id)).toEqual(["eld_early", "eld_late"]);
   });
 
-  test("an evaluation cannot name a decision of another property (composite key)", async () => {
+  test("an evaluation cannot name a decision of another property or another program (composite key)", async () => {
     const store = createEligibilityDecisionStore(db);
     const decision = (await store.record(writeFor(allowed))).decision;
+    // A second, real program, so the refusal below is the composite key and not a missing row.
+    await sql`insert into network_advertisers (id, network_id, external_id, created_at, updated_at)
+      values ('adv_other', ${networkId}, 'adv-other', ${now}, ${now})`.execute(db);
+    await sql`insert into programs (id, network_advertiser_id, external_id, created_at, updated_at)
+      values ('prg_other', 'adv_other', 'prg-other', ${now}, ${now})`.execute(db);
 
     await expect(
       sql`insert into eligibility_evaluations (organization_id, property_id, program_id, decision_id, evaluated_at)
         values (${orgId}, 'prp_other', ${programId}, ${decision.id}, ${now})`.execute(db),
+    ).rejects.toThrow();
+    await expect(
+      sql`insert into eligibility_evaluations (organization_id, property_id, program_id, decision_id, evaluated_at)
+        values (${orgId}, ${propertyId}, 'prg_other', ${decision.id}, ${now})`.execute(db),
     ).rejects.toThrow();
   });
 
