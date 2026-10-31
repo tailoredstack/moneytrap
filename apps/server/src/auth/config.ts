@@ -200,8 +200,7 @@ async function refuseForeignInvitation(ctx: AuthContext, db: Kysely<any>): Promi
   if (!session) throw refuse();
   // Each route reads its invitation from a different field (`id` or `invitationId`), and a request may name both.
   // Every named ID is checked, so the one the endpoint acts on is always one the caller may act on.
-  const input = { ...ctx.query, ...(isRecord(ctx.body) ? ctx.body : {}) };
-  const named = [input.invitationId, input.id].filter((value): value is string => typeof value === "string");
+  const named = [...namedValues(ctx, "invitationId"), ...namedValues(ctx, "id")];
   if (named.length === 0) throw refuse();
   for (const invitationId of new Set(named)) {
     const row = (
@@ -218,17 +217,24 @@ async function refuseForeignInvitation(ctx: AuthContext, db: Kysely<any>): Promi
   }
 }
 
+// Every value a request names under `key`, whether in its query or its body. Better Auth reads a route's field from
+// one of the two, so both are checked: a value in one place cannot hide a different value in the other.
+function namedValues(ctx: AuthContext, key: string): string[] {
+  const fromQuery = (ctx.query as Record<string, unknown> | undefined)?.[key];
+  const fromBody = isRecord(ctx.body) ? ctx.body[key] : undefined;
+  return [fromQuery, fromBody].filter((value): value is string => typeof value === "string");
+}
+
 // Member routes name a membership by its ID. The membership's organization decides who may act on it, so a caller who
 // is not a member of that organization gets the not-found answer, the same as for a missing membership (CT-005).
 const MEMBER_ROUTES = new Set(["/organization/remove-member", "/organization/update-member-role"]);
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
 async function refuseForeignMember(ctx: AuthContext, db: Kysely<any>): Promise<void> {
   if (!MEMBER_ROUTES.has(ctx.path ?? "")) return;
-  const input = { ...ctx.query, ...(isRecord(ctx.body) ? ctx.body : {}) };
   const refuse = () => new APIError("NOT_FOUND", { code: "RESOURCE_NOT_FOUND", message: "Resource not found" });
   // remove-member reads its member from memberIdOrEmail, and update-member-role from memberId. A request that names
   // the membership by ID in either field is checked. An email is not an ID, so it matches no membership and is refused.
-  const named = [input.memberId, input.memberIdOrEmail].filter((value): value is string => typeof value === "string");
+  const named = [...namedValues(ctx, "memberId"), ...namedValues(ctx, "memberIdOrEmail")];
   if (named.length === 0 || new Set(named).size > 1) throw refuse();
   const memberId = named[0] ?? "";
   const session = await getSessionFromCtx(ctx);
@@ -268,13 +274,11 @@ function organizationBodyFor(ctx: AuthContext): { context: { body: Record<string
 // resolves to an empty ID, which no membership matches, so it is refused like any other foreign organization.
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
 async function namedOrganizationIds(ctx: AuthContext, db: Kysely<any>): Promise<string[]> {
-  const input = { ...ctx.query, ...(isRecord(ctx.body) ? ctx.body : {}) };
-  const ids: string[] = [];
-  if (typeof input.organizationId === "string") ids.push(input.organizationId);
-  if (typeof input.organizationSlug === "string") {
+  const ids = namedValues(ctx, "organizationId");
+  for (const slug of namedValues(ctx, "organizationSlug")) {
     const row = await sql<{
       id: string;
-    }>`select "id" from "organization" where "slug" = ${input.organizationSlug}`.execute(db);
+    }>`select "id" from "organization" where "slug" = ${slug}`.execute(db);
     ids.push(row.rows[0]?.id ?? "");
   }
   return ids;

@@ -540,6 +540,33 @@ describeWithDatabase("[M1] identity conformance", () => {
       expect(await membershipCount(org.id, GRACE)).toBe(0);
     });
 
+    test("an organization named in the query cannot be masked by a foreign one named in the body", async () => {
+      const adaSession = await signUpVerified(ADA);
+      const outsiderSession = await signUpVerified(OUTSIDER);
+      const adaOrg = await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Org A", slug: "org-a" }, adaSession),
+      );
+      const foreignOrg = await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession),
+      );
+
+      const masked = await call(
+        "POST",
+        `/api/auth/organization/set-active?organizationId=${foreignOrg.id}`,
+        { organizationId: adaOrg.id },
+        adaSession,
+      );
+      const missing = await call(
+        "POST",
+        "/api/auth/organization/set-active?organizationId=org_missing",
+        { organizationId: adaOrg.id },
+        adaSession,
+      );
+
+      expect(masked.status).toBe(missing.status);
+      expect(await bodyOf(masked)).toEqual(await bodyOf(missing));
+    });
+
     test("a member leaving an organization gets a success and loses the membership", async () => {
       const ownerSession = await signUpVerified(ADA);
       const inviteeSession = await signUpVerified(GRACE);
