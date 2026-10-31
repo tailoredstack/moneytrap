@@ -97,10 +97,18 @@ export class PayoutProviderSimulator implements PayoutProvider {
     }
     const parsed = parseBody(input.body);
     if (!parsed) return { ok: false, failure: { state: "rejected", reason: "malformed" } };
+    // A correctly signed callback for a transfer this provider never created is refused, not replayed as real.
+    const record = this.transfers.get(parsed.requestId);
+    if (!record || record.transferId !== parsed.transferId) {
+      return { ok: false, failure: { state: "rejected", reason: "unknown-transfer" } };
+    }
     return { ok: true, value: parsed };
   }
 
-  /** Test hook: the next `count` inspections time out, so a query can be unknown as well as the dispatch. */
+  /**
+   * Test-only fault injection, not one of the §5 provider scenarios: the next `count` inspections time out, so a query
+   * can be unknown as well as the dispatch.
+   */
   timeoutNextInspections(count: number): void {
     this.queryTimeouts = count;
   }
@@ -174,6 +182,10 @@ function occurredAt(sequence: number): Date {
   return new Date(START.getTime() + sequence * 1000);
 }
 
+function nonEmpty(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
 function parseBody(body: string): VerifiedStatusEvent | null {
   let raw: unknown;
   try {
@@ -185,9 +197,9 @@ function parseBody(body: string): VerifiedStatusEvent | null {
   const event = raw as Record<string, unknown>;
   const statuses: unknown[] = ["processing", "paid", "failed"];
   if (
-    typeof event.eventId !== "string" ||
-    typeof event.requestId !== "string" ||
-    typeof event.transferId !== "string" ||
+    !nonEmpty(event.eventId) ||
+    !nonEmpty(event.requestId) ||
+    !nonEmpty(event.transferId) ||
     !statuses.includes(event.status) ||
     !Number.isSafeInteger(event.sequence) ||
     (event.sequence as number) < 1 ||
