@@ -24,6 +24,7 @@ import type {
 } from "../ports/link-store";
 import type { PropertyReviewRecord, PropertyReviewStore } from "../ports/property-review-store";
 import {
+  allowsHost,
   createActiveLink,
   editLinkDestination,
   pauseLinkAction,
@@ -154,7 +155,7 @@ class MemoryLinks implements LinkStore {
     return (
       this.live.status === "approved" &&
       this.live.decision?.decision === "allow" &&
-      this.live.hosts.includes(precondition.host)
+      allowsHost(this.live.hosts, precondition.host)
     );
   }
 }
@@ -250,6 +251,22 @@ describe("create", () => {
     const { deps } = setup({ decision: null });
     const result = await createActiveLink(ctxFor(actorId), deps, createInput);
     expect(result).toEqual({ ok: false, code: "PROGRAM_INELIGIBLE", reasons: ["unknown"] });
+  });
+
+  test("an allow-list entry in another case still admits the destination through the action", async () => {
+    const { deps, links } = setup({ hosts: ["Shop.Example.COM"] });
+    const result = await createActiveLink(ctxFor(actorId), deps, createInput);
+    expect(result).toMatchObject({ ok: true, value: { status: "active" } });
+    expect(links.rows.size).toBe(1);
+  });
+
+  test("an allow-list entry that carries a path admits nothing through the action", async () => {
+    const { deps, links } = setup({ hosts: ["shop.example.com/item"] });
+    expect(await createActiveLink(ctxFor(actorId), deps, createInput)).toEqual({
+      ok: false,
+      code: "VALIDATION_FAILED",
+    });
+    expect(links.rows.size).toBe(0);
   });
 
   test("a destination host off the program's allow-list is refused and writes nothing", async () => {
