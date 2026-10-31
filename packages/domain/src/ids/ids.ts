@@ -3,6 +3,7 @@ export const ID_PREFIXES = {
   user: "usr",
   organization: "org",
   publisher: "pub",
+  kyb: "kyb",
   property: "prp",
   link: "lnk",
 } as const;

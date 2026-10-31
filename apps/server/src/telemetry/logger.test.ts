@@ -68,6 +68,47 @@ describe("redact", () => {
   });
 });
 
+describe("redact KYB document contents (TP-W3-004)", () => {
+  test("drops document bytes under any content-shaped key, at any depth", () => {
+    const out = redact({
+      kyb: {
+        document_content: "JVBERi0xLjQ=",
+        documentBytes: "AAEC",
+        raw_document: "%PDF-1.7",
+        file_data: "AAEC",
+        document_body: "passport text",
+      },
+    });
+
+    expect(out).toEqual({
+      kyb: {
+        document_content: REDACTED,
+        documentBytes: REDACTED,
+        raw_document: REDACTED,
+        file_data: REDACTED,
+        document_body: REDACTED,
+      },
+    });
+  });
+
+  test("keeps the document reference, which is not document content", () => {
+    expect(redact({ document_reference: "vault:kyb/doc_0001", provider_ref: "vault:kyb/doc_0001" })).toEqual({
+      document_reference: "vault:kyb/doc_0001",
+      provider_ref: "vault:kyb/doc_0001",
+    });
+  });
+
+  test("a KYB payload logged through the logger carries no document contents", () => {
+    const lines: string[] = [];
+    const log = createLogger((line) => lines.push(line));
+
+    log.info("kyb submitted", { document_reference: "vault:kyb/doc_0001", document_content: "%PDF-1.7 secret" });
+
+    expect(lines.join("\n")).not.toContain("%PDF-1.7");
+    expect(JSON.parse(lines[0] as string)).toMatchObject({ document_reference: "vault:kyb/doc_0001" });
+  });
+});
+
 describe("createLogger", () => {
   test("writes one JSON line per entry with the level, message, and redacted fields", () => {
     const lines: string[] = [];
