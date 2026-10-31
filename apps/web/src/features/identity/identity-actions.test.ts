@@ -7,6 +7,7 @@ import {
   requestPasswordReset,
   resetPassword,
   signIn,
+  validateRegistration,
   verifyRecoveryCode,
   verifyTotpCode,
 } from "./identity-actions";
@@ -34,6 +35,37 @@ function fakeClient(replies: Partial<Record<string, { data?: unknown; error?: un
   } as unknown as IdentityClient;
   return { client, calls };
 }
+
+describe("registration fields (SKELETONS §1.1)", () => {
+  test("checks the email before anything is sent", () => {
+    expect(validateRegistration({ email: "not-an-email", password: "x".repeat(12) })).toEqual({
+      field: "email",
+      message: "Enter a valid email.",
+    });
+  });
+
+  test("checks the password length before anything is sent", () => {
+    expect(validateRegistration({ email: "ana@example.com", password: "short" })).toEqual({
+      field: "password",
+      message: "Password must be 12 or more characters.",
+    });
+  });
+
+  test("a complete, valid form passes the local check", () => {
+    expect(validateRegistration({ email: "ana@example.com", password: "x".repeat(12) })).toBeNull();
+  });
+
+  test("a server rejection names the password field when it is about the password", async () => {
+    const { client } = fakeClient({
+      "signUp.email": { data: null, error: { status: 400, message: "Password is too weak" } },
+    });
+    expect(await registerAccount(client, { email: "ana@example.com", password: "x".repeat(12) })).toEqual({
+      kind: "invalid",
+      field: "password",
+      message: "Password is too weak",
+    });
+  });
+});
 
 describe("registration (TP-W2-006 to TP-W2-008)", () => {
   test("calls Better Auth sign-up with the email and password and reports the generic check-your-email outcome", async () => {
@@ -63,6 +95,7 @@ describe("registration (TP-W2-006 to TP-W2-008)", () => {
     });
     expect(await registerAccount(client, { email: "ana@example.com", password: "short" })).toEqual({
       kind: "invalid",
+      field: "password",
       message: "Password is too short",
     });
   });

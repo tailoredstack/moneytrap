@@ -33,9 +33,29 @@ export function retryAfterSeconds(error: AuthError): number | null {
   return typeof error.retryAfter === "number" && error.retryAfter >= 0 ? error.retryAfter : null;
 }
 
+export type RegistrationField = "email" | "password";
+export type RegistrationProblem = { field: RegistrationField; message: string };
+
+// Checked on the client before anything is sent, so the first bad field is known without a server round trip.
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 12;
+
+export function validateRegistration(input: { email: string; password: string }): RegistrationProblem | null {
+  if (!EMAIL_SHAPE.test(input.email)) return { field: "email", message: "Enter a valid email." };
+  if (input.password.length < MIN_PASSWORD_LENGTH) {
+    return { field: "password", message: `Password must be ${MIN_PASSWORD_LENGTH} or more characters.` };
+  }
+  return null;
+}
+
+// A server rejection names the field it is about when its message says so. Otherwise it is treated as the email.
+function fieldOf(message: string): RegistrationField {
+  return /password/i.test(message) ? "password" : "email";
+}
+
 export type RegisterOutcome =
   | { kind: "sent" }
-  | { kind: "invalid"; message: string }
+  | { kind: "invalid"; field: RegistrationField; message: string }
   | { kind: "rate-limited"; retryAfterSeconds: number | null }
   | { kind: "failed" };
 
@@ -50,7 +70,8 @@ export async function registerAccount(
   if (error.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error) };
   if (error.code && ALREADY_REGISTERED.has(error.code)) return { kind: "sent" };
   if (error.status === 400 || error.status === 422) {
-    return { kind: "invalid", message: error.message ?? "Check the email and password." };
+    const message = error.message ?? "Check the email and password.";
+    return { kind: "invalid", field: fieldOf(message), message };
   }
   return { kind: "failed" };
 }

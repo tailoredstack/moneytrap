@@ -21,6 +21,13 @@ describe("AccountSecurityView (UI-006, UI-009, TP-W2-044)", () => {
     expect(html).not.toContain("Recovery codes");
   });
 
+  test("a rejected MFA password shows its error on the form that asks for it", () => {
+    const html = renderToStaticMarkup(
+      <AccountSecurityView mfaEnabled={false} sessionCount={1} error="Your password was not accepted." />,
+    );
+    expect(html).toContain("Your password was not accepted.");
+  });
+
   test("without MFA, asks for the password before setup starts", () => {
     const html = renderToStaticMarkup(<AccountSecurityView mfaEnabled={false} sessionCount={1} />);
     expect(html).toContain("Confirm your password to set up MFA.");

@@ -10,9 +10,10 @@ describe("registerViewState", () => {
   });
 
   test("a validation message is shown inline with the address kept", () => {
-    expect(registerViewState({ kind: "invalid", message: "Enter a valid email." }, "bad")).toEqual({
+    expect(registerViewState({ kind: "invalid", field: "email", message: "Enter a valid email." }, "bad")).toEqual({
       status: "invalid",
       email: "bad",
+      invalidField: "email",
       message: "Enter a valid email.",
     });
   });
@@ -21,6 +22,7 @@ describe("registerViewState", () => {
     expect(registerViewState({ kind: "rate-limited", retryAfterSeconds: 9 }, "ana@example.com")).toEqual({
       status: "invalid",
       email: "ana@example.com",
+      invalidField: "email",
       message: "Too many attempts. Try again in 9 seconds.",
     });
   });
@@ -29,6 +31,7 @@ describe("registerViewState", () => {
     expect(registerViewState({ kind: "failed" }, "ana@example.com")).toEqual({
       status: "invalid",
       email: "ana@example.com",
+      invalidField: "email",
       message: "Something went wrong. Try again.",
     });
   });

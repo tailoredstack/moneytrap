@@ -29,11 +29,22 @@ describe("RegisterView (UI-001, TP-W2-041, TP-W2-046)", () => {
     expect(html).toMatch(/<button[^>]*disabled[^>]*>Create account<\/button>/);
   });
 
-  test("an invalid field is marked and linked to its message", () => {
-    const html = renderToStaticMarkup(<RegisterView status="invalid" email="x" message="Enter a valid email." />);
-    expect(html).toContain('aria-invalid="true"');
+  test("an invalid email is marked and linked to its message", () => {
+    const html = renderToStaticMarkup(
+      <RegisterView status="invalid" invalidField="email" email="x" message="Enter a valid email." />,
+    );
+    expect(html).toMatch(/id="register-email"[^>]*aria-invalid="true"/);
     expect(html).toContain('aria-describedby="register-email-error"');
     expect(html).toContain('id="register-email-error"');
+  });
+
+  test("an invalid password is marked, and the valid email is left alone", () => {
+    const html = renderToStaticMarkup(
+      <RegisterView status="invalid" invalidField="password" email="ana@example.com" message="Password is too weak" />,
+    );
+    expect(html).toMatch(/id="register-password"[^>]*aria-invalid="true"/);
+    expect(html).toContain("register-password-error");
+    expect(html).not.toMatch(/id="register-email"[^>]*aria-invalid="true"/);
   });
 
   test("success says to check email, the same for known and unknown addresses", () => {
