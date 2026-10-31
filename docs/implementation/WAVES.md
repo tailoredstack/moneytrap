@@ -79,7 +79,7 @@ Rule: an early WP may merge, but its consumers may not ship before their own wav
 
 ## 5. Lanes inside each wave
 
-Each lane shows the order a single owner should work, and which other lanes it must sync with.
+Each lane shows the order a single owner should work, and which other lanes it must sync with. These orders are guidance. A package starts as soon as its dependencies are merged, even when an earlier lane package is still open (see [AGENTS.md](../../AGENTS.md) step 1).
 
 ### W0 — Foundations
 - **Lane A (repo):** 0.1 → 0.2, 0.3 · 0.4 (independent)
