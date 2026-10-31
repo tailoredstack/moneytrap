@@ -36,7 +36,7 @@ tests=()
 if [[ ${#existing[@]} -gt 0 ]]; then
   while IFS= read -r test; do
     [[ -n "$test" && "$test" == "$prefix"* ]] && tests+=("$test")
-  done < <(printf '%s\n' "${existing[@]}" | codegraph affected --stdin -q)
+  done < <(printf '%s\n' "${existing[@]}" | codegraph affected --stdin -q --depth 5 --filter '*.test.ts')
 fi
 
 if [[ ${#tests[@]} -eq 0 ]]; then
