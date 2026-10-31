@@ -7,6 +7,7 @@ import { createApp } from "./app";
 import { serveWebAsset } from "./assets";
 import { createAuth } from "./auth/config";
 import { notifierMailer } from "./auth/mailer";
+import { rateLimitPolicy } from "./auth/rate-limit";
 import { authRoutes } from "./http/auth";
 import { sessionRoutes } from "./http/sessions";
 import { randomIds, systemClock } from "./system";
@@ -41,19 +42,27 @@ function serve(): void {
   const hostname = Bun.env.HOST ?? "127.0.0.1";
   // Better Auth checks the schema when it starts, so an unreachable database logs an error at boot. The server
   // still listens, and requests to /api/auth fail until the database and migrations are in place.
+  // Comma-separated CIDRs of the proxies in front of this server, for example 10.0.0.0/8. Leave unset when no proxy
+  // sits in front, so a client cannot choose its own IP for rate limits.
+  const trustedProxies = (Bun.env.AUTH_TRUSTED_PROXIES ?? "")
+    .split(",")
+    .map((cidr) => cidr.trim())
+    .filter(Boolean);
   const auth = createAuth({
     pool: new Pool({ connectionString: requiredEnv("DATABASE_URL") }),
     secret: requiredEnv("BETTER_AUTH_SECRET"),
     baseURL: requiredEnv("BASE_URL"),
     // Login and recovery limits are shared across instances, so their counters live in Redis (WP-2.14).
     rateLimitCounter: createRedisRateLimitCounter(createRedisConnection(requiredEnv("REDIS_URL"))),
+    rateLimitPolicy: rateLimitPolicy(Bun.env),
+    trustedProxies,
     // Dev sink: messages stay in memory until the production Notifier adapter lands. Verification and
     // reset links are not delivered outside this process yet.
     mailer: notifierMailer(new NotifyDev()),
   });
 
   createApp({ clock: systemClock, ids: randomIds, readiness: [] })
-    .use(authRoutes(auth))
+    .use(authRoutes(auth, { trustProxy: trustedProxies.length > 0 }))
     .use(sessionRoutes(auth))
     .get("/api/health", () => ({ status: "ok" }))
     .get("/*", ({ request }) => {
