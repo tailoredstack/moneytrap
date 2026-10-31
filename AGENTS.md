@@ -80,4 +80,5 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - The coordinating thread keeps a fallback wake-up scheduled, so the loop runs without a PR event.
 - A thread waiting on a decision or an event stays in the waiting state and keeps its PR watched. It doesn't end its turn or unwatch.
 - Keep Linear's blocked-by relations in sync with the plan's "Depends on" column.
+- Set each Linear issue to Done when its PR merges, and check that every wave parent matches its children: Done when all children are Done, In Progress when any child is In Progress, otherwise Todo.
 - Loop the work package sequence until no eligible package remains.
