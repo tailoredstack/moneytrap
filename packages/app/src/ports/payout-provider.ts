@@ -1,7 +1,7 @@
 import type { Money } from "@moneytrap/domain";
 
 // Why the provider refused a request or callback. A consumer switches on these, so the set is closed.
-export type PayoutRejectReason = "signature" | "malformed" | "request-conflict" | "unknown-transfer";
+export type PayoutRejectReason = "signature" | "malformed" | "request-conflict" | "unknown-transfer" | "event-mismatch";
 
 // Why a provider call produced no answer. A timeout is never a failed transfer: the provider may have created it
 // (spec §6.2), so the caller records an unknown outcome and queries before any further attempt.

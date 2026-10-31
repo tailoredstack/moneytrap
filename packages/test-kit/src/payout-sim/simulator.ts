@@ -102,6 +102,10 @@ export class PayoutProviderSimulator implements PayoutProvider {
     if (!record || record.transferId !== parsed.transferId) {
       return { ok: false, failure: { state: "rejected", reason: "unknown-transfer" } };
     }
+    // The event must be one this transfer produced: a real sequence step, carrying the status the timeline gives it.
+    if (record.timeline[parsed.sequence - 1] !== parsed.status) {
+      return { ok: false, failure: { state: "rejected", reason: "event-mismatch" } };
+    }
     return { ok: true, value: parsed };
   }
 
