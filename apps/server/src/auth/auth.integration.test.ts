@@ -614,7 +614,7 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       auth.api as unknown as {
         createOrganization(input: { body: { name: string; slug: string }; headers: Headers }): Promise<{ id: string }>;
         createInvitation(input: {
-          body: { email: string; role: string; organizationId: string };
+          body: { email: string; role: string; organizationId: string; resend?: boolean };
           headers: Headers;
         }): Promise<{ id: string }>;
         acceptInvitation(input: {
@@ -646,6 +646,22 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       const remaining = row ? row.expiresAt.getTime() - Date.now() : 0;
       expect(remaining).toBeGreaterThan(47 * HOUR_MS);
       expect(remaining).toBeLessThanOrEqual(48 * HOUR_MS);
+    });
+
+    test("resending an invitation sends a second invite email through the hook", async () => {
+      const { ownerHeaders, organizationId, invitationId } = await invite();
+
+      await orgApi().createInvitation({
+        body: { email: INVITEE, role: "member", organizationId, resend: true },
+        headers: ownerHeaders,
+      });
+
+      const invites = sent.filter((message) => message.kind === "invite");
+      expect(invites).toHaveLength(2);
+      expect(invites.map((message) => message.url)).toEqual([
+        `https://moneytrap.test/invitations/${invitationId}`,
+        `https://moneytrap.test/invitations/${invitationId}`,
+      ]);
     });
 
     test("TP-W2-030: accepting an invitation twice leaves one membership", async () => {
