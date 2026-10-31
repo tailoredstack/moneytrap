@@ -124,6 +124,19 @@ describe("resolveRedirect (UC13, ADR-007)", () => {
     expect(enqueued).toEqual([]);
   });
 
+  test("a throwing error hook does not fail the redirect or leave a rejection unhandled", async () => {
+    const { deps, clicks } = setup({ link: link(), eligible: true });
+    clicks.failure = new Error("queue down");
+    deps.onClickError = () => {
+      throw new Error("hook broke");
+    };
+
+    const result = await resolveRedirect(deps, TOKEN, "req-1");
+    await settle();
+
+    expect(result.kind).toBe("redirect");
+  });
+
   test("still redirects when the queue rejects, and reports the error", async () => {
     const { deps, clicks, errors } = setup({ link: link(), eligible: true });
     clicks.failure = new Error("queue down");
