@@ -9,6 +9,7 @@ export const ID_PREFIXES = {
   audit: "aud",
   verification: "vrf",
   event: "evt",
+  networkAccount: "nac",
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;
