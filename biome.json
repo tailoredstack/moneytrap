@@ -1,7 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
   "files": {
-    "includes": ["**/*.{cjs,js,jsx,json,jsonc,ts,tsx}", "!**/node_modules", "!**/.codegraph"]
+    "includes": ["**/*.{cjs,js,jsx,json,jsonc,ts,tsx}", "!**/node_modules", "!**/dist", "!**/.codegraph"]
   },
   "formatter": {
     "indentStyle": "space",
