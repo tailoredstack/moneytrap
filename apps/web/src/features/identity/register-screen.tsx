@@ -1,5 +1,5 @@
 import { Button, Form, FormLabel, FormMessage, Input } from "@moneytrap/ui";
-import type { FormEvent } from "react";
+import { type FormEvent, useEffect, useRef } from "react";
 
 // UI-001. Validation errors are announced through FormMessage's live region. The typed email is kept on error.
 export type RegisterStatus = "idle" | "submitting" | "invalid" | "sent";
@@ -25,6 +25,12 @@ export function RegisterView({
   }
 
   const submitting = status === "submitting";
+  const emailRef = useRef<HTMLInputElement>(null);
+  // SKELETONS §1.1: when validation fails, focus moves to the first error.
+  useEffect(() => {
+    if (status === "invalid") emailRef.current?.focus();
+  }, [status]);
+  const invalid = status === "invalid";
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -37,8 +43,18 @@ export function RegisterView({
       <Form aria-busy={submitting} onSubmit={handleSubmit}>
         <div className="space-y-1">
           <FormLabel htmlFor="register-email">Email</FormLabel>
-          <Input id="register-email" name="email" type="email" autoComplete="email" defaultValue={email} required />
-          <FormMessage>{status === "invalid" ? message : undefined}</FormMessage>
+          <Input
+            ref={emailRef}
+            id="register-email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            defaultValue={email}
+            required
+            aria-invalid={invalid}
+            aria-describedby={invalid ? "register-email-error" : undefined}
+          />
+          <FormMessage id="register-email-error">{invalid ? message : undefined}</FormMessage>
         </div>
         <div className="space-y-1">
           <FormLabel htmlFor="register-password">Password</FormLabel>

@@ -12,10 +12,12 @@ export function StepUpView({
   wrongCount = 0,
   message,
   retryAfterSeconds = null,
+  returnTo,
   onSubmit,
 }: {
   status: StepUpStatus;
   mode: StepUpMode;
+  returnTo?: string | undefined;
   wrongCount?: number;
   message?: string | undefined;
   retryAfterSeconds?: number | null;
@@ -64,11 +66,18 @@ export function StepUpView({
           <Button type="submit" disabled={submitting}>
             Confirm
           </Button>
-          <a href={recovery ? "/step-up" : "/step-up?mode=recovery"} className="text-sm">
+          <a href={switchHref(recovery ? "totp" : "recovery", returnTo)} className="text-sm">
             {recovery ? "Use an authenticator code" : "Use a recovery code"}
           </a>
         </div>
       </Form>
     </section>
   );
+}
+
+// The mode switch keeps the return destination. The pending sign-in lives in sessionStorage, so it needs no URL flag.
+function switchHref(mode: StepUpMode, returnTo: string | undefined): string {
+  const params = new URLSearchParams({ mode });
+  if (returnTo) params.set("returnTo", returnTo);
+  return `/step-up?${params.toString()}`;
 }

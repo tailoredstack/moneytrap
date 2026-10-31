@@ -29,6 +29,13 @@ describe("RegisterView (UI-001, TP-W2-041, TP-W2-046)", () => {
     expect(html).toMatch(/<button[^>]*disabled[^>]*>Create account<\/button>/);
   });
 
+  test("an invalid field is marked and linked to its message", () => {
+    const html = renderToStaticMarkup(<RegisterView status="invalid" email="x" message="Enter a valid email." />);
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('aria-describedby="register-email-error"');
+    expect(html).toContain('id="register-email-error"');
+  });
+
   test("success says to check email, the same for known and unknown addresses", () => {
     const html = renderToStaticMarkup(<RegisterView status="sent" />);
     expect(html).toContain("Check your email");
@@ -81,6 +88,12 @@ describe("StepUpView (UI-004, TP-W2-043)", () => {
     );
     expect(html).toContain("That code is not valid.");
     expect(html).toContain("2 wrong codes so far");
+  });
+
+  test("the mode switch keeps the return destination", () => {
+    const html = renderToStaticMarkup(<StepUpView status="idle" mode="totp" returnTo="/account/security" />);
+    expect(html).toContain("mode=recovery");
+    expect(html).toContain("returnTo=%2Faccount%2Fsecurity");
   });
 
   test("a rate-limited challenge keeps the code button enabled for a retry", () => {
