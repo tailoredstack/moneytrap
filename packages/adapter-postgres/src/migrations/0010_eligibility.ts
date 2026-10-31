@@ -3,7 +3,7 @@ import type { Migration } from "kysely/migration";
 
 // Eligibility decisions (DM-024, WP-4.9). Each row is one evaluation of the pure policy: the inputs it ran on, the
 // policy version, and the decision with its reasons and checks. Rows are never updated. A repeat of the same inputs under
-// the same policy version hits input_hash and adds nothing (TP-W4-023). A new policy version adds a row beside the old one
+// the same policy version and source revision hits input_hash and adds nothing (TP-W4-023). A new policy version adds a row beside the old one
 // (TP-W4-022), so earlier decisions stay reproducible.
 export const eligibility: Migration = {
   async up(db: Kysely<unknown>) {
@@ -50,7 +50,8 @@ export const eligibility: Migration = {
         (constraint) => constraint.onDelete("cascade"),
       )
       // A decision names a revision of its own program and binds the source revision too. With MATCH SIMPLE the check
-      // is skipped while the revision is null. A revision with decisions cannot be deleted (no cascade).
+      // is skipped while either column is null, which the pair check above rules out for a partial pair.
+      // A revision with decisions cannot be deleted (no cascade).
       .addForeignKeyConstraint(
         "eligibility_decisions_revision_fk",
         ["program_id", "program_revision_seq", "source_revision"],
