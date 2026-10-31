@@ -29,6 +29,14 @@ export function PropertyDetailsView({
 }) {
   // A change made in another tab blocks submit until the user refreshes, even when the page is not otherwise stale.
   const canSubmit = status === "verified" && !stale && !changedElsewhere;
+  // A disabled button is silent to a screen reader, so the reason is written out and linked to the button.
+  const blockedReason = changedElsewhere
+    ? "Refresh to see the latest status before submitting."
+    : stale
+      ? "The data is stale. Refresh before submitting."
+      : status !== "verified"
+        ? "Verify the domain before submitting."
+        : undefined;
   return (
     <section className="max-w-2xl space-y-4 text-sm">
       <h1 className="text-xl font-semibold">{domain}</h1>
@@ -46,9 +54,18 @@ export function PropertyDetailsView({
       ) : null}
       <p>{monetizableCopy(status)}</p>
       <p>Links: 0 active</p>
-      <Button disabled={!canSubmit} onClick={() => onSubmit?.()}>
+      <Button
+        disabled={!canSubmit}
+        aria-describedby={!canSubmit ? "submit-blocked-reason" : undefined}
+        onClick={() => onSubmit?.()}
+      >
         Submit for review
       </Button>
+      {!canSubmit && blockedReason ? (
+        <p id="submit-blocked-reason" className="text-muted-foreground">
+          {blockedReason}
+        </p>
+      ) : null}
     </section>
   );
 }

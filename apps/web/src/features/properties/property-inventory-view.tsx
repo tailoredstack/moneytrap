@@ -34,6 +34,7 @@ export function PropertyInventoryView({
         <p className="text-sm">Add your first website to start linking.</p>
       ) : (
         <table className="w-full text-sm">
+          <caption className="sr-only">Your websites and their status</caption>
           <thead>
             <tr className="text-left">
               <th scope="col">Domain</th>
@@ -57,11 +58,21 @@ export function PropertyInventoryView({
                 </td>
                 <td>
                   {row.status === "verification_pending" ? (
-                    <Button variant="outline" size="sm" onClick={() => onInstructions?.(row.id)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      aria-label={`Instructions for ${row.domain}`}
+                      onClick={() => onInstructions?.(row.id)}
+                    >
                       Instructions
                     </Button>
                   ) : (
-                    <Button variant="outline" size="sm" onClick={() => onView?.(row.id)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      aria-label={`View ${row.domain}`}
+                      onClick={() => onView?.(row.id)}
+                    >
                       View
                     </Button>
                   )}

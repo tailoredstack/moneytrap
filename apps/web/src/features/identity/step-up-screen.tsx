@@ -1,5 +1,5 @@
 import { Button, Form, FormLabel, FormMessage, Input } from "@moneytrap/ui";
-import type { FormEvent } from "react";
+import { type FormEvent, useEffect, useRef } from "react";
 import { rateLimitMessage } from "./messages";
 
 // UI-004. A privileged route sends the user here until a second factor is confirmed. A recovery code is an alternative.
@@ -25,6 +25,11 @@ export function StepUpView({
 }) {
   const submitting = status === "submitting";
   const recovery = mode === "recovery";
+  const codeRef = useRef<HTMLInputElement>(null);
+  // SKELETONS §1.2 and the moneytrap-frontend rules: a wrong code moves focus to the code field.
+  useEffect(() => {
+    if (status === "invalid") codeRef.current?.focus();
+  }, [status]);
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSubmit?.(String(new FormData(event.currentTarget).get("code") ?? ""));
@@ -33,6 +38,7 @@ export function StepUpView({
   let error: string | undefined;
   if (status === "invalid") error = message;
   if (status === "rate-limited") error = rateLimitMessage(retryAfterSeconds);
+  const invalid = status === "invalid" && error !== undefined;
 
   return (
     <section className="max-w-sm space-y-4">
@@ -44,15 +50,26 @@ export function StepUpView({
         <div className="space-y-1">
           <FormLabel htmlFor="step-up-code">{recovery ? "Recovery code" : "Code"}</FormLabel>
           {recovery ? (
-            <Input id="step-up-code" name="code" autoComplete="one-time-code" required />
+            <Input
+              ref={codeRef}
+              id="step-up-code"
+              name="code"
+              autoComplete="one-time-code"
+              required
+              aria-invalid={invalid}
+              aria-describedby={invalid ? "step-up-error" : undefined}
+            />
           ) : (
             <Input
+              ref={codeRef}
               id="step-up-code"
               name="code"
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}
               required
+              aria-invalid={invalid}
+              aria-describedby={invalid ? "step-up-error" : undefined}
             />
           )}
           {wrongCount > 0 ? (
@@ -60,7 +77,7 @@ export function StepUpView({
               {wrongCount === 1 ? "1 wrong code so far" : `${wrongCount} wrong codes so far`}
             </p>
           ) : null}
-          <FormMessage>{error}</FormMessage>
+          <FormMessage id="step-up-error">{error}</FormMessage>
         </div>
         <div className="flex items-center gap-4">
           <Button type="submit" disabled={submitting}>

@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@moneytrap/ui";
-import type { FormEvent } from "react";
+import { type FormEvent, useEffect, useRef } from "react";
 
 // UI-011. A viewer who may not see members gets a permission message, not an empty table.
 export type MemberRole = "owner" | "admin" | "member";
@@ -36,6 +36,11 @@ export function MembersView({
   onInvite?: () => void;
   onInviteSubmit?: (input: { email: string; role: "admin" | "member" }) => void;
 }) {
+  const inviteEmailRef = useRef<HTMLInputElement>(null);
+  // Opening the invite form moves focus into it, so a keyboard or screen reader user lands on the first field.
+  useEffect(() => {
+    if (inviteOpen) inviteEmailRef.current?.focus();
+  }, [inviteOpen]);
   if (state === "denied") {
     return (
       <section className="space-y-2">
@@ -60,7 +65,16 @@ export function MembersView({
         <Form onSubmit={handleInvite} className="max-w-sm rounded-md border p-4">
           <div className="space-y-1">
             <FormLabel htmlFor="invite-email">Email</FormLabel>
-            <Input id="invite-email" name="email" type="email" autoComplete="off" required />
+            <Input
+              ref={inviteEmailRef}
+              id="invite-email"
+              name="email"
+              type="email"
+              autoComplete="off"
+              required
+              aria-invalid={inviteError !== undefined || undefined}
+              aria-describedby={inviteError !== undefined ? "invite-error" : undefined}
+            />
           </div>
           <div className="space-y-1">
             <FormLabel htmlFor="invite-role">Role</FormLabel>
@@ -74,11 +88,12 @@ export function MembersView({
               <option value="admin">Admin</option>
             </select>
           </div>
-          <FormMessage>{inviteError}</FormMessage>
+          <FormMessage id="invite-error">{inviteError}</FormMessage>
           <Button type="submit">Send invite</Button>
         </Form>
       ) : null}
       <Table>
+        <caption className="sr-only">Members of this organization</caption>
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
