@@ -9,6 +9,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@moneytrap/app": "workspace:*",
+    "@moneytrap/domain": "workspace:*",
     "bullmq": "6.5.2",
     "ioredis": "5.10.0"
   }
