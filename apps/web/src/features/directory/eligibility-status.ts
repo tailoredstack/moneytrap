@@ -26,12 +26,14 @@ export const REASON_LABELS: Record<DenyReason, string> = {
   consent: "Consent is required for this program",
 };
 
-// Unknown is shown as its own status, not as a denial, so a publisher does not read a missing answer as a final no.
+// A definitive reason is a final no, so it wins over unknown: a program denied for geography stays denied even if its
+// approval is also unreported. Unknown alone is shown as its own status, not as a denial, so a publisher does not read a
+// missing answer as a final no.
 export function statusText(decision: EligibilityDecision): string {
   if (decision.decision === "allow") return "Eligible";
-  if (decision.reasons.includes("unknown")) return "Unknown";
-  const [first] = decision.reasons;
-  return first ? `Not eligible: ${REASON_LABELS[first]}` : "Not eligible";
+  const definitive = decision.reasons.find((reason) => reason !== "unknown");
+  if (definitive) return `Not eligible: ${REASON_LABELS[definitive]}`;
+  return decision.reasons.includes("unknown") ? "Unknown" : "Not eligible";
 }
 
 // Eligible programs open; every other row asks why, which opens the same terms screen with the reasons.
