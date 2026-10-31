@@ -182,13 +182,27 @@ async function refusalOf(
   if (!precondition) return { ok: false, code: "STATE_CONFLICT" };
   const recheck = await gate(deps, organizationId, precondition.propertyId, precondition.programId);
   if (!recheck.ok) return recheck;
-  if (!recheck.hosts.includes(precondition.host)) return { ok: false, code: "VALIDATION_FAILED" };
+  if (!allowsHost(recheck.hosts, precondition.host)) return { ok: false, code: "VALIDATION_FAILED" };
   return { ok: false, code: "STATE_CONFLICT" };
 }
 
 // The host a monetized write routes to. The destination was validated before this, so the URL always parses.
 function hostOf(url: string): string {
   return new URL(url).hostname;
+}
+
+// An allow-list entry matches the way validateDestination matches it: case, IDN, and a trailing dot all normalise. An
+// entry that is not a bare host matches nothing, so the precondition can never pass on an entry the gate would refuse.
+export function allowsHost(entries: readonly string[], host: string): boolean {
+  return entries.some((entry) => {
+    const bare = entry.trim();
+    if (!/^[^/@:?#\\\s]+$/.test(bare)) return false;
+    try {
+      return new URL(`https://${bare}`).hostname === host;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export interface PreviewLinkInput {
@@ -329,7 +343,9 @@ export async function resumeLinkAction(
   const loaded = await loadLink(deps, input.organizationId, input.linkId);
   if (!loaded.ok) return loaded;
   const { record } = loaded;
-  if (record.link.status === "revoked") return { ok: false, code: "STATE_CONFLICT" };
+  // Only a paused link can resume. Any other state is a plain conflict, before the gate, so the reason never leaks a
+  // property or eligibility answer about a link that could not resume anyway.
+  if (record.link.status !== "paused") return { ok: false, code: "STATE_CONFLICT" };
 
   const checked = await gate(deps, input.organizationId, record.link.propertyId, record.programId);
   if (!checked.ok) return checked;
