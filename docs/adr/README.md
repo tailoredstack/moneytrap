@@ -15,5 +15,6 @@ Each ADR records one decision, the evidence behind it, and a fallback. Status is
 | [ADR-009](ADR-009-better-auth.md) | Better Auth for authentication, organizations, two-factor, and API keys | Accepted, 2026-10-31 |
 | [ADR-010](ADR-010-frontend-stack.md) | shadcn/ui, TanStack Router, Query, Table, and Form | Accepted, 2026-10-31 |
 | [ADR-011](ADR-011-defer-oauth-for-user-delegated-access.md) | Defer OAuth 2.0 for user-delegated access; M7 ships org-scoped API keys | Accepted, 2026-10-31 (deferred) |
+| [ADR-012](ADR-012-network-adapter-deferred.md) | No real network adapter until a partner is contracted; the simulator is the connector | Accepted, 2026-11-01 (deferred) |
 
-ADR-012 (network adapter choice) and ADR-013 (Optimize consent) are reserved by the implementation plan. Their work packages write them.
+ADR-013 (Optimize consent) is reserved by the implementation plan. Its work package writes it.
