@@ -35,9 +35,9 @@ export class FakeClickReportStore implements ClickReportStore {
       .map(([linkId, clicks]) => ({ linkId, clicks }));
   }
 
-  async latestRecordedAt(organizationId: Id<"organization">): Promise<Date | null> {
+  async latestRecordedAt(organizationId: Id<"organization">, since: Date): Promise<Date | null> {
     const recorded = this.clicks
-      .filter((click) => this.owners.get(click.linkId) === organizationId)
+      .filter((click) => this.owners.get(click.linkId) === organizationId && click.recordedAt >= since)
       .map((click) => click.recordedAt.getTime());
     return recorded.length === 0 ? null : new Date(Math.max(...recorded));
   }
