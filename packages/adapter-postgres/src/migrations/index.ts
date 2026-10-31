@@ -13,6 +13,7 @@ import { networks } from "./0008_networks";
 import { catalogSync } from "./0009_catalog_sync";
 import { eligibility } from "./0010_eligibility";
 import { programApprovals } from "./0011_program_approvals";
+import { clicks } from "./0012_clicks";
 
 // Every migration is imported here statically so the compiled binary carries the set and
 // reads no files at runtime (ADR-003). Add new entries in filename order.
@@ -31,6 +32,7 @@ const migrations: Record<string, Migration> = {
   "0009_catalog_sync": catalogSync,
   "0010_eligibility": eligibility,
   "0011_program_approvals": programApprovals,
+  "0012_clicks": clicks,
 };
 
 export const migrationProvider: MigrationProvider = {
