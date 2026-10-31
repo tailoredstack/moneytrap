@@ -23,7 +23,8 @@ export interface LinkAudit {
 
 export interface LinkEvent {
   id: Id<"event">;
-  topic: "link.created" | "link.updated";
+  // Revoke has its own topic, so the cache invalidation for WP-5.5 can react to it without reading the payload.
+  topic: "link.created" | "link.updated" | "link.revoked";
   aggregateId: Id<"link">;
   aggregateVersion: number;
   payload: Record<string, unknown>;
