@@ -7,10 +7,12 @@ import type { Migration } from "kysely/migration";
 // (TP-W4-022), so earlier decisions stay reproducible.
 export const eligibility: Migration = {
   async up(db: Kysely<unknown>) {
-    // The target of the organization-matched foreign key below. id is already unique, so this adds no new uniqueness.
+    // Targets of the two foreign keys below. Each adds a wider key over columns that are already unique on their own.
     await sql`alter table properties add constraint properties_id_organization_uq unique (id, organization_id)`.execute(
       db,
     );
+    await sql`alter table program_revisions add constraint program_revisions_source_uq
+      unique (program_id, revision_seq, source_revision)`.execute(db);
 
     await db.schema
       .createTable("eligibility_decisions")
@@ -47,13 +49,12 @@ export const eligibility: Migration = {
         ["id", "organization_id"],
         (constraint) => constraint.onDelete("cascade"),
       )
-      // A decision names a revision of its own program. With MATCH SIMPLE, the check is skipped while the revision is null.
+      // A decision names a revision of its own program. It binds the source revision too, and with MATCH SIMPLE the check is skipped while the revision is null. A revision with decisions cannot be deleted (no cascade).
       .addForeignKeyConstraint(
         "eligibility_decisions_revision_fk",
-        ["program_id", "program_revision_seq"],
+        ["program_id", "program_revision_seq", "source_revision"],
         "program_revisions",
-        ["program_id", "revision_seq"],
-        (constraint) => constraint.onDelete("cascade"),
+        ["program_id", "revision_seq", "source_revision"],
       )
       // The revision number and its source revision are set together or not at all.
       .addCheckConstraint(
@@ -65,6 +66,7 @@ export const eligibility: Migration = {
 
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable("eligibility_decisions").ifExists().execute();
+    await sql`alter table program_revisions drop constraint program_revisions_source_uq`.execute(db);
     await sql`alter table properties drop constraint properties_id_organization_uq`.execute(db);
   },
 };
