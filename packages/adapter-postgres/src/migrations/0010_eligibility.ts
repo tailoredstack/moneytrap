@@ -49,7 +49,8 @@ export const eligibility: Migration = {
         ["id", "organization_id"],
         (constraint) => constraint.onDelete("cascade"),
       )
-      // A decision names a revision of its own program. It binds the source revision too, and with MATCH SIMPLE the check is skipped while the revision is null. A revision with decisions cannot be deleted (no cascade).
+      // A decision names a revision of its own program and binds the source revision too. With MATCH SIMPLE the check
+      // is skipped while the revision is null. A revision with decisions cannot be deleted (no cascade).
       .addForeignKeyConstraint(
         "eligibility_decisions_revision_fk",
         ["program_id", "program_revision_seq", "source_revision"],
