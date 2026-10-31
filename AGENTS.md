@@ -13,7 +13,9 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 
 **1. Select the work packages**
 - Check the implementation plan, the Linear status, dependencies, and existing threads.
-- Work one wave at a time. The current wave is the lowest-numbered wave that still has a package not Done in Linear. Only packages in the current wave are eligible. Wave N+1 starts only after every package in wave N is merged.
+- Work one wave at a time. The current wave is the lowest-numbered wave that still has a package in Todo or Backlog. Only packages in the current wave start.
+- A wave's stragglers may keep running alongside the next wave. A straggler is a package already In Progress when the wave has no Todo or Backlog package left to start.
+- Packages in the next wave start only when their dependencies are merged.
 - Build the set of eligible packages: every WP issue or sub-issue in the current wave whose Linear status is Todo or Backlog and whose dependencies are merged to `main`. Include sub-issues of any parent within that wave.
 - Within the current wave, run every unblocked sub-issue in parallel. Only blocked packages wait.
 - Packages that share a file or port do not run in parallel. Hot files include `packages/adapter-postgres/src/migrations/index.ts` and the `contracts/` package. The later package waits until the earlier one merges, then rebases before it merges.
