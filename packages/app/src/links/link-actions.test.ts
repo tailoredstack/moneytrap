@@ -256,6 +256,16 @@ describe("create", () => {
     expect(result).toEqual({ ok: false, code: "PROGRAM_INELIGIBLE", reasons: ["unknown"] });
   });
 
+  test("an upper-case destination host is normalised through the create action", async () => {
+    const { deps, links } = setup();
+    const result = await createActiveLink(ctxFor(actorId), deps, {
+      ...createInput,
+      destination: "https://SHOP.example.com/item",
+    });
+    expect(result).toMatchObject({ ok: true, value: { destinationUrl: "https://shop.example.com/item" } });
+    expect(links.rows.get(linkId)?.link.destinationUrl).toBe("https://shop.example.com/item");
+  });
+
   test("an allow-list entry in another case still admits the destination through the action", async () => {
     const { deps, links } = setup({ hosts: ["Shop.Example.COM"] });
     const result = await createActiveLink(ctxFor(actorId), deps, createInput);
