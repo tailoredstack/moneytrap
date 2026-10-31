@@ -486,6 +486,15 @@ describe("pause, resume, revoke", () => {
     expect(links.audits.map((audit) => audit.action)).toEqual(["pause", "resume"]);
   });
 
+  test("resume of an active link is a plain STATE_CONFLICT, even when its property is suspended", async () => {
+    const { deps, links } = setup({ status: "suspended" });
+    seededLink(links, "active");
+    expect(await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId })).toEqual({
+      ok: false,
+      code: "STATE_CONFLICT",
+    });
+  });
+
   test("resume is refused when the property is no longer approved", async () => {
     const { deps, links } = setup({ status: "suspended" });
     seededLink(links, "paused");
