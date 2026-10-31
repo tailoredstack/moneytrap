@@ -1,0 +1,39 @@
+import { describe, expect, test } from "bun:test";
+import { Elysia } from "elysia";
+import { createApp } from "../../app";
+import { apiRoutes } from "../routes";
+import { undeclaredRoutes } from "./coverage";
+import { guard } from "./enforce";
+import { ROUTE_GUARDS } from "./routes";
+
+// Auth is replaced with a stub: these tests only care which routes exist and which guard each one declares.
+const stubAuth = {
+  handler: () => new Response("ok"),
+  api: { getSession: async () => null },
+} as never;
+
+const clock = { now: () => new Date("2026-10-31T12:00:00Z") };
+const ids = { next: () => "x" } as never;
+
+describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
+  test("every route the app serves declares a guard", () => {
+    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth));
+    expect(undeclaredRoutes(app.routes)).toEqual([]);
+  });
+
+  test("a route with no guard declaration is listed by the build check", () => {
+    const app = new Elysia().get("/api/unguarded", () => "x").get("/healthz", () => "ok");
+    expect(undeclaredRoutes(app.routes)).toEqual(["GET /api/unguarded"]);
+  });
+
+  test("the guard table has no entry for a route the app does not serve", () => {
+    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth));
+    const served = new Set(app.routes.map((route) => `${route.method} ${route.path}`));
+    const stale = Object.keys(ROUTE_GUARDS).filter((key) => !served.has(key));
+    expect(stale).toEqual([]);
+  });
+
+  test("a route whose key has no table entry cannot be registered", () => {
+    expect(() => guard("GET /api/undeclared")).toThrow("route GET /api/undeclared has no guard declaration");
+  });
+});
