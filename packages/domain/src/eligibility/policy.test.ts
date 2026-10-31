@@ -120,6 +120,28 @@ describe("evaluateEligibility (TP-W4-015 to TP-W4-020)", () => {
 
 // TP-W4-021: allow only when every rule passes. The expectation below is written independently of the implementation,
 // so a regression in either direction is caught. The generator is seeded, so each run covers the same 10,000 cases.
+// Malformed facts from a quarantined payload must deny, never throw or allow (unknown = deny).
+describe("evaluateEligibility fails closed on malformed input", () => {
+  test("a consent flag that is missing at runtime needs consent", () => {
+    const result = evaluateEligibility(input({ consent: {} as EligibilityInput["consent"] }));
+    expect(result.decision === "deny" && result.reasons).toEqual(["consent"]);
+  });
+
+  test("a null program country list denies with geography instead of throwing", () => {
+    const result = evaluateEligibility(
+      input({ program: { ...program, countries: null as unknown as readonly string[] } }),
+    );
+    expect(result.decision === "deny" && result.reasons).toEqual(["geography"]);
+  });
+
+  test("a non-string entry in a contract channel list is not a match", () => {
+    const result = evaluateEligibility(
+      input({ contract: { active: true, countries: ["GB"], channels: [null, 7] as unknown as string[] } }),
+    );
+    expect(result.decision === "deny" && result.reasons).toEqual(["channel"]);
+  });
+});
+
 describe("evaluateEligibility property (TP-W4-021)", () => {
   test("allow exactly when every rule passes, over 10,000 generated cases", () => {
     let seed = 20260101;
@@ -131,6 +153,12 @@ describe("evaluateEligibility property (TP-W4-021)", () => {
     };
     const pick = <T>(items: readonly T[]): T => items[Math.floor(next() * items.length)] as T;
     const subset = (items: readonly string[]) => items.filter(() => next() < 0.5);
+    // Half the values come back with mixed case and surrounding spaces, so normalisation is part of every run.
+    const vary = (value: string) => (next() < 0.5 ? ` ${value.toLowerCase()} ` : value.toUpperCase());
+    const varyAll = (values: readonly string[]) => values.map(vary);
+    // The expectation normalises the same way on both sides, without calling the implementation's helper.
+    const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+    const listed = (values: readonly string[], value: string) => values.some((candidate) => same(candidate, value));
 
     const countries = ["GB", "IE", "US", "FR"];
     const channels = ["web", "email", "social"];
@@ -141,10 +169,14 @@ describe("evaluateEligibility property (TP-W4-021)", () => {
       const generated = input({
         publisher: { status: pick(statuses) },
         property: { status: pick(statuses) },
-        program: { approval: pick(approvals), countries: subset(countries), channels: subset(channels) },
-        geography: pick(countries),
-        channel: pick(channels),
-        contract: { active: next() < 0.8, countries: subset(countries), channels: subset(channels) },
+        program: {
+          approval: pick(approvals),
+          countries: varyAll(subset(countries)),
+          channels: varyAll(subset(channels)),
+        },
+        geography: vary(pick(countries)),
+        channel: vary(pick(channels)),
+        contract: { active: next() < 0.8, countries: varyAll(subset(countries)), channels: varyAll(subset(channels)) },
         consent: { required: next() < 0.3, granted: next() < 0.5 },
       });
 
@@ -153,10 +185,10 @@ describe("evaluateEligibility property (TP-W4-021)", () => {
         generated.property.status === "approved" &&
         generated.program.approval === "approved" &&
         generated.contract.active &&
-        generated.program.countries.includes(generated.geography) &&
-        generated.contract.countries.includes(generated.geography) &&
-        generated.program.channels.includes(generated.channel) &&
-        generated.contract.channels.includes(generated.channel) &&
+        listed(generated.program.countries, generated.geography) &&
+        listed(generated.contract.countries, generated.geography) &&
+        listed(generated.program.channels, generated.channel) &&
+        listed(generated.contract.channels, generated.channel) &&
         (!generated.consent.required || generated.consent.granted);
 
       const result = evaluateEligibility(generated);
