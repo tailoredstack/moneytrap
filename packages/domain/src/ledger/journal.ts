@@ -12,7 +12,8 @@ export class Journal {
     if (postings.length < 2) {
       return { ok: false, error: new MoneyError("journal needs at least 2 postings") };
     }
-    const journal = new Journal(postings);
+    // Copy so later changes to the caller's array cannot break the balance check.
+    const journal = new Journal([...postings]);
     for (const currency of journal.currencies()) {
       const net = journal.netByCurrency(currency);
       if (net !== 0n) {

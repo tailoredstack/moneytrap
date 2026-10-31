@@ -7,6 +7,15 @@ import { Posting } from "./posting";
 const usd = (amount: bigint) => Money.of(amount, "USD");
 const eur = (amount: bigint) => Money.of(amount, "EUR");
 
+// Seeded 32-bit generator. Draws come from the high bits, so each draw is independent.
+const makeRng = (seed: number) => {
+  let state = seed >>> 0;
+  return (max: number) => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return (state >>> 8) % max;
+  };
+};
+
 describe("Journal", () => {
   test("TP-W6-001 two postings that sum to zero are accepted", () => {
     const r = Journal.create([Posting.debit("cash", usd(1000n)), Posting.credit("revenue", usd(1000n))]);
@@ -46,22 +55,34 @@ describe("Journal", () => {
 
   test("TP-W6-004 property: random sequences balance per currency iff accepted", () => {
     const currencies: CurrencyCode[] = ["USD", "EUR", "JPY"];
-    let seed = 0x5eed;
-    const next = (max: number) => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed % max;
-    };
+    const next = makeRng(0x5eed);
+    let acceptedMultiPosting = 0;
 
     for (let trial = 0; trial < 500; trial++) {
-      const length = next(8);
       const postings: Posting[] = [];
-      for (let i = 0; i < length; i++) {
-        const currency = currencies[next(currencies.length)] as CurrencyCode;
-        const amount = BigInt(next(1000) + 1);
-        const money = Money.of(amount, currency);
-        postings.push(
-          next(2) === 0 ? Posting.debit(`acct-${next(4)}`, money) : Posting.credit(`acct-${next(4)}`, money),
-        );
+      if (next(2) === 0) {
+        // Fully random sides: almost always unbalanced, so this exercises the rejection branch.
+        const length = next(8);
+        for (let i = 0; i < length; i++) {
+          const currency = currencies[next(currencies.length)] as CurrencyCode;
+          const money = Money.of(BigInt(next(1000) + 1), currency);
+          postings.push(
+            next(2) === 0 ? Posting.debit(`acct-${next(4)}`, money) : Posting.credit(`acct-${next(4)}`, money),
+          );
+        }
+      } else {
+        // Balanced pairs, sometimes nudged by one minor unit, so both branches get exercised.
+        const pairs = 1 + next(4);
+        for (let i = 0; i < pairs; i++) {
+          const currency = currencies[next(currencies.length)] as CurrencyCode;
+          const money = Money.of(BigInt(next(1000) + 1), currency);
+          postings.push(Posting.debit(`acct-${next(4)}`, money), Posting.credit(`acct-${next(4)}`, money));
+        }
+        if (next(2) === 0) {
+          const last = postings[postings.length - 1] as Posting;
+          const nudged = Money.of(last.money.amount + 1n, last.money.currency);
+          postings[postings.length - 1] = Posting.credit(`acct-${next(4)}`, nudged);
+        }
       }
 
       const net = new Map<CurrencyCode, bigint>();
@@ -70,25 +91,36 @@ describe("Journal", () => {
         net.set(p.money.currency, (net.get(p.money.currency) ?? 0n) + signed);
       }
       const balanced = [...net.values()].every((v) => v === 0n);
-      const expected = length >= 2 && balanced;
+      const expected = postings.length >= 2 && balanced;
 
       const r = Journal.create(postings);
       expect(r.ok).toBe(expected);
       if (r.ok) {
+        if (postings.length >= 2) acceptedMultiPosting++;
         for (const currency of currencies) {
           expect(r.value.netByCurrency(currency)).toBe(0n);
         }
       }
     }
+    // Guards against the generator never producing an accepted journal, which would make the iff check vacuous.
+    expect(acceptedMultiPosting).toBeGreaterThan(0);
+  });
+
+  test("an accepted journal is unaffected by later changes to the caller's array", () => {
+    const postings = [Posting.debit("cash", usd(1000n)), Posting.credit("revenue", usd(1000n))];
+    const r = Journal.create(postings);
+    expect(r.ok).toBe(true);
+    postings.push(Posting.debit("cash", usd(1n)));
+    postings[1] = Posting.credit("revenue", usd(5n));
+    if (r.ok) {
+      expect(r.value.postings.length).toBe(2);
+      expect(r.value.netByCurrency("USD")).toBe(0n);
+    }
   });
 
   test("TP-W6-004 property: balanced constructions are always accepted", () => {
     const currencies: CurrencyCode[] = ["USD", "EUR"];
-    let seed = 0xba1a;
-    const next = (max: number) => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed % max;
-    };
+    const next = makeRng(0xba1a);
 
     for (let trial = 0; trial < 300; trial++) {
       const postings: Posting[] = [];
