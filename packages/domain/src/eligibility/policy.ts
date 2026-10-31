@@ -52,7 +52,8 @@ export function evaluateEligibility(input: EligibilityInput): EligibilityDecisio
     { reason: "contract", passed: input.contract.active },
     ...dimensionCheck("geography", input.geography, input.program.countries, input.contract.countries),
     ...dimensionCheck("channel", input.channel, input.program.channels, input.contract.channels),
-    { reason: "consent", passed: !input.consent.required || input.consent.granted },
+    // Fail closed: only an explicit `required: false` skips the gate, so a missing or malformed flag needs consent.
+    { reason: "consent", passed: input.consent.required === false || input.consent.granted === true },
   ];
 
   const reasons = [...new Set(checks.filter((check) => !check.passed).map((check) => check.reason))];
@@ -78,7 +79,10 @@ function dimensionCheck(
 ): RuleCheck[] {
   const normalised = normalise(value);
   if (normalised === "") return [{ reason: "unknown", passed: false }];
-  const permitted = (values: readonly string[]) => values.some((candidate) => normalise(candidate) === normalised);
+  // A missing or malformed list permits nothing, so a bad catalog fact denies instead of throwing.
+  const permitted = (values: unknown) =>
+    Array.isArray(values) &&
+    values.some((candidate) => typeof candidate === "string" && normalise(candidate) === normalised);
   return [{ reason, passed: permitted(programValues) && permitted(contractValues) }];
 }
 
