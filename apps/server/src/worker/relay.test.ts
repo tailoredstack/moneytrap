@@ -80,6 +80,41 @@ describeWithDatabase("relay worker", () => {
     expect(sent).toEqual(["evt_3"]);
   });
 
+  test("restarting while a step is in flight never runs two loops", async () => {
+    await withTx(db, async (tx) => {
+      for (const n of [1, 2, 3]) {
+        await appendOutboxEvent(tx, {
+          id: `evt_r${n}`,
+          topic: "link.created",
+          aggregateId: "link_1",
+          aggregateVersion: n,
+          payload: {},
+        });
+      }
+    });
+    let active = 0;
+    let maxActive = 0;
+    const relay = createRelay({
+      db,
+      batchSize: 1,
+      idleMs: 5,
+      publish: async () => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await Bun.sleep(20);
+        active--;
+      },
+    });
+    relay.start();
+    await Bun.sleep(5);
+    const stopping = relay.stop();
+    relay.start();
+    await stopping;
+    await Bun.sleep(150);
+    await relay.stop();
+    expect(maxActive).toBe(1);
+  });
+
   test("start keeps polling until stop, and stop resolves", async () => {
     const sent: string[] = [];
     const relay = createRelay({
