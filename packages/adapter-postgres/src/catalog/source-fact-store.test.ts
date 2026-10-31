@@ -35,6 +35,11 @@ describeWithDatabase("source fact store (TP-W4-008, TP-W4-009)", () => {
     pool = new Pool({ connectionString: databaseUrl, options: `-c search_path=${schema}` });
     db = new Kysely<unknown>({ dialect: new PostgresDialect({ pool }) });
     await migrate(db);
+    // network_advertisers now references networks (WP-4.4), so each test network must exist first.
+    for (const id of [networkId, "net_one", "net_two"]) {
+      await sql`insert into networks (id, code, name, created_at, updated_at)
+        values (${id}, ${id}, ${id}, now(), now())`.execute(db);
+    }
   });
 
   afterEach(async () => {

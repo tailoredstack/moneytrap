@@ -9,6 +9,7 @@ import { publisher } from "./0004_publisher";
 import { publisherOrganization } from "./0005_publisher_organization";
 import { properties } from "./0006_properties";
 import { ledger } from "./0007_ledger";
+import { networks } from "./0008_networks";
 
 // Every migration is imported here statically so the compiled binary carries the set and
 // reads no files at runtime (ADR-003). Add new entries in filename order.
@@ -23,6 +24,7 @@ const migrations: Record<string, Migration> = {
   "0005_publisher_organization": publisherOrganization,
   "0006_properties": properties,
   "0007_ledger": ledger,
+  "0008_networks": networks,
 };
 
 export const migrationProvider: MigrationProvider = {
