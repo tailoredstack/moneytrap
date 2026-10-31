@@ -35,6 +35,9 @@
     "packages/app": {
       "name": "@moneytrap/app",
       "version": "0.0.0",
+      "dependencies": {
+        "@moneytrap/domain": "workspace:*",
+      },
     },
     "packages/conformance": {
       "name": "@moneytrap/conformance",
