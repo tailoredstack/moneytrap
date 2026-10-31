@@ -7,6 +7,16 @@ import {
   Outlet,
   type RouterHistory,
 } from "@tanstack/react-router";
+import {
+  AccountSecurityScreen,
+  InvitationScreen,
+  LoginScreen,
+  MembersScreen,
+  RecoveryRequestScreen,
+  RegisterScreen,
+  ResetPasswordScreen,
+  StepUpScreen,
+} from "../features/identity/identity-containers";
 import { AppShell } from "./app-shell";
 
 const overviewStatuses = ["all", "active", "paused"] as const;
@@ -45,7 +55,81 @@ const overviewRoute = createRoute({
   },
 });
 
-const routeTree = rootRoute.addChildren([overviewRoute]);
+// Identity screens (SKELETONS §1). Search params are parsed here so each screen gets typed values.
+function optionalString(input: Record<string, unknown>, key: string): string | undefined {
+  const value = input[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+const registerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/register", component: RegisterScreen });
+
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/login",
+  validateSearch: (input: Record<string, unknown>) => ({ returnTo: optionalString(input, "returnTo") }),
+  component: function Login() {
+    const search = loginRoute.useSearch();
+    return <LoginScreen returnTo={search.returnTo} />;
+  },
+});
+
+const stepUpRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/step-up",
+  validateSearch: (input: Record<string, unknown>) => ({
+    mode: input.mode === "recovery" ? ("recovery" as const) : ("totp" as const),
+    returnTo: optionalString(input, "returnTo"),
+  }),
+  component: function StepUp() {
+    const search = stepUpRoute.useSearch();
+    return <StepUpScreen mode={search.mode} returnTo={search.returnTo} />;
+  },
+});
+
+const forgotPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/forgot-password",
+  component: RecoveryRequestScreen,
+});
+
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/reset-password",
+  validateSearch: (input: Record<string, unknown>) => ({ token: optionalString(input, "token") ?? "" }),
+  component: function ResetPassword() {
+    const search = resetPasswordRoute.useSearch();
+    return <ResetPasswordScreen token={search.token} />;
+  },
+});
+
+const accountSecurityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/account/security",
+  component: AccountSecurityScreen,
+});
+
+const membersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/org/members", component: MembersScreen });
+
+const invitationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/invite/$invitationId",
+  component: function Invitation() {
+    const { invitationId } = invitationRoute.useParams();
+    return <InvitationScreen invitationId={invitationId} />;
+  },
+});
+
+const routeTree = rootRoute.addChildren([
+  overviewRoute,
+  registerRoute,
+  loginRoute,
+  stepUpRoute,
+  forgotPasswordRoute,
+  resetPasswordRoute,
+  accountSecurityRoute,
+  membersRoute,
+  invitationRoute,
+]);
 
 // Pass a browser history from the entry point. Memory history keeps tests and SSR-free imports safe.
 export function createAppRouter(history: RouterHistory = createMemoryHistory({ initialEntries: ["/overview"] })) {

@@ -1,0 +1,260 @@
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
+import { authClient } from "../../api/auth-client";
+import { type InvitationState, InvitationView } from "../access/invitation-view";
+import { type Member, MembersView } from "../access/members-view";
+import { AccountSecurityView, type MfaSetup } from "./account-security-view";
+import {
+  acceptInvitation,
+  enableTwoFactor,
+  registerAccount,
+  requestPasswordReset,
+  resetPassword,
+  signIn,
+  verifyRecoveryCode,
+  verifyTotpCode,
+} from "./identity-actions";
+import { loginViewState, registerViewState, resetViewState, stepUpViewState } from "./identity-view-state";
+import { type LoginStatus, LoginView } from "./login-screen";
+import { rateLimitMessage } from "./messages";
+import {
+  type RecoveryRequestStatus,
+  RecoveryRequestView,
+  ResetPasswordView,
+  type ResetStatus,
+} from "./recovery-screens";
+import { type RegisterStatus, RegisterView } from "./register-screen";
+import { safeReturnTo } from "./return-to";
+import { type StepUpMode, type StepUpStatus, StepUpView } from "./step-up-screen";
+
+// Each container owns the state of one screen and calls Better Auth through `authClient`. The views only render state.
+
+export function RegisterScreen() {
+  const [view, setView] = useState<{ status: RegisterStatus; email: string; message?: string | undefined }>({
+    status: "idle",
+    email: "",
+  });
+  return (
+    <RegisterView
+      status={view.status}
+      email={view.email}
+      message={view.message}
+      onSubmit={async ({ email, password }) => {
+        setView({ status: "submitting", email });
+        const outcome = await registerAccount(authClient, { email, password });
+        setView(registerViewState(outcome, email));
+      }}
+    />
+  );
+}
+
+export function LoginScreen({ returnTo }: { returnTo?: string | undefined }) {
+  const navigate = useNavigate();
+  const [view, setView] = useState<{ status: LoginStatus; email: string; retryAfterSeconds: number | null }>({
+    status: "idle",
+    email: "",
+    retryAfterSeconds: null,
+  });
+  return (
+    <LoginView
+      status={view.status}
+      email={view.email}
+      retryAfterSeconds={view.retryAfterSeconds}
+      onSubmit={async ({ email, password }) => {
+        setView({ status: "submitting", email, retryAfterSeconds: null });
+        const outcome = await signIn(authClient, { email, password });
+        if (outcome.kind === "two-factor") {
+          await navigate({ href: `/step-up?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}` });
+          return;
+        }
+        if (outcome.kind === "ok") {
+          await navigate({ href: safeReturnTo(returnTo) });
+          return;
+        }
+        const next = loginViewState(outcome);
+        setView({ email, retryAfterSeconds: next?.retryAfterSeconds ?? null, status: next?.status ?? "idle" });
+      }}
+    />
+  );
+}
+
+export function StepUpScreen({ mode, returnTo }: { mode: StepUpMode; returnTo?: string | undefined }) {
+  const navigate = useNavigate();
+  const [view, setView] = useState<{
+    status: StepUpStatus;
+    wrongCount: number;
+    message?: string | undefined;
+    retryAfterSeconds: number | null;
+  }>({ status: "idle", wrongCount: 0, retryAfterSeconds: null });
+  return (
+    <StepUpView
+      status={view.status}
+      mode={mode}
+      wrongCount={view.wrongCount}
+      message={view.message}
+      retryAfterSeconds={view.retryAfterSeconds}
+      onSubmit={async (code) => {
+        setView((current) => ({ ...current, status: "submitting" }));
+        const outcome =
+          mode === "recovery" ? await verifyRecoveryCode(authClient, code) : await verifyTotpCode(authClient, code);
+        if (outcome.kind === "challenge-expired") {
+          await navigate({ href: `/login?returnTo=${encodeURIComponent(`/step-up?mode=${mode}`)}` });
+          return;
+        }
+        const next = stepUpViewState(outcome, view.wrongCount);
+        if (!next) {
+          await navigate({ href: safeReturnTo(returnTo) });
+          return;
+        }
+        setView(next);
+      }}
+    />
+  );
+}
+
+export function RecoveryRequestScreen() {
+  const [view, setView] = useState<{ status: RecoveryRequestStatus; retryAfterSeconds: number | null }>({
+    status: "idle",
+    retryAfterSeconds: null,
+  });
+  return (
+    <RecoveryRequestView
+      status={view.status}
+      retryAfterSeconds={view.retryAfterSeconds}
+      onSubmit={async (email) => {
+        setView({ status: "submitting", retryAfterSeconds: null });
+        const outcome = await requestPasswordReset(authClient, email);
+        setView(
+          outcome.kind === "sent"
+            ? { status: "sent", retryAfterSeconds: null }
+            : { status: "rate-limited", retryAfterSeconds: outcome.retryAfterSeconds },
+        );
+      }}
+    />
+  );
+}
+
+export function ResetPasswordScreen({ token }: { token: string }) {
+  const [view, setView] = useState<{ status: ResetStatus; retryAfterSeconds: number | null }>({
+    status: "idle",
+    retryAfterSeconds: null,
+  });
+  return (
+    <ResetPasswordView
+      status={view.status}
+      retryAfterSeconds={view.retryAfterSeconds}
+      onSubmit={async ({ newPassword, confirmation }) => {
+        if (newPassword !== confirmation) {
+          setView({ status: "mismatch", retryAfterSeconds: null });
+          return;
+        }
+        setView({ status: "submitting", retryAfterSeconds: null });
+        const outcome = await resetPassword(authClient, { token, newPassword });
+        setView(resetViewState(outcome));
+      }}
+    />
+  );
+}
+
+export function AccountSecurityScreen() {
+  const session = authClient.useSession();
+  const sessions = useQuery({
+    queryKey: ["identity", "sessions"],
+    queryFn: async () => {
+      const { data, error } = await authClient.listSessions();
+      if (error) throw new Error("sessions unavailable");
+      return data ?? [];
+    },
+  });
+  const [setup, setSetup] = useState<MfaSetup | undefined>(undefined);
+  const [savedCodes, setSavedCodes] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const mfaEnabled = Boolean(session.data?.user.twoFactorEnabled);
+  return (
+    <AccountSecurityView
+      mfaEnabled={mfaEnabled}
+      sessionCount={sessions.data?.length ?? 0}
+      setup={setup}
+      savedCodes={savedCodes}
+      error={error}
+      onSavedCodesChange={setSavedCodes}
+      onStartSetup={async (password) => {
+        const outcome = await enableTwoFactor(authClient, password);
+        if (outcome.kind === "ok") setSetup({ totpURI: outcome.totpURI, backupCodes: outcome.backupCodes });
+        else setError("Your password was not accepted.");
+      }}
+      onConfirm={async (code) => {
+        const outcome = await verifyTotpCode(authClient, code);
+        if (outcome.kind === "ok") {
+          setSetup(undefined);
+          setError(undefined);
+          return;
+        }
+        setError(
+          outcome.kind === "rate-limited" ? rateLimitMessage(outcome.retryAfterSeconds) : "That code is not valid.",
+        );
+      }}
+    />
+  );
+}
+
+export function MembersScreen() {
+  const membersQuery = useQuery({
+    queryKey: ["identity", "members"],
+    queryFn: async () => {
+      const { data, error } = await authClient.organization.listMembers();
+      if (error?.status === 403) return { state: "denied" as const, members: [] as Member[] };
+      if (error || !data) throw new Error("members unavailable");
+      const members: Member[] = data.members.map((member) => ({
+        id: member.id,
+        name: member.user.name,
+        email: member.user.email,
+        role: member.role === "owner" || member.role === "admin" ? member.role : "member",
+        status: "active",
+      }));
+      return { state: "ready" as const, members };
+    },
+  });
+  const role = useQuery({
+    queryKey: ["identity", "active-member-role"],
+    queryFn: async () => {
+      const { data } = await authClient.organization.getActiveMember();
+      return data?.role ?? "member";
+    },
+  });
+  if (!membersQuery.data) return <p role="status">Loading members…</p>;
+  const canInvite = role.data === "owner" || role.data === "admin";
+  return <MembersView state={membersQuery.data.state} members={membersQuery.data.members} canInvite={canInvite} />;
+}
+
+export function InvitationScreen({ invitationId }: { invitationId: string }) {
+  const navigate = useNavigate();
+  const invitation = useQuery({
+    queryKey: ["identity", "invitation", invitationId],
+    queryFn: async () => {
+      const { data, error } = await authClient.organization.getInvitation({ query: { id: invitationId } });
+      if (error || !data) throw new Error("invitation unavailable");
+      const role = data.role === "admin" ? ("admin" as const) : ("member" as const);
+      return { orgName: data.organizationName, role, expired: new Date(data.expiresAt) < new Date() };
+    },
+    retry: false,
+  });
+  const [state, setState] = useState<InvitationState | undefined>(undefined);
+  if (invitation.isError) return <InvitationView state="expired" orgName="" memberRole="member" />;
+  if (!invitation.data) return <p role="status">Loading invitation…</p>;
+  const current: InvitationState = state ?? (invitation.data.expired ? "expired" : "ready");
+  return (
+    <InvitationView
+      state={current}
+      orgName={invitation.data.orgName}
+      memberRole={invitation.data.role}
+      onAccept={async () => {
+        const outcome = await acceptInvitation(authClient, invitationId);
+        if (outcome.kind === "ok") await navigate({ href: "/overview" });
+        else if (outcome.kind === "already-member") setState("already-member");
+        else if (outcome.kind === "expired") setState("expired");
+      }}
+    />
+  );
+}
