@@ -225,10 +225,15 @@ const MEMBER_ROUTES = new Set(["/organization/remove-member", "/organization/upd
 async function refuseForeignMember(ctx: AuthContext, db: Kysely<any>): Promise<void> {
   if (!MEMBER_ROUTES.has(ctx.path ?? "")) return;
   const input = { ...ctx.query, ...(isRecord(ctx.body) ? ctx.body : {}) };
-  // Routes that name the member by email rely on the organization check, which the request must name.
-  if (typeof input.memberId !== "string") return;
-  const session = await getSessionFromCtx(ctx);
   const refuse = () => new APIError("NOT_FOUND", { code: "RESOURCE_NOT_FOUND", message: "Resource not found" });
+  // remove-member also accepts an email. The email is resolved by the endpoint, not checked here, so only a request that
+  // names the membership by ID is allowed, and an email that disagrees with that ID is refused.
+  if (typeof input.memberId !== "string") {
+    if (ctx.path === "/organization/remove-member") throw refuse();
+    return;
+  }
+  if (input.memberIdOrEmail !== undefined && input.memberIdOrEmail !== input.memberId) throw refuse();
+  const session = await getSessionFromCtx(ctx);
   if (!session) throw refuse();
   const row = (
     await sql<{ organizationId: string }>`select "organizationId" from "member" where "id" = ${input.memberId}`.execute(
