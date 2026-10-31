@@ -24,7 +24,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 **3. Implement and check locally**
 - Run `check:docs`, `typecheck`, `lint`, `boundaries`, and `bun test`.
 - Commit with a Conventional Commit subject that includes the Linear ID. Use `Refs OZE-<id>` on interim commits and `Closes OZE-<id>` on the completing commit.
-- No co-author or generated-by lines.
+- No co-author or generated-by lines. Tooling can append a `Co-Authored-By` trailer, so run `git log -1 --format=%B` before pushing and remove any such trailer.
 
 **4. Open one PR to `main`**
 - One PR per work package. a dependent PR waits until its predecessor merges.
