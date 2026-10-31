@@ -45,6 +45,14 @@ describe("secret box (DM-016, WP-4.4)", () => {
     expect(message).not.toContain(plaintext);
   });
 
+  test("a truncated auth tag is refused before decryption", () => {
+    const box = createSecretBox({ activeKeyId: first.id, keys: [first] });
+    const sealed = box.seal(plaintext, context);
+    const [nonce, tag, body] = sealed.ciphertext.split(".") as [string, string, string];
+    const truncated = `${nonce}.${tag.slice(0, 8)}.${body}`;
+    expect(() => box.open({ ...sealed, ciphertext: truncated }, context)).toThrow("secret could not be opened");
+  });
+
   test("a value sealed under an old key still opens after the active key rotates", () => {
     const before = createSecretBox({ activeKeyId: first.id, keys: [first] });
     const sealed = before.seal(plaintext, context);
