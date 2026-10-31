@@ -31,6 +31,9 @@ export interface StoredEligibilityDecision extends EvaluationResult {
   inputs: EligibilityInput;
   inputHash: string;
   evaluatedAt: Date;
+  // The catalog revision the program facts were read from, or null when the program had none.
+  programRevisionSeq: number | null;
+  sourceRevision: string | null;
 }
 
 export interface EligibilityDecisionWrite {
@@ -76,6 +79,8 @@ interface DecisionRow {
   inputs: EligibilityInput;
   input_hash: string;
   evaluated_at: Date;
+  program_revision_seq: number | null;
+  source_revision: string | null;
 }
 
 function toDecision(row: DecisionRow): StoredEligibilityDecision {
@@ -90,6 +95,8 @@ function toDecision(row: DecisionRow): StoredEligibilityDecision {
     inputs: row.inputs,
     inputHash: row.input_hash,
     evaluatedAt: row.evaluated_at,
+    programRevisionSeq: row.program_revision_seq,
+    sourceRevision: row.source_revision,
   };
 }
 
@@ -168,7 +175,7 @@ async function selectOne(
   where: RawBuilder<unknown>,
 ): Promise<StoredEligibilityDecision | null> {
   const result = await sql<DecisionRow>`select id, property_id, program_id, policy_version, decision, reasons, checks,
-      inputs, input_hash, evaluated_at
+      inputs, input_hash, evaluated_at, program_revision_seq, source_revision
     from eligibility_decisions where ${where}`.execute(db);
   const row = result.rows[0];
   return row ? toDecision(row) : null;
@@ -187,10 +194,17 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
 
         // Program facts come from the latest stored revision. A program with no revision has unknown approval, so the
         // policy denies it rather than reading a gap as allow.
-        const facts = await sql<{ payload: ProgramFactPayload }>`select r.payload from programs p
+        const facts = await sql<{
+          revision_seq: number;
+          source_revision: string;
+          payload: ProgramFactPayload;
+        }>`select r.revision_seq, r.source_revision, r.payload from programs p
           join program_revisions r on r.program_id = p.id and r.revision_seq = p.current_revision_seq
           where p.id = ${write.programId}`.execute(tx);
-        const payload = facts.rows[0]?.payload;
+        const fact = facts.rows[0];
+        const payload = fact?.payload;
+        const revisionSeq = fact?.revision_seq ?? null;
+        const sourceRevision = fact?.source_revision ?? null;
         const inputs = storedShape({
           ...write.input,
           program: {
@@ -205,12 +219,12 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
 
         const inserted = await sql<DecisionRow>`insert into eligibility_decisions
           (id, organization_id, property_id, program_id, policy_version, decision, reasons, checks, inputs, input_hash,
-            evaluated_at)
+            evaluated_at, program_revision_seq, source_revision)
           values (${write.id}, ${write.organizationId}, ${write.propertyId}, ${write.programId},
             ${evaluation.policyVersion}, ${result.decision}, ${JSON.stringify(result.reasons)}::jsonb,
-            ${JSON.stringify(result.checks)}::jsonb, ${JSON.stringify(inputs)}::jsonb, ${inputHash}, ${write.occurredAt})
+            ${JSON.stringify(result.checks)}::jsonb, ${JSON.stringify(inputs)}::jsonb, ${inputHash}, ${write.occurredAt}, ${revisionSeq}, ${sourceRevision})
           on conflict (property_id, program_id, policy_version, input_hash) do nothing
-          returning id, property_id, program_id, policy_version, decision, reasons, checks, inputs, input_hash, evaluated_at`.execute(
+          returning id, property_id, program_id, policy_version, decision, reasons, checks, inputs, input_hash, evaluated_at, program_revision_seq, source_revision`.execute(
           tx,
         );
 
@@ -238,7 +252,7 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
     async listForPair(organizationId, propertyId, programId) {
       const result =
         await sql<DecisionRow>`select id, property_id, program_id, policy_version, decision, reasons, checks,
-          inputs, input_hash, evaluated_at
+          inputs, input_hash, evaluated_at, program_revision_seq, source_revision
         from eligibility_decisions
         where organization_id = ${organizationId} and property_id = ${propertyId} and program_id = ${programId}
         order by evaluated_at, policy_version, id`.execute(db);

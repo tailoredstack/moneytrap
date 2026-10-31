@@ -224,6 +224,37 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     expect(await countRows("eligibility_decisions")).toBe(1);
   });
 
+  test("the decision reads the latest program revision and records which one it used", async () => {
+    // A later revision of the same program withdraws approval. The earlier revision must no longer decide.
+    const facts = createSourceFactStore(db);
+    const advertiser = await sql<{
+      id: string;
+    }>`select id from network_advertisers where external_id = 'adv-1'`.execute(db);
+    await facts.upsertProgram({
+      id: "prg_elig_one_retry",
+      networkAdvertiserId: advertiser.rows[0]?.id ?? "",
+      sourceId: "prg-1",
+      sourceRevision: "r2",
+      payload: {
+        name: "Acme Summer",
+        terms: "30 day",
+        eligibility: "all",
+        countries: ["GB"],
+        channels: ["web"],
+        approval: "pending",
+      },
+      observedAt: now,
+    });
+
+    const store = createEligibilityDecisionStore(db);
+    const result = await store.record(writeFor(allowed));
+
+    expect(result.decision.decision).toBe("deny");
+    expect(result.decision.reasons).toEqual(["program_not_approved"]);
+    expect(result.decision.programRevisionSeq).toBe(2);
+    expect(result.decision.sourceRevision).toBe("r2");
+  });
+
   test("a program with no stored source revision is denied as unknown, not allowed", async () => {
     // A program row exists but has never had a revision, so there are no facts to decide on.
     await sql`insert into programs (id, network_advertiser_id, external_id, current_revision_seq, created_at, updated_at)

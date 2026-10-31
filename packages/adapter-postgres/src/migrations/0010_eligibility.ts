@@ -20,6 +20,9 @@ export const eligibility: Migration = {
       )
       .addColumn("property_id", "text", (column) => column.notNull())
       .addColumn("program_id", "text", (column) => column.notNull().references("programs.id").onDelete("cascade"))
+      // The source revision the program facts were read from. Both are null when the program has no revision yet.
+      .addColumn("program_revision_seq", "integer")
+      .addColumn("source_revision", "text")
       .addColumn("policy_version", "integer", (column) => column.notNull())
       .addColumn("decision", "text", (column) => column.notNull().check(sql`decision in ('allow', 'deny')`))
       .addColumn("reasons", "jsonb", (column) => column.notNull())
