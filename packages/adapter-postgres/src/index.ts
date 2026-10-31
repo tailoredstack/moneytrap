@@ -5,6 +5,7 @@ export { createCatalogSyncStore } from "./catalog/catalog-sync-store";
 export { createSourceFactStore, type SourceFactStore, type UpsertOutcome } from "./catalog/source-fact-store";
 export { createBulkJobStore } from "./links/bulk-jobs";
 export { createLinkStore } from "./links/link-store";
+export { createRouteSource } from "./links/route-source";
 export { migrate } from "./migrate";
 export { migrationProvider } from "./migrations";
 export { createNetworkAccountStore } from "./networks/network-account-store";
