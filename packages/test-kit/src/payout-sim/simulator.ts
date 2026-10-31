@@ -28,6 +28,10 @@ const START = new Date("2026-01-01T00:00:00.000Z");
 interface TransferRecord {
   requestId: string;
   transferId: string;
+  // The request content the transfer was created with. A repeat call must match it, or the request ID was reused.
+  amountMinor: bigint;
+  currency: string;
+  payoutMethodRef: string;
   // Provider statuses in the order the provider produced them. Sequence is the 1-based index into this list.
   timeline: ProviderTransferStatus[];
 }
@@ -55,20 +59,25 @@ export class PayoutProviderSimulator implements PayoutProvider {
   async initiateTransfer(input: TransferRequest): Promise<PayoutProviderResult<TransferAccepted>> {
     if (this.scenario === "outage") return { ok: false, failure: { state: "unavailable" } };
 
-    // The same request ID is the same transfer: a repeat call returns the transfer already created.
+    // The same request ID is the same transfer: a repeat call with the same content returns the transfer already
+    // created. A changed amount or payout method under a reused request ID is a conflict, never a silent accept.
     const existing = this.transfers.get(input.requestId);
-    if (existing) return { ok: true, value: accepted(existing) };
+    if (existing) {
+      if (!sameRequest(existing, input))
+        return { ok: false, failure: { state: "rejected", reason: "request-conflict" } };
+      return { ok: true, value: accepted(existing) };
+    }
 
     const firstAttempt = !this.timedOutRequests.has(input.requestId);
     if (firstAttempt && this.scenario.startsWith("timeout-")) {
       this.timedOutRequests.add(input.requestId);
       // Only timeout-then-exists leaves a transfer behind. timeout-then-absent drops the request before the provider
       // created anything, so a retry is the first creation.
-      if (this.scenario === "timeout-then-exists") this.create(input.requestId);
+      if (this.scenario === "timeout-then-exists") this.create(input);
       return { ok: false, failure: { state: "timeout" } };
     }
 
-    return { ok: true, value: accepted(this.create(input.requestId)) };
+    return { ok: true, value: accepted(this.create(input)) };
   }
 
   async inspectTransfer(requestId: string): Promise<PayoutProviderResult<TransferSnapshot | null>> {
@@ -109,13 +118,16 @@ export class PayoutProviderSimulator implements PayoutProvider {
     return delivered;
   }
 
-  private create(requestId: string): TransferRecord {
+  private create(input: TransferRequest): TransferRecord {
     const record: TransferRecord = {
-      requestId,
-      transferId: `tr_${requestId}`,
+      requestId: input.requestId,
+      transferId: `tr_${input.requestId}`,
+      amountMinor: input.amount.amount,
+      currency: input.amount.currency,
+      payoutMethodRef: input.payoutMethodRef,
       timeline: ["processing", "paid"],
     };
-    this.transfers.set(requestId, record);
+    this.transfers.set(record.requestId, record);
     for (let sequence = 1; sequence <= record.timeline.length; sequence++) {
       this.pendingCallbacks.push({ record, sequence });
     }
@@ -133,6 +145,14 @@ function envelope({ record, sequence }: PendingCallback): StatusCallbackEnvelope
     occurredAt: occurredAt(sequence).toISOString(),
   };
   return { headers: { [SIGNATURE_HEADER]: VALID_SIGNATURE }, body: JSON.stringify(event) };
+}
+
+function sameRequest(record: TransferRecord, input: TransferRequest): boolean {
+  return (
+    record.amountMinor === input.amount.amount &&
+    record.currency === input.amount.currency &&
+    record.payoutMethodRef === input.payoutMethodRef
+  );
 }
 
 function accepted(record: TransferRecord): TransferAccepted {
@@ -170,7 +190,9 @@ function parseBody(body: string): VerifiedStatusEvent | null {
     typeof event.transferId !== "string" ||
     !statuses.includes(event.status) ||
     !Number.isSafeInteger(event.sequence) ||
-    typeof event.occurredAt !== "string"
+    (event.sequence as number) < 1 ||
+    typeof event.occurredAt !== "string" ||
+    Number.isNaN(Date.parse(event.occurredAt))
   ) {
     return null;
   }

@@ -48,12 +48,25 @@ describe("PayoutProviderSimulator (WP-7.4)", () => {
     const provider = new PayoutProviderSimulator("timeout-then-absent");
 
     await provider.initiateTransfer(request);
+    expect(await provider.inspectTransfer(request.requestId)).toEqual({ ok: true, value: null });
+
     const retry = await provider.initiateTransfer(request);
     const again = await provider.initiateTransfer(request);
 
     expect(retry.ok).toBe(true);
     expect(again).toEqual(retry);
     expect(provider.takeCallbacks()).toHaveLength(2);
+  });
+
+  test("a reused request ID with a changed amount or payout method is a conflict, never a silent accept", async () => {
+    const provider = new PayoutProviderSimulator("happy");
+    await provider.initiateTransfer(request);
+
+    const changedAmount = await provider.initiateTransfer({ ...request, amount: Money.of(9999n, "USD") });
+    const changedMethod = await provider.initiateTransfer({ ...request, payoutMethodRef: "pm_ref_2" });
+
+    expect(changedAmount).toEqual({ ok: false, failure: { state: "rejected", reason: "request-conflict" } });
+    expect(changedMethod).toEqual({ ok: false, failure: { state: "rejected", reason: "request-conflict" } });
   });
 
   test("TP-W7-023 a query can itself time out and leaves the answer unknown", async () => {
@@ -110,5 +123,23 @@ describe("PayoutProviderSimulator (WP-7.4)", () => {
 
     expect(verified.ok && verified.value.status).toBe("processing");
     expect(forged).toEqual({ ok: false, failure: { state: "rejected", reason: "signature" } });
+  });
+
+  test("a callback with an unparseable time or a sequence below 1 is refused as malformed", async () => {
+    const provider = new PayoutProviderSimulator("happy");
+    const headers = { "x-sim-signature": "sim-valid" };
+    const base = { eventId: "evt_1", requestId: "req_1", transferId: "tr_req_1", status: "paid" };
+
+    const badTime = await provider.receiveStatusCallback({
+      headers,
+      body: JSON.stringify({ ...base, sequence: 1, occurredAt: "not a date" }),
+    });
+    const zeroSequence = await provider.receiveStatusCallback({
+      headers,
+      body: JSON.stringify({ ...base, sequence: 0, occurredAt: "2026-01-01T00:00:01.000Z" }),
+    });
+
+    expect(badTime).toEqual({ ok: false, failure: { state: "rejected", reason: "malformed" } });
+    expect(zeroSequence).toEqual({ ok: false, failure: { state: "rejected", reason: "malformed" } });
   });
 });
