@@ -165,7 +165,8 @@ function quarantineId(networkId: string, scope: SyncScope, reason: QuarantineRea
 // cannot pass that text through the sync result, log line, or error (TP-W4-007, CT-009).
 function typedFailure(failure: ConnectorFailure): ConnectorFailure {
   if (failure.state === "temporarily_unavailable") {
-    return { state: "temporarily_unavailable", retryAfterSeconds: failure.retryAfterSeconds };
+    const retryAfterSeconds = typeof failure.retryAfterSeconds === "number" ? failure.retryAfterSeconds : null;
+    return { state: "temporarily_unavailable", retryAfterSeconds };
   }
   return { state: failure.state };
 }
