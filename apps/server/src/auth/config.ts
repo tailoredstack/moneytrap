@@ -53,9 +53,24 @@ function canonicalClaimId(token: string): string | null {
   return `verify-email-used:${createHash("sha256").update(token).digest("hex")}`;
 }
 
+// Reset links are one token each, and Better Auth consumes only the token that is redeemed. The before-hook records
+// which user a reset token belongs to, and the after-hook retires that user's other reset links once a reset succeeds
+// (TP-W2-026). The entry lives for one request and is removed by the after-hook.
+const resetOwnerByToken = new Map<string, string>();
+
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
 function claimVerificationLink(db: Kysely<any>) {
   return createAuthMiddleware(async (ctx) => {
+    if (ctx.path === "/reset-password") {
+      const token = ctx.body?.token;
+      if (typeof token !== "string") return;
+      const row = await sql<{ value: string }>`
+        select "value" from "verification"
+        where "identifier" = ${`reset-password:${token}`} and "expiresAt" > now()`.execute(db);
+      const owner = row.rows[0]?.value;
+      if (owner) resetOwnerByToken.set(token, owner);
+      return;
+    }
     if (ctx.path !== "/verify-email") return;
 
     const callbackURL = ctx.query?.callbackURL;
@@ -84,17 +99,25 @@ function claimVerificationLink(db: Kysely<any>) {
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+function retireResetLinks(db: Kysely<any>, userId: string) {
+  return sql`delete from "verification" where "identifier" like 'reset-password:%' and "value" = ${userId}`.execute(db);
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
 function settleVerificationLink(db: Kysely<any>) {
   return createAuthMiddleware(async (ctx) => {
-    // A password change made while signed in retires every outstanding reset link for that user (TP-W2-026).
-    // Better Auth keeps reset links valid after a change, so a link mailed before it would still set a password.
+    // A password change made while signed in, or a successful reset, retires every other outstanding reset link
+    // for that user (TP-W2-026). Better Auth keeps those links valid, so each would still set a password afterwards.
     if (ctx.path === "/change-password") {
       const userId = ctx.context.session?.user.id;
-      if (userId && !isAPIError(ctx.context.returned)) {
-        await sql`delete from "verification" where "identifier" like 'reset-password:%' and "value" = ${userId}`.execute(
-          db,
-        );
-      }
+      if (userId && !isAPIError(ctx.context.returned)) await retireResetLinks(db, userId);
+      return;
+    }
+    if (ctx.path === "/reset-password") {
+      const token = ctx.body?.token;
+      const owner = typeof token === "string" ? resetOwnerByToken.get(token) : undefined;
+      if (typeof token === "string") resetOwnerByToken.delete(token);
+      if (owner && !isAPIError(ctx.context.returned)) await retireResetLinks(db, owner);
       return;
     }
     if (ctx.path !== "/verify-email") return;
