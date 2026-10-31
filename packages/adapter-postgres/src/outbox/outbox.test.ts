@@ -50,6 +50,14 @@ describeWithDatabase("outbox", () => {
       }>`select id, published_at from outbox_events order by created_at, id`.execute(db)
     ).rows;
 
+  test("writer accepts only a transaction, never a plain database handle", () => {
+    // Compile-time check: typecheck fails if the writer accepts a non-transactional handle.
+    const rejectsPlainDb = (handle: Kysely<unknown>) =>
+      // @ts-expect-error outbox rows must be written inside the state change's transaction
+      appendOutboxEvent(handle, event(1));
+    expect(typeof rejectsPlainDb).toBe("function");
+  });
+
   test("writer commits the outbox row with the state change", async () => {
     await withTx(db, async (tx) => {
       await sql`insert into state (id) values (1)`.execute(tx);
