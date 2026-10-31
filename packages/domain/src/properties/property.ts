@@ -76,6 +76,16 @@ export function suspendProperty(property: Property): PropertyTransition {
   return move(property, "approved", "suspended");
 }
 
+// Only an approved property may be monetized (CT-006). A verified property is owned but not yet approved.
+export function isMonetizable(property: Property): boolean {
+  return property.status === "approved";
+}
+
+// The reason an action that monetizes a property (for example, a link create in WP-5.2) is denied, or null when allowed.
+export function monetizationDenial(property: Property): "not approved" | null {
+  return isMonetizable(property) ? null : "not approved";
+}
+
 // Every transition returns a new value. An illegal move is a STATE_CONFLICT and leaves the input untouched.
 function move(property: Property, from: PropertyStatus, to: PropertyStatus): PropertyTransition {
   if (property.status !== from) return { ok: false, code: "STATE_CONFLICT" };
