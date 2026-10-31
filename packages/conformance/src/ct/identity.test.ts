@@ -508,6 +508,38 @@ describeWithDatabase("[M1] identity conformance", () => {
       expect(await bodyOf(foreign)).toEqual(await bodyOf(missing));
     });
 
+    test("an owner removing a member by membership ID gets a success and the membership is gone", async () => {
+      const ownerSession = await signUpVerified(ADA);
+      const inviteeSession = await signUpVerified(GRACE);
+      const org = await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Acme", slug: "acme" }, ownerSession),
+      );
+      const invitation = await json<{ id: string }>(
+        await post(
+          "/api/auth/organization/invite-member",
+          { email: GRACE, role: "member", organizationId: org.id },
+          ownerSession,
+        ),
+      );
+      await post("/api/auth/organization/accept-invitation", { invitationId: invitation.id }, inviteeSession);
+      const memberRow = await sql<{
+        id: string;
+      }>`select m."id" from "member" m join "user" u on u.id = m."userId" where u.email = ${GRACE} and m."organizationId" = ${org.id}`.execute(
+        db,
+      );
+      const memberId = memberRow.rows[0]?.id ?? "";
+
+      const removed = await post(
+        "/api/auth/organization/remove-member",
+        { memberIdOrEmail: memberId, organizationId: org.id },
+        ownerSession,
+      );
+
+      expect(memberId).not.toBe("");
+      expect(removed.status).toBe(200);
+      expect(await membershipCount(org.id, GRACE)).toBe(0);
+    });
+
     test("a member leaving an organization gets a success and loses the membership", async () => {
       const ownerSession = await signUpVerified(ADA);
       const inviteeSession = await signUpVerified(GRACE);
