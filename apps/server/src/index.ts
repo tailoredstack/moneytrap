@@ -28,7 +28,7 @@ function serve(): void {
   const port = Number(Bun.env.PORT ?? 3000);
   const hostname = Bun.env.HOST ?? "127.0.0.1";
 
-  createApp({ clock: systemClock, ids: randomIds })
+  createApp({ clock: systemClock, ids: randomIds, readiness: [] })
     .get("/api/health", () => ({ status: "ok" }))
     .get("/*", ({ request }) => {
       const { pathname } = new URL(request.url);
