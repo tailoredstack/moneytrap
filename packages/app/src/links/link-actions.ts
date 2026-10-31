@@ -122,6 +122,13 @@ async function gate(
   return { ok: true, publisherId: property.property.publisherId, hosts };
 }
 
+// Create publishes link.created and revoke publishes link.revoked. Pause, resume, and edit publish link.updated.
+function eventTopic(action: LinkAction): LinkEvent["topic"] {
+  if (action === "create") return "link.created";
+  if (action === "revoke") return "link.revoked";
+  return "link.updated";
+}
+
 // Writes the change with its audit row and outbox event in one store call. The store refuses the write when the version
 // moved or the precondition no longer holds, and then the caller gets STATE_CONFLICT and nothing is written.
 async function commit(
@@ -151,7 +158,7 @@ async function commit(
   };
   const event: LinkEvent = {
     id: ctx.ids.next("event"),
-    topic: input.action === "create" ? "link.created" : "link.updated",
+    topic: eventTopic(input.action),
     aggregateId: link.id,
     aggregateVersion: link.version,
     payload: { action: input.action, status: link.status },

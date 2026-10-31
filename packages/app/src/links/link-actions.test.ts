@@ -512,6 +512,7 @@ describe("pause, resume, revoke", () => {
     const resumed = await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
     expect(resumed).toMatchObject({ ok: true, value: { status: "active", version: 4 } });
     expect(links.audits.map((audit) => audit.action)).toEqual(["pause", "resume"]);
+    expect(links.events.map((event) => event.topic)).toEqual(["link.updated", "link.updated"]);
   });
 
   test("resume of an active link is a plain STATE_CONFLICT, even when its property is suspended", async () => {
@@ -611,6 +612,7 @@ describe("pause, resume, revoke", () => {
     seededLink(links, "active");
     const revoked = await revokeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
     expect(revoked).toMatchObject({ ok: true, value: { status: "revoked", version: 3 } });
+    expect(links.events.at(-1)?.topic).toBe("link.revoked");
 
     const resumed = await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
     expect(resumed).toEqual({ ok: false, code: "STATE_CONFLICT" });
