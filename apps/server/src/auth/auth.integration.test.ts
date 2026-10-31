@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { migrate, migrationProvider } from "@moneytrap/adapter-postgres";
+import type { NotificationMessage, Notifier } from "@moneytrap/app";
 import { Elysia } from "elysia";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
 import { authRoutes } from "../http/auth";
 import { createAuth } from "./config";
-import type { AuthMailer } from "./mailer";
+import { type AuthMailer, notifierMailer } from "./mailer";
 
 // Runs against a real Postgres when TEST_DATABASE_URL is set (CI provides it). Skipped otherwise.
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -93,6 +94,66 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
     const { rows } = await sql<{ email: string; emailVerified: boolean }>`
       select email, "emailVerified" from "user"`.execute(db);
     expect(rows).toEqual([{ email: "ada@example.test", emailVerified: false }]);
+  });
+
+  const verifyLink = (token: string) =>
+    auth.handler(new Request(`https://moneytrap.test/api/auth/verify-email?token=${encodeURIComponent(token)}`));
+  const tokenFromSentEmail = () => new URL(sent[0]?.url ?? "https://none.invalid").searchParams.get("token") ?? "";
+
+  test("TP-W2-009: a valid verification token verifies the user", async () => {
+    await signUp(VALID_PASSWORD);
+
+    const response = await verifyLink(tokenFromSentEmail());
+
+    expect(response.status).toBe(200);
+    const { rows } = await sql<{ emailVerified: boolean }>`select "emailVerified" from "user"`.execute(db);
+    expect(rows).toEqual([{ emailVerified: true }]);
+  });
+
+  test("TP-W2-010: a verification token cannot be used twice", async () => {
+    await signUp(VALID_PASSWORD);
+    const token = tokenFromSentEmail();
+    await verifyLink(token);
+
+    const second = await verifyLink(token);
+
+    expect(second.status).toBeGreaterThanOrEqual(400);
+  });
+
+  test("TP-W2-007/008: a known and an unknown email get the same sign-up response", async () => {
+    await signUp(VALID_PASSWORD, "ada@example.test");
+
+    const known = await signUp(VALID_PASSWORD, "ada@example.test");
+    const unknown = await signUp(VALID_PASSWORD, "grace@example.test");
+
+    expect(known.status).toBe(unknown.status);
+    const knownBody = (await known.json()) as { token: unknown; user: Record<string, unknown> };
+    const unknownBody = (await unknown.json()) as { token: unknown; user: Record<string, unknown> };
+    expect(knownBody.token).toBeNull();
+    expect(unknownBody.token).toBeNull();
+    expect(Object.keys(knownBody.user).sort()).toEqual(Object.keys(unknownBody.user).sort());
+    expect(sent.filter((message) => message.to === "ada@example.test")).toHaveLength(1);
+  });
+
+  test("the verification email goes through the Notifier with a verify-email dedup key", async () => {
+    const messages: NotificationMessage[] = [];
+    const notifier: Notifier = {
+      async send(message) {
+        messages.push(message);
+      },
+    };
+    auth = createAuth({
+      pool,
+      secret: "test-secret-at-least-32-characters-long",
+      baseURL: "https://moneytrap.test",
+      mailer: notifierMailer(notifier),
+    });
+
+    await signUp(VALID_PASSWORD);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.to).toBe("ada@example.test");
+    expect(messages[0]?.dedupKey).toMatch(/^verify-email:[0-9a-f]{64}$/);
   });
 
   test("TP-W2-005: no password or verification token is written to logs during sign-up", async () => {

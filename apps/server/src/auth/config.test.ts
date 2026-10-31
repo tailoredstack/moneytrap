@@ -53,6 +53,12 @@ describe("Better Auth config (Blueprint §7)", () => {
     expect(sent).toEqual([{ kind: "verify", to: "ada@example.test", url: "https://x.test/verify?token=t" }]);
   });
 
+  test("verification links expire after one hour, set explicitly rather than left to the default", () => {
+    const { options } = setup();
+
+    expect(options.emailVerification?.expiresIn).toBe(3600);
+  });
+
   test("sends password reset through the injected mailer", async () => {
     const { options, sent } = setup();
 

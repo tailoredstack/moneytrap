@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import { apiKey } from "@better-auth/api-key";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { haveIBeenPwned, organization, twoFactor } from "better-auth/plugins";
-import { Kysely, PostgresDialect } from "kysely";
+import { Kysely, PostgresDialect, sql } from "kysely";
 import type { Pool } from "pg";
 import type { AuthMailer } from "./mailer";
 
@@ -16,12 +18,44 @@ export type AuthConfigDeps = {
   mailer: AuthMailer;
 };
 
+// Better Auth verifies email tokens statelessly and does not record their use, so a second click on the
+// same link would succeed. This hook claims each token once in the verification table before Better Auth
+// runs. The claim is serialized per token with an advisory lock so two concurrent clicks cannot both win.
+const VERIFICATION_LINK_ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+function consumeVerificationToken(db: Kysely<any>) {
+  return createAuthMiddleware(async (ctx) => {
+    if (ctx.path !== "/verify-email") return;
+    const token = ctx.query?.token;
+    if (typeof token !== "string") return;
+
+    const identifier = `verify-email-used:${createHash("sha256").update(token).digest("hex")}`;
+    const claimed = await db.transaction().execute(async (trx) => {
+      await sql`select pg_advisory_xact_lock(hashtext(${identifier}))`.execute(trx);
+      const result = await sql`
+        insert into "verification" ("id", "identifier", "value", "expiresAt")
+        select ${crypto.randomUUID()}, ${identifier}, 'used', ${new Date(Date.now() + VERIFICATION_LINK_ONE_DAY_MS)}
+        where not exists (select 1 from "verification" where "identifier" = ${identifier})
+        returning "id"`.execute(trx);
+      return result.rows.length === 1;
+    });
+    if (!claimed) {
+      throw new APIError("BAD_REQUEST", { code: "VERIFICATION_LINK_ALREADY_USED", message: "Link already used" });
+    }
+  });
+}
+
 export function authOptions({ pool, secret, baseURL, mailer }: AuthConfigDeps): BetterAuthOptions {
+  // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+  const db = new Kysely<any>({ dialect: new PostgresDialect({ pool }) });
   return {
     database: {
-      // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
-      db: new Kysely<any>({ dialect: new PostgresDialect({ pool }) }),
+      db,
       type: "postgres",
+    },
+    hooks: {
+      before: consumeVerificationToken(db),
     },
     secret,
     baseURL,
@@ -36,6 +70,7 @@ export function authOptions({ pool, secret, baseURL, mailer }: AuthConfigDeps): 
     },
     emailVerification: {
       sendOnSignUp: true,
+      expiresIn: 60 * 60,
       sendVerificationEmail: async ({ user, url }) => {
         await mailer.sendVerification(user.email, url);
       },
