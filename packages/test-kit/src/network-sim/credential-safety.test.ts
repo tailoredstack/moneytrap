@@ -24,6 +24,23 @@ function leakingConnector(inner: NetworkConnector): NetworkConnector {
 }
 
 describe("disabled credential is a safe, typed failure (WP-4.7)", () => {
+  test("TP-W4-002 the shipped disabled-credential fixture yields only the typed failure and writes nothing", async () => {
+    const store = new FakeCatalogSyncStore();
+    const result = await syncCatalog(
+      {
+        connector: new RecordedNetworkSimulator("disabled-credential"),
+        store,
+        clock: new FakeClock("2026-10-01T06:00:00.000Z"),
+        ids: new FakeIdGenerator(),
+      },
+      { networkId: NETWORK },
+    );
+
+    expect(Object.keys(result)).toEqual(["ok", "failure"]);
+    expect(result).toEqual({ ok: false, failure: { state: "not_authorized" } });
+    expect(store.advertisers.size + store.programs.size + store.quarantined.length).toBe(0);
+  });
+
   test("TP-W4-002 and CT-009 the failure is exactly the typed shape and carries no credential material", async () => {
     const store = new FakeCatalogSyncStore();
     const result = await syncCatalog(
