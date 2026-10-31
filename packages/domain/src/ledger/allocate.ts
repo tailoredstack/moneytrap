@@ -11,6 +11,9 @@ export type Allocation = {
 };
 
 export function allocate(recognized: Money, rule: ShareRule): Allocation {
+  if (recognized.amount < 0n) {
+    throw new Error("recognized amount must be non-negative");
+  }
   const total = recognized.amount;
   const bps = [rule.publisherBps, rule.platformBps, rule.otherBps];
 
