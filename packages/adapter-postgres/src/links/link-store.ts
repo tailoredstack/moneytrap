@@ -23,6 +23,17 @@ interface LinkRow {
   version: number;
 }
 
+// The precondition must describe the record it guards: the same property, program, and destination host. The app builds
+// both from one checked input, so a mismatch is a caller bug, and the store refuses it rather than check the wrong gate.
+function bound(record: LinkRecord, precondition: LinkWritePrecondition | null): boolean {
+  if (!precondition) return true;
+  return (
+    precondition.propertyId === record.link.propertyId &&
+    precondition.programId === record.programId &&
+    precondition.host === new URL(record.link.destinationUrl).hostname
+  );
+}
+
 function toRecord(row: LinkRow): LinkRecord {
   return {
     link: {
@@ -58,6 +69,9 @@ async function holds(
     limit 1`.execute(tx);
   if (decision.rows[0]?.decision !== "allow") return false;
 
+  // Catalog sync locks the program row before it moves the revision pointer, so this share lock keeps a host removal
+  // from landing between this read and the link commit.
+  await sql`select 1 from programs where id = ${programId} for share`.execute(tx);
   const revision = await sql<{ payload: { allowedHosts?: unknown } }>`select payload from program_revisions
     where program_id = ${programId}
     order by revision_seq desc
@@ -94,6 +108,7 @@ export function createLinkStore(db: Kysely<unknown>): LinkStore {
     async insert(write) {
       return withTx(db, async (tx) => {
         const { record, precondition } = write;
+        if (precondition && !bound(record, precondition)) return false;
         if (precondition && !(await holds(tx, record.organizationId, precondition))) return false;
 
         const link = record.link;
@@ -116,6 +131,7 @@ export function createLinkStore(db: Kysely<unknown>): LinkStore {
         const { record, precondition } = write;
         // A record that names another tenant than the write is refused, so an update never crosses organizations.
         if (record.organizationId !== write.organizationId) return false;
+        if (precondition && !bound(record, precondition)) return false;
         if (precondition && !(await holds(tx, write.organizationId, precondition))) return false;
 
         const link = record.link;
