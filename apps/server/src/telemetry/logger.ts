@@ -5,9 +5,16 @@ export const REDACTED = "[REDACTED]";
 
 const SENSITIVE_KEY = /token|secret|passw|authorization|cookie|api[-_]?key|credential|session|private[-_]?key/i;
 const BEARER = /^bearer\s+\S+/i;
+// Userinfo in a URL (scheme://user:secret@host) is a credential wherever it appears, including inside messages.
+const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
+
+function redactString(value: string): string {
+  if (BEARER.test(value)) return REDACTED;
+  return value.replace(URL_USERINFO, `$1${REDACTED}@`);
+}
 
 export function redact(value: unknown, seen = new WeakSet<object>()): unknown {
-  if (typeof value === "string") return BEARER.test(value) ? REDACTED : value;
+  if (typeof value === "string") return redactString(value);
   if (value === null || typeof value !== "object") return value;
   if (seen.has(value)) return "[Circular]";
   seen.add(value);
