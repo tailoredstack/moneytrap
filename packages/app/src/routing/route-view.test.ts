@@ -145,6 +145,24 @@ describe("readRouteView", () => {
     expect(cacheCalls).not.toContain("put");
   });
 
+  test("answers when the cache write throws synchronously", async () => {
+    const throwing: RouteCache = {
+      async readServerTime() {
+        return 1_000_000;
+      },
+      async get() {
+        return null;
+      },
+      put(): Promise<void> {
+        throw new Error("sync failure");
+      },
+      async publishVersion() {},
+    };
+    const { source } = fakeSource({ link: link(), eligible: true });
+    const result = await readRouteView({ cache: throwing, source }, "tok");
+    expect(result.kind).toBe("found");
+  });
+
   test("does not wait past the cache deadline when a Redis read hangs", async () => {
     const hanging: RouteCache = {
       readServerTime: () => new Promise<number>(() => {}),

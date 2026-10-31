@@ -71,7 +71,7 @@ export async function readRouteView(
   const view = buildRouteView(record.link, record.eligible);
   if (loadedAt !== null) {
     // Not awaited, so a slow cache write never delays the response. A failed write leaves Postgres authoritative.
-    withDeadline(deps.cache.put(token, view, loadedAt)).catch(() => {});
+    withDeadline(Promise.resolve().then(() => deps.cache.put(token, view, loadedAt))).catch(() => {});
   }
   return { kind: "found", view };
 }
