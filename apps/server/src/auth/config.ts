@@ -184,6 +184,18 @@ async function refuseForeignOrganization(ctx: AuthContext, db: Kysely<any>): Pro
   }
 }
 
+// A taken slug is the one create and update answer that reveals a foreign organization. The answer is replaced with the
+// same validation failure any other bad input gets, so a caller cannot tell a taken slug from a malformed one.
+function hideTakenSlug(ctx: AuthContext): Response | undefined {
+  if (ctx.path !== "/organization/create" && ctx.path !== "/organization/update") return undefined;
+  const returned = ctx.context.returned;
+  if (!isAPIError(returned) || returned.body?.code !== "ORGANIZATION_SLUG_ALREADY_TAKEN") return undefined;
+  return new Response(JSON.stringify({ code: "VALIDATION_FAILED", message: "Request failed" }), {
+    status: 400,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 // The organizations a request names, by ID and by slug. Empty when it names none. A slug that matches nothing
 // resolves to an empty ID, which no membership matches, so it is refused like any other foreign organization.
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
@@ -263,6 +275,9 @@ export function authOptions({
         return claimVerificationLink(ctx, db);
       }),
       after: createAuthMiddleware(async (ctx) => {
+        // The hook replaces the endpoint result; returning a value from an after hook does not reach the response.
+        const takenSlug = hideTakenSlug(ctx);
+        if (takenSlug) ctx.context.returned = takenSlug;
         if (ctx.path === "/sign-in/email" && isFailedSignIn(ctx.context.returned)) {
           await recordFailedSignIn(rateLimitCounter, ctx.body ?? {}, limits);
         }
