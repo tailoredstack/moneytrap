@@ -37,7 +37,8 @@ function requiredEnv(name: string): string {
 function serve(): void {
   const port = Number(Bun.env.PORT ?? 3000);
   const hostname = Bun.env.HOST ?? "127.0.0.1";
-  // The pool connects on first use, so boot does not need a live database.
+  // Better Auth checks the schema when it starts, so an unreachable database logs an error at boot. The server
+  // still listens, and requests to /api/auth fail until the database and migrations are in place.
   const auth = createAuth({
     pool: new Pool({ connectionString: requiredEnv("DATABASE_URL") }),
     secret: requiredEnv("BETTER_AUTH_SECRET"),
