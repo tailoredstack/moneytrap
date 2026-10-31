@@ -16,6 +16,7 @@ const describeWithDatabase = databaseUrl ? describe : describe.skip;
 
 const VALID_PASSWORD = "correct horse battery";
 const BREACHED_PASSWORD = "password1234";
+const CHANGED_PASSWORD = "a different long passphrase";
 
 describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () => {
   let schema: string;
@@ -581,6 +582,50 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
     });
     const still = await sql<{ twoFactorEnabled: boolean }>`select "twoFactorEnabled" from "user"`.execute(db);
     expect(still.rows).toEqual([{ twoFactorEnabled: true }]);
+  });
+
+  test("SEC-W2-001: a password change with an old second factor does not let MFA be disabled", async () => {
+    await signUp(VALID_PASSWORD);
+    await verifyLink(tokenFromSentEmail());
+    const headers = await signedInHeaders();
+    const { secret } = await enrollTotp(headers);
+    const fresh = await confirmTotp(headers, secret);
+    // The second factor was verified an hour ago, so the caller's session is past the step-up window.
+    await sql`update "session" set "createdAt" = now() - interval '1 hour'`.execute(db);
+
+    const changed = await auth.api.changePassword({
+      body: { currentPassword: VALID_PASSWORD, newPassword: CHANGED_PASSWORD, revokeOtherSessions: true },
+      headers: fresh,
+      asResponse: true,
+    });
+    expect(changed.status).toBe(200);
+
+    await expect(
+      twoFactor().disableTwoFactor({ body: { password: CHANGED_PASSWORD }, headers: cookieHeaders(changed) }),
+    ).rejects.toMatchObject({
+      body: { code: "STEP_UP_REQUIRED" },
+    });
+    const still = await sql<{ twoFactorEnabled: boolean }>`select "twoFactorEnabled" from "user"`.execute(db);
+    expect(still.rows).toEqual([{ twoFactorEnabled: true }]);
+  });
+
+  test("SEC-W2-001: a password change keeps a recent second factor, so MFA can still be disabled", async () => {
+    await signUp(VALID_PASSWORD);
+    await verifyLink(tokenFromSentEmail());
+    const headers = await signedInHeaders();
+    const { secret } = await enrollTotp(headers);
+    const fresh = await confirmTotp(headers, secret);
+
+    const changed = await auth.api.changePassword({
+      body: { currentPassword: VALID_PASSWORD, newPassword: CHANGED_PASSWORD, revokeOtherSessions: true },
+      headers: fresh,
+      asResponse: true,
+    });
+    expect(changed.status).toBe(200);
+
+    await twoFactor().disableTwoFactor({ body: { password: CHANGED_PASSWORD }, headers: cookieHeaders(changed) });
+    const rows = await sql<{ twoFactorEnabled: boolean }>`select "twoFactorEnabled" from "user"`.execute(db);
+    expect(rows.rows).toEqual([{ twoFactorEnabled: false }]);
   });
 
   describe("organization invitations (WP-2.10)", () => {
