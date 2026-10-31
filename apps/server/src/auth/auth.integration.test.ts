@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { migrate, migrationProvider } from "@moneytrap/adapter-postgres";
+import { Elysia } from "elysia";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
+import { authRoutes } from "../http/auth";
 import { createAuth } from "./config";
 import type { AuthMailer } from "./mailer";
 
@@ -116,6 +118,15 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       expect(line).not.toContain(VALID_PASSWORD);
       expect(line).not.toContain(token);
     }
+  });
+
+  test("the mounted handler answers get-session with no session through the app", async () => {
+    const app = new Elysia().use(authRoutes(auth)).get("/*", () => new Response("shell", { status: 404 }));
+
+    const response = await app.handle(new Request("https://moneytrap.test/api/auth/get-session"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toBeNull();
   });
 
   test("the migration creates the Better Auth tables", async () => {
