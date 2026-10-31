@@ -4,7 +4,7 @@ import { Pool } from "pg";
 import { NotifyDev } from "./adapters/notify-dev";
 import { createApp } from "./app";
 import { serveWebAsset } from "./assets";
-import { createAuth } from "./auth/config";
+import { createAuth, stepUpWindowSeconds } from "./auth/config";
 import { notifierMailer } from "./auth/mailer";
 import { authRoutes } from "./http/auth";
 import { sessionRoutes } from "./http/sessions";
@@ -44,6 +44,7 @@ function serve(): void {
     pool: new Pool({ connectionString: requiredEnv("DATABASE_URL") }),
     secret: requiredEnv("BETTER_AUTH_SECRET"),
     baseURL: requiredEnv("BASE_URL"),
+    stepUpWindow: stepUpWindowSeconds(Bun.env.STEP_UP_WINDOW_SECONDS),
     // Dev sink: messages stay in memory until the production Notifier adapter lands. Verification and
     // reset links are not delivered outside this process yet.
     mailer: notifierMailer(new NotifyDev()),

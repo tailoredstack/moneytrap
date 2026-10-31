@@ -182,10 +182,20 @@ function requireRecentSecondFactorToDisable(db: Kysely<any>, windowSeconds: numb
   });
 }
 
+// A cookie alone does not mean a signed-in caller: an expired or unknown cookie takes Better Auth's sign-in branch.
+// So enrollment is recognised only by a live session row behind the cookie.
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+async function hasLiveSession(db: Kysely<any>, headers: Headers | undefined): Promise<boolean> {
+  const token = sessionTokenOf(headers);
+  if (!token) return false;
+  const row = await sql`select 1 from "session" where "token" = ${token} and "expiresAt" > ${new Date()}`.execute(db);
+  return row.rows.length > 0;
+}
+
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
 function stampSecondFactor(db: Kysely<any>) {
   return createAuthMiddleware(async (ctx) => {
-    if (sessionTokenOf(ctx.headers) || isAPIError(ctx.context.returned)) return;
+    if (isAPIError(ctx.context.returned) || (await hasLiveSession(db, ctx.headers))) return;
     const token = await issuedSessionToken(ctx.context.returned);
     if (!token) return;
     await sql`update "session" set "secondFactorAt" = ${new Date()} where "token" = ${token}`.execute(db);

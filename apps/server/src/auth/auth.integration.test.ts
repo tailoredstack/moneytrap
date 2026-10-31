@@ -555,6 +555,34 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       expect(stale.status).toBe(403);
       expect(await stale.json()).toMatchObject({ code: "STEP_UP_REQUIRED" });
     });
+
+    test("TP-W2-019: a sign-in second factor stamps the new session even when an unknown cookie is present", async () => {
+      const { totpURI } = await enrollTotp(await passwordSession());
+      const challenge = cookieHeader(await signInWithPassword());
+
+      const signedIn = await auth.api.verifyTOTP({
+        body: { code: totpCode(totpSecret(totpURI)) },
+        headers: new Headers({ cookie: `${challenge}; better-auth.session_token=unknown.signature` }),
+        asResponse: true,
+      });
+
+      const allowed = await disableRequest(cookieHeader(signedIn));
+      expect(allowed.status).toBe(200);
+    });
+
+    test("TP-W2-019: a failed second factor on sign-in stamps no session", async () => {
+      await enrollTotp(await passwordSession());
+      const challenge = cookieHeader(await signInWithPassword());
+
+      await expect(
+        auth.api.verifyTOTP({ body: { code: "000000" }, headers: new Headers({ cookie: challenge }) }),
+      ).rejects.toThrow();
+
+      const stamped = await sql<{
+        count: number;
+      }>`select count(*)::int as count from "session" where "secondFactorAt" is not null`.execute(db);
+      expect(stamped.rows[0]?.count).toBe(0);
+    });
   });
 });
 
