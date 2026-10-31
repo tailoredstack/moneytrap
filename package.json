@@ -14,6 +14,7 @@
     "boundaries": "depcruise --config .dependency-cruiser.cjs apps packages scripts",
     "typecheck": "bun run --filter '*' typecheck",
     "check:docs": "bun scripts/check-docs.ts",
+    "check:ports": "bun run --cwd packages/test-kit check:ports",
     "build:binary": "bun build --compile apps/server/src/index.ts --outfile dist/moneytrap"
   },
   "devDependencies": {
