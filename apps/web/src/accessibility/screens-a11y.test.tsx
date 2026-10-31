@@ -351,3 +351,32 @@ describe("WP-X.5 focus on error and on open", () => {
     expect(container.querySelector("#decision-reason")?.getAttribute("aria-required")).toBe("true");
   });
 });
+
+describe("WP-X.5 KYB follows the record it is given", () => {
+  beforeAll(() => {
+    GlobalRegistrator.register();
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+
+  afterEach(() => {
+    for (const { root, container } of mounted.splice(0)) {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  afterAll(() => {
+    GlobalRegistrator.unregister();
+  });
+
+  test("a new record replaces the fields, so validation reads the loaded values", () => {
+    const container = render(<KybFormView values={emptyKyb} />);
+    const { root } = mounted[mounted.length - 1] ?? {};
+    if (!root) throw new Error("root not mounted");
+    act(() =>
+      root.render(<KybFormView values={{ legalName: "Acme Media", country: "GB", businessType: "company" }} />),
+    );
+    expect((container.querySelector("#kyb-legal-name") as HTMLInputElement).value).toBe("Acme Media");
+    expect(container.querySelector("button[type='submit']")?.getAttribute("aria-disabled")).toBeNull();
+  });
+});
