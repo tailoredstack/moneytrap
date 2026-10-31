@@ -32,8 +32,8 @@ export const eligibility: Migration = {
       .addColumn("checks", "jsonb", (column) => column.notNull())
       // The exact EligibilityInput the policy ran on, copied from the source facts. Replaying it reproduces the decision.
       .addColumn("inputs", "jsonb", (column) => column.notNull())
-      // SHA-256 of the policy version, the canonical inputs, and the source revision they were read from. Equal hashes
-      // mean an identical evaluation of the same facts.
+      // SHA-256 of the policy version, the canonical inputs, and the program revision sequence and source revision they
+      // were read from. Equal hashes mean an identical evaluation of the same facts.
       .addColumn("input_hash", "text", (column) => column.notNull())
       .addColumn("evaluated_at", "timestamptz", (column) => column.notNull())
       .addUniqueConstraint("eligibility_decisions_evaluation_uq", [
