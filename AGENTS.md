@@ -13,11 +13,14 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 
 **1. Select the work packages**
 - Check the implementation plan, the Linear status, dependencies, and existing threads.
-- Build the set of eligible packages: every WP issue or sub-issue whose Linear status is Todo or Backlog and whose dependencies are merged to `main`. Include sub-issues of any parent, across waves and lanes.
+- Work one wave at a time. The current wave is the lowest-numbered wave that still has a package not Done in Linear. Only packages in the current wave are eligible. Wave N+1 starts only after every package in wave N is merged.
+- Build the set of eligible packages: every WP issue or sub-issue in the current wave whose Linear status is Todo or Backlog and whose dependencies are merged to `main`. Include sub-issues of any parent within that wave.
+- Within the current wave, run every unblocked sub-issue in parallel. Only blocked packages wait.
 - Start every eligible package, not just one. Packages with no unmerged dependency between them can run in parallel.
 - Defer a package that shares a file or port with an open package until that package merges.
 - Packages that touch shared hot files merge one at a time. Hot files include `packages/adapter-postgres/src/migrations/index.ts` and the `contracts/` package. A later package rebases before it merges.
 - Match each Linear issue to its WP ID, and put the WP ID in the issue title, so the match is unambiguous.
+- Before launching, read the package's done-when criteria against its test plan. If they need persistence or other work outside the listed "Depends on", that work is a dependency too. Fix the plan or Linear first, or hold the package.
 - Move each Linear issue to In Progress before starting it, so no one else picks it up.
 
 **2. Start an isolated branch**
@@ -33,7 +36,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - One PR per work package, targeting `main`.
 - The PR body starts with the WP ID (for example `WP-2.3`), then `Closes OZE-<id>`, where `OZE-<id>` is that package's Linear ID.
 - If a package depends on a PR that is not merged yet, watch that PR and wait for it to merge. Never stack on an unmerged branch.
-- Link the PR to the thread, and watch it while it waits on checks or reviews.
+- Link the PR to the thread, and watch it while it waits on checks or reviews. Each package's own thread watches its own PR. The coordinating thread does not watch child PRs.
 
 **5. Run the delegated review loop**
 - Start a read-only, full-diff review with `gpt-6-sol` at low effort. If it hits its usage limit, fall back in this order: haiku 5.5 low, then codex gpt-6-luna low, then copilot gpt-6-luna low.
@@ -54,7 +57,11 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Set the Linear issue to Done.
 
 **8. Start the unblocked packages**
-- Before the thread settles, check existing threads for duplicates.
+- Check existing threads for duplicates before starting a package.
 - Re-run step 1 after each merge. Start every package that the merge has unblocked, each in its own thread.
 - Packages with no dependency between them merge in the order they become ready: the first one with a clean review and passing checks merges first. The package that merges second rebases onto updated `main`, reruns its checks, and reruns the full-diff review on the rebased head before it merges.
+- Before any thread ends its turn, the coordinating thread checks Linear for newly eligible packages and starts them. It doesn't settle while eligible work remains.
+- The coordinating thread keeps a fallback wake-up scheduled, so the loop runs without a PR event.
+- A thread waiting on a decision or an event stays in the waiting state and keeps its PR watched. It doesn't end its turn or unwatch.
+- Keep Linear's blocked-by relations in sync with the plan's "Depends on" column.
 - Loop the work package sequence until no eligible package remains.
