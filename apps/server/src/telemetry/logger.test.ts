@@ -20,6 +20,12 @@ describe("redact", () => {
     expect(redact({ header: "Bearer abc.def.ghi" })).toEqual({ header: REDACTED });
   });
 
+  test("masks a bearer token that appears mid-message", () => {
+    expect(redact({ message: "request failed: Bearer abc.def.ghi" })).toEqual({
+      message: `request failed: ${REDACTED}`,
+    });
+  });
+
   test("masks credentials embedded in URLs under any key", () => {
     const out = redact({ message: "connect redis://user:hunter2@cache:6379 failed", url: "https://u:p@host/x" });
 
