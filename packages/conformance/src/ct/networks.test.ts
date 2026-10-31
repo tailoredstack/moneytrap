@@ -18,6 +18,10 @@ const NETWORK = "net_sim";
 const NOW = "2026-10-01T06:00:00.000Z";
 const clean = RECORDED_FIXTURES["clean-catalog"];
 
+// TP-W4-021 exit criterion: at least 10,000 generated cases per run. The seed is fixed so a failing case reproduces.
+const GENERATED_CASES = 10_000;
+const GENERATED_SEED = 3159;
+
 function harness() {
   const store = new FakeCatalogSyncStore();
   const clock = new FakeClock(NOW);
@@ -61,6 +65,68 @@ function eligibilityFor(program: ProgramFactPayload, geography: string, channel:
   };
 }
 
+// One input to the policy, with every rule's facts set explicitly.
+interface SweepCase {
+  publisher: "approved" | "draft";
+  property: "approved" | "draft";
+  approval: ProgramFactPayload["approval"];
+  contractActive: boolean;
+  geography: string;
+  channel: string;
+  consent: { required: boolean; granted: boolean };
+  contractCountries: readonly string[];
+  contractChannels: readonly string[];
+}
+
+function sweepInput(program: ProgramFactPayload, c: SweepCase): EligibilityInput {
+  return {
+    publisher: { status: c.publisher },
+    property: { status: c.property },
+    program: { approval: c.approval, countries: program.countries, channels: program.channels },
+    geography: c.geography,
+    channel: c.channel,
+    contract: { active: c.contractActive, countries: [...c.contractCountries], channels: [...c.contractChannels] },
+    consent: c.consent,
+  };
+}
+
+// The rules written out independently of the policy: allow only when every rule passes.
+function expectedAllow(program: ProgramFactPayload, c: SweepCase): boolean {
+  return (
+    c.publisher === "approved" &&
+    c.property === "approved" &&
+    c.approval === "approved" &&
+    c.contractActive &&
+    program.countries.includes(c.geography) &&
+    program.channels.includes(c.channel) &&
+    c.contractCountries.includes(c.geography) &&
+    c.contractChannels.includes(c.channel) &&
+    (!c.consent.required || c.consent.granted)
+  );
+}
+
+function assertSweepCase(program: ProgramFactPayload, c: SweepCase): void {
+  const decision = evaluateEligibility(sweepInput(program, c));
+  expect(decision.decision === "allow").toBe(expectedAllow(program, c));
+  if (decision.decision === "deny") expect(decision.reasons.length).toBeGreaterThan(0);
+}
+
+// A seeded generator (mulberry32): the same seed gives the same sequence on every run.
+function seeded(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pick<T>(random: () => number, values: readonly T[]): T {
+  return values[Math.floor(random() * values.length)] as T;
+}
+
 describe("[M3] network conformance", () => {
   describe("[M3] CT-009 partner credential disabled", () => {
     test("TP-W4-002 sync requested with a disabled credential fails safely and writes no catalog fact", async () => {
@@ -82,7 +148,6 @@ describe("[M3] network conformance", () => {
       await run(new RecordedNetworkSimulator("clean-catalog"));
       const revisionsBefore = revisionsOf(store, "prg-1").length;
       expect(syncedProgram(store, "prg-1").approval).toBe("approved");
-
       const connector = new RecordedNetworkSimulator("disabled-credential");
 
       const result = await run(connector);
@@ -113,13 +178,23 @@ describe("[M3] network conformance", () => {
   });
 
   describe("[M3] CT-010 offer not permitted in user country or channel (eligibility half)", () => {
-    test("TP-W4-015 an approved program that permits the country and channel is allowed", async () => {
+    test("TP-W4-015 an approved program that permits the country and channel is allowed, with evidence for every rule", async () => {
       const { store, run } = harness();
       await run(new RecordedNetworkSimulator("clean-catalog"));
 
       const decision = evaluateEligibility(eligibilityFor(syncedProgram(store, "prg-1"), "US", "website"));
 
       expect(decision.decision).toBe("allow");
+      // The evidence is the full list of checks, each passing, so an allow can be traced to every rule.
+      expect(decision.checks).toEqual([
+        { reason: "publisher_not_approved", passed: true },
+        { reason: "property_not_approved", passed: true },
+        { reason: "program_not_approved", passed: true },
+        { reason: "contract", passed: true },
+        { reason: "geography", passed: true },
+        { reason: "channel", passed: true },
+        { reason: "consent", passed: true },
+      ]);
     });
 
     test("TP-W4-016 a country the program does not permit is denied for geography", async () => {
@@ -187,49 +262,57 @@ describe("[M3] network conformance", () => {
         { required: true, granted: false },
         { required: true, granted: true },
       ] as const;
-      let cases = 0;
-
       // The contract lists vary too: one permits both values used, the other permits only the second of each, so a
       // missing contract-side check changes at least one outcome.
       const contractCountries: readonly (readonly string[])[] = [["US", "GB"], ["GB"]];
       const contractChannels: readonly (readonly string[])[] = [["website", "sms"], ["sms"]];
+      let cases = 0;
 
+      // Exhaustive grid over the values the fixture uses.
       for (const publisher of statuses)
         for (const property of statuses)
           for (const approval of approvals)
-            for (const active of [true, false])
+            for (const contractActive of [true, false])
               for (const geography of ["US", "GB"])
                 for (const channel of ["website", "sms"])
                   for (const consent of consents)
                     for (const countries of contractCountries)
                       for (const channels of contractChannels) {
-                        const input: EligibilityInput = {
-                          publisher: { status: publisher },
-                          property: { status: property },
-                          program: { approval, countries: program.countries, channels: program.channels },
+                        assertSweepCase(program, {
+                          publisher,
+                          property,
+                          approval,
+                          contractActive,
                           geography,
                           channel,
-                          contract: { active, countries: [...countries], channels: [...channels] },
                           consent,
-                        };
-                        const permitted =
-                          publisher === "approved" &&
-                          property === "approved" &&
-                          approval === "approved" &&
-                          active &&
-                          program.countries.includes(geography) &&
-                          program.channels.includes(channel) &&
-                          countries.includes(geography) &&
-                          channels.includes(channel) &&
-                          (!consent.required || consent.granted);
-                        const decision = evaluateEligibility(input);
-
-                        expect(decision.decision === "allow").toBe(permitted);
-                        if (decision.decision === "deny") expect(decision.reasons.length).toBeGreaterThan(0);
+                          contractCountries: countries,
+                          contractChannels: channels,
+                        });
                         cases++;
                       }
+      const gridCases = 2 * 2 * 4 * 2 * 2 * 2 * 3 * 2 * 2;
+      expect(cases).toBe(gridCases);
 
-      expect(cases).toBe(2 * 2 * 4 * 2 * 2 * 2 * 3 * 2 * 2);
+      // Generated cases over wider values, so the policy also sees values outside the grid.
+      const random = seeded(GENERATED_SEED);
+      const geographies = ["US", "GB", "CA", "AU", ""];
+      const channels = ["website", "sms", "email", ""];
+      for (let i = 0; i < GENERATED_CASES; i++) {
+        assertSweepCase(program, {
+          publisher: pick(random, statuses),
+          property: pick(random, statuses),
+          approval: pick(random, approvals),
+          contractActive: random() < 0.5,
+          geography: pick(random, geographies),
+          channel: pick(random, channels),
+          consent: pick(random, consents),
+          contractCountries: pick(random, contractCountries),
+          contractChannels: pick(random, contractChannels),
+        });
+        cases++;
+      }
+      expect(cases - gridCases).toBe(GENERATED_CASES);
     });
   });
 
@@ -262,7 +345,7 @@ describe("[M3] network conformance", () => {
       expect(revisionsOf(store, "prg-4")).toHaveLength(1);
     });
 
-    test("a program whose approval state the network did not report is quarantined, never approved", async () => {
+    test("an invalid approval state is quarantined as invalid_approval, never approved", async () => {
       const { store, run } = harness();
 
       const result = await run(
@@ -274,7 +357,7 @@ describe("[M3] network conformance", () => {
       expect(revisionsOf(store, "prg-1")).toHaveLength(0);
     });
 
-    test("a repeat sync over the same malformed record holds it once, so no second alert is queued", async () => {
+    test("TP-W4-010 a repeat sync over the same malformed record holds it once, so no second alert is queued", async () => {
       const { store, run } = harness();
       await run(new RecordedNetworkSimulator("malformed-records"));
       await run(new RecordedNetworkSimulator("malformed-records"));
@@ -282,7 +365,8 @@ describe("[M3] network conformance", () => {
       expect(store.quarantined).toHaveLength(1);
     });
 
-    test("a callback with a forged signature is refused, and the same body with the valid signature is verified", async () => {
+    // CT-015 covers callbacks as well as imports. The wave 4 test plan has no TP-W4 row for callback verification.
+    test("CT-015 a callback with a forged signature is refused, and the same body with the valid signature is verified", async () => {
       const connector = new RecordedNetworkSimulator("clean-catalog");
       const body = '{"eventId":"evt-1"}';
 
