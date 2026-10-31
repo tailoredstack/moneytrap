@@ -30,6 +30,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Run `bun install` once per worktree before the checks.
 - Run `check:docs`, `typecheck`, `lint`, `boundaries`, and `bun test`.
 - If CI fails, pull the failing job's logs. Re-run failures that look transient (timeout, runner died, network). Fix real failures before triage.
+- If a job fails in seconds with no steps run and no runner name, it never started. That is a GitHub-side failure. Re-run it once with `gh run rerun <run-id> --failed`. If it fails again, compare with a passing branch before changing code.
 - Commit with a Conventional Commit subject that includes the Linear ID. Use `Refs OZE-<id>` on interim commits and `Closes OZE-<id>` on the completing commit.
 - No co-author or generated-by trailers in commit messages or PR bodies. Run `git log -1 --format=%B` before pushing and remove any trailer a tool added.
 
@@ -62,6 +63,10 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Check existing threads for duplicates before starting a package.
 - Re-run step 1 after each merge. Start every package that the merge has unblocked, each in its own thread.
 - Packages with no dependency between them merge in the order they become ready: the first one with a clean review and passing checks merges first. The package that merges second rebases onto updated `main`, reruns its checks, and reruns the full-diff review on the rebased head before it merges.
+**Self-sufficiency**
+- Resolve blockers from the repo docs and the transcript before asking the user. Ask only for decisions that are genuinely the user's.
+- Improve this sequence as you go. When the same problem appears twice, add a rule for it here.
+
 **Loop control**
 - Before any thread ends its turn, the coordinating thread checks Linear for newly eligible packages and starts them. It doesn't settle while eligible work remains.
 - The coordinating thread keeps a fallback wake-up scheduled, so the loop runs without a PR event.
