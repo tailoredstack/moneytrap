@@ -26,6 +26,13 @@ describe("redact", () => {
     });
   });
 
+  test("masks a Basic authorization credential mid-message but not ordinary words", () => {
+    expect(redact({ message: "retry with Basic dXNlcjpodW50ZXIy failed" })).toEqual({
+      message: `retry with ${REDACTED} failed`,
+    });
+    expect(redact({ message: "on the basic plan" })).toEqual({ message: "on the basic plan" });
+  });
+
   test("masks URL userinfo even when the password contains a slash", () => {
     expect(redact({ url: "https://user:pa/ss@host/path" })).toEqual({ url: `https://${REDACTED}@host/path` });
   });

@@ -6,7 +6,8 @@ export const REDACTED = "[REDACTED]";
 const SENSITIVE_KEY = /token|secret|passw|authorization|cookie|api[-_]?key|credential|session|private[-_]?key/i;
 // A bearer credential is masked wherever it appears, including mid-message. Userinfo in a URL
 // (scheme://user:secret@host) is a credential wherever it appears too.
-const BEARER = /bearer\s+[^\s,;"']+/gi;
+// Basic credentials are base64, so the length floor keeps ordinary words such as "basic plan" readable.
+const BEARER = /(?:bearer\s+[^\s,;"']+|basic\s+[A-Za-z0-9+/=._-]{8,})/gi;
 const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s@]+@/gi;
 
 function redactString(value: string): string {
