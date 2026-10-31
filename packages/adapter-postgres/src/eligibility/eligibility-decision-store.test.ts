@@ -265,6 +265,8 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
 
     expect(result.decision.decision).toBe("deny");
     expect(result.decision.reasons).toContain("unknown");
+    expect(result.decision.programRevisionSeq).toBeNull();
+    expect(result.decision.sourceRevision).toBeNull();
   });
 
   test("letter case and repeated values do not create a second row", async () => {
