@@ -20,6 +20,15 @@ describe("redact", () => {
     expect(redact({ header: "Bearer abc.def.ghi" })).toEqual({ header: REDACTED });
   });
 
+  test("masks credentials embedded in URLs under any key", () => {
+    const out = redact({ message: "connect redis://user:hunter2@cache:6379 failed", url: "https://u:p@host/x" });
+
+    expect(out).toEqual({
+      message: `connect redis://${REDACTED}@cache:6379 failed`,
+      url: `https://${REDACTED}@host/x`,
+    });
+  });
+
   test("keeps ordinary fields and does not mutate the input", () => {
     const input = { request_id: "req-1", count: 2, token: "t" };
 
