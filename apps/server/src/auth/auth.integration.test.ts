@@ -249,6 +249,110 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
     }
   });
 
+  describe("password recovery (WP-2.5)", () => {
+    const NEW_PASSWORD = "a different long passphrase";
+    const resetSent = () => sent.filter((message) => message.kind === "reset");
+    const resetTokenFromSentEmail = () => {
+      const url = new URL(resetSent().at(-1)?.url ?? "https://none.invalid");
+      return url.pathname.split("/").at(-1) ?? "";
+    };
+
+    // Verifies the account first, because sign-in requires a verified email.
+    const verifiedUser = async () => {
+      await signUp(VALID_PASSWORD);
+      await verifyLink(tokenFromSentEmail());
+    };
+    const requestReset = (email = "ada@example.test") =>
+      auth.api.requestPasswordReset({ body: { email, redirectTo: "https://moneytrap.test/reset" }, asResponse: true });
+    const redeem = (token: string, newPassword = NEW_PASSWORD) =>
+      auth.api.resetPassword({ body: { newPassword, token }, asResponse: true });
+    const signIn = (password: string) =>
+      auth.api.signInEmail({ body: { email: "ada@example.test", password }, asResponse: true });
+
+    test("TP-W2-023: a reset request for an unknown identity has the same response as a known one", async () => {
+      await verifiedUser();
+
+      const known = await requestReset("ada@example.test");
+      const unknown = await requestReset("grace@example.test");
+
+      expect(known.status).toBe(unknown.status);
+      expect(resetSent().map((message) => message.to)).toEqual(["ada@example.test"]);
+    });
+
+    test("the reset link works once and sets the new password", async () => {
+      await verifiedUser();
+      await requestReset();
+      const token = resetTokenFromSentEmail();
+
+      const first = await redeem(token);
+      const second = await redeem(token, "yet another long passphrase");
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBeGreaterThanOrEqual(400);
+      expect((await signIn(NEW_PASSWORD)).status).toBe(200);
+      expect((await signIn("yet another long passphrase")).status).toBeGreaterThanOrEqual(400);
+    });
+
+    test("TP-W2-025: an expired reset link is refused and leaves the password unchanged", async () => {
+      await verifiedUser();
+      await requestReset();
+      const token = resetTokenFromSentEmail();
+      await sql`update "verification" set "expiresAt" = now() - interval '1 minute' where "identifier" = ${`reset-password:${token}`}`.execute(
+        db,
+      );
+
+      const response = await redeem(token);
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect((await signIn(VALID_PASSWORD)).status).toBe(200);
+    });
+
+    test("TP-W2-024: simultaneous redemptions of one reset link let exactly one succeed", async () => {
+      await verifiedUser();
+      await requestReset();
+      const token = resetTokenFromSentEmail();
+
+      const responses = await Promise.all([redeem(token), redeem(token), redeem(token)]);
+
+      expect(responses.map((response) => response.status).filter((status) => status === 200)).toHaveLength(1);
+      expect((await signIn(NEW_PASSWORD)).status).toBe(200);
+    });
+
+    test("a successful reset revokes every other session of the user", async () => {
+      await verifiedUser();
+      await signIn(VALID_PASSWORD);
+      await signIn(VALID_PASSWORD);
+      const before = await sql<{ count: string }>`select count(*)::text as count from "session"`.execute(db);
+      expect(before.rows[0]?.count).toBe("2");
+      await requestReset();
+
+      await redeem(resetTokenFromSentEmail());
+
+      const after = await sql<{ count: string }>`select count(*)::text as count from "session"`.execute(db);
+      expect(after.rows[0]?.count).toBe("0");
+    });
+
+    test("TP-W2-026: a reset link stops working once the password changes by another path", async () => {
+      await verifiedUser();
+      const signedIn = await signIn(VALID_PASSWORD);
+      const cookie = signedIn.headers.get("set-cookie") ?? "";
+      await requestReset();
+      const token = resetTokenFromSentEmail();
+
+      const changed = await auth.api.changePassword({
+        body: { currentPassword: VALID_PASSWORD, newPassword: NEW_PASSWORD },
+        headers: new Headers({ cookie }),
+        asResponse: true,
+      });
+      expect(changed.status).toBe(200);
+
+      const response = await redeem(token, "yet another long passphrase");
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect((await signIn(NEW_PASSWORD)).status).toBe(200);
+    });
+  });
+
   test("the mounted handler answers get-session with no session through the app", async () => {
     const app = new Elysia().use(authRoutes(auth)).get("/*", () => new Response("shell", { status: 404 }));
 
