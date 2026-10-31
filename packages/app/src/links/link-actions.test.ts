@@ -557,6 +557,20 @@ describe("pause, resume, revoke", () => {
     expect(links.rows.get(linkId)?.link.status).toBe("paused");
   });
 
+  test("the decision flips to deny between the gate and a resume write: the resume is refused with the decision's reasons", async () => {
+    const { deps, links, live } = setup();
+    seededLink(links, "paused");
+    changeBeforeWrite(
+      links,
+      (state) => (state.decision = { decision: "deny", policyVersion: 1, reasons: ["consent"], checks: [] }),
+      live,
+    );
+    const result = await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
+    expect(result).toEqual({ ok: false, code: "PROGRAM_INELIGIBLE", reasons: ["consent"] });
+    expect(links.rows.get(linkId)?.link.status).toBe("paused");
+    expect(links.audits).toHaveLength(0);
+  });
+
   test("a stale version loses the compare-and-set on resume and writes nothing", async () => {
     const { deps, links } = setup();
     seededLink(links, "paused");

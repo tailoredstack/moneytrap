@@ -191,9 +191,9 @@ function hostOf(url: string): string {
   return new URL(url).hostname;
 }
 
-// An allow-list entry matches the way validateDestination matches it: the URL parser normalises case and IDN, but keeps a
-// trailing dot, so `example.com.` and `example.com` are different entries. An
-// entry that is not a bare host matches nothing, so the precondition can never pass on an entry the gate would refuse.
+// An allow-list entry matches the way validateDestination matches it: the URL parser normalises case and IDN, but keeps
+// a trailing dot, so `example.com.` and `example.com` are different entries. An entry that is not a bare host matches
+// nothing, so the precondition can never pass on an entry the gate would refuse.
 export function allowsHost(entries: readonly string[], host: string): boolean {
   return entries.some((entry) => {
     const bare = entry.trim();
