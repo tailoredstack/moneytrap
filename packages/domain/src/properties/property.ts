@@ -71,9 +71,14 @@ export function rejectProperty(property: Property, reason: string): PropertyTran
   return { ok: true, value: { ...property, status: "rejected", rejectionReason: reason } };
 }
 
-// Suspension stops monetization. Reinstatement is handled by WP-3.7, so `suspended` has no outgoing move here.
+// Suspension stops monetization. Only reinstateProperty leaves `suspended`.
 export function suspendProperty(property: Property): PropertyTransition {
   return move(property, "approved", "suspended");
+}
+
+// Reinstatement restores a suspended property to approved. The reason is recorded by the caller in the audit row.
+export function reinstateProperty(property: Property): PropertyTransition {
+  return move(property, "suspended", "approved");
 }
 
 // Only an approved property may be monetized (CT-006). A verified property is owned but not yet approved.
