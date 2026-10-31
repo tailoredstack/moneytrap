@@ -15,6 +15,11 @@ export function RegisterView({
   message?: string | undefined;
   onSubmit?: (input: { email: string; password: string }) => void;
 }) {
+  const emailRef = useRef<HTMLInputElement>(null);
+  // SKELETONS §1.1: when validation fails, focus moves to the first error.
+  useEffect(() => {
+    if (status === "invalid") emailRef.current?.focus();
+  }, [status]);
   if (status === "sent") {
     return (
       <section className="max-w-sm space-y-3">
@@ -25,11 +30,6 @@ export function RegisterView({
   }
 
   const submitting = status === "submitting";
-  const emailRef = useRef<HTMLInputElement>(null);
-  // SKELETONS §1.1: when validation fails, focus moves to the first error.
-  useEffect(() => {
-    if (status === "invalid") emailRef.current?.focus();
-  }, [status]);
   const invalid = status === "invalid";
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
