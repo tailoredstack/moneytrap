@@ -1,4 +1,4 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src"]
+  "include": ["src", "../../apps/server/src/asset-imports.d.ts"]
 }
