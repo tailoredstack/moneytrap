@@ -52,6 +52,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 **6. Triage every thread**
 - Reply to each thread with `fix`, `incorrect`, or `won't fix`, and give the reason and the commit.
 - Deferred code items are tracked in Linear. When a piece of code is deferred (for example a follow-up, a fix, or a dependency that cannot merge yet), create or update a Linear issue for it before it is considered handled, and link it to the work package or wave it belongs to. Do not leave deferred code work only in a thread, a PR comment, or memory.
+- Deferring review findings is the last resort. Fix valid findings in the same PR. Defer only when the fix would break the work package's done-when criteria, state the reason in one sentence, and track the deferred part in Linear.
 - Fix the valid findings, resolve each thread, and rerun the full-diff review on the new head.
 - Repeat until the review is clean and no threads are open.
 - Once every detailed thread is addressed and the review is clean, hide the main review comment as outdated. Do not hide it while any thread is still open.
