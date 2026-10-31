@@ -10,10 +10,12 @@ import { clearStepUpPending, markStepUpPending } from "./challenge-marker";
 import {
   acceptInvitation,
   enableTwoFactor,
+  type RegistrationField,
   registerAccount,
   requestPasswordReset,
   resetPassword,
   signIn,
+  validateRegistration,
   verifyRecoveryCode,
   verifyTotpCode,
 } from "./identity-actions";
@@ -33,7 +35,12 @@ import { type StepUpMode, type StepUpStatus, StepUpView } from "./step-up-screen
 // Each container owns the state of one screen and calls Better Auth through `authClient`. The views only render state.
 
 export function RegisterScreen() {
-  const [view, setView] = useState<{ status: RegisterStatus; email: string; message?: string | undefined }>({
+  const [view, setView] = useState<{
+    status: RegisterStatus;
+    email: string;
+    invalidField?: RegistrationField | undefined;
+    message?: string | undefined;
+  }>({
     status: "idle",
     email: "",
   });
@@ -43,6 +50,12 @@ export function RegisterScreen() {
       email={view.email}
       message={view.message}
       onSubmit={async ({ email, password }) => {
+        // Field checks run first, so the first bad field is known without a server round trip.
+        const problem = validateRegistration({ email, password });
+        if (problem) {
+          setView({ status: "invalid", email, invalidField: problem.field, message: problem.message });
+          return;
+        }
         setView({ status: "submitting", email });
         const outcome = await registerAccount(authClient, { email, password });
         setView(registerViewState(outcome, email));

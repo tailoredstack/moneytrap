@@ -1,5 +1,5 @@
 // Maps an action outcome to the state a screen shows. A null result means the screen should leave (sign-in done, code accepted).
-import type { CodeOutcome, RegisterOutcome, ResetOutcome, SignInOutcome } from "./identity-actions";
+import type { CodeOutcome, RegisterOutcome, RegistrationField, ResetOutcome, SignInOutcome } from "./identity-actions";
 import type { LoginStatus } from "./login-screen";
 import { rateLimitMessage } from "./messages";
 import type { ResetStatus } from "./recovery-screens";
@@ -11,16 +11,16 @@ const TRY_AGAIN = "Something went wrong. Try again.";
 export function registerViewState(
   outcome: RegisterOutcome,
   email: string,
-): { status: RegisterStatus; email: string; message?: string } {
+): { status: RegisterStatus; email: string; invalidField?: RegistrationField; message?: string } {
   switch (outcome.kind) {
     case "sent":
       return { status: "sent", email };
     case "invalid":
-      return { status: "invalid", email, message: outcome.message };
+      return { status: "invalid", email, invalidField: outcome.field, message: outcome.message };
     case "rate-limited":
-      return { status: "invalid", email, message: rateLimitMessage(outcome.retryAfterSeconds) };
+      return { status: "invalid", email, invalidField: "email", message: rateLimitMessage(outcome.retryAfterSeconds) };
     case "failed":
-      return { status: "invalid", email, message: TRY_AGAIN };
+      return { status: "invalid", email, invalidField: "email", message: TRY_AGAIN };
   }
 }
 

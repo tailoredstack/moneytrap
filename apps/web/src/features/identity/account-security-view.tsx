@@ -47,6 +47,7 @@ export function AccountSecurityView({
           <div className="space-y-1">
             <FormLabel htmlFor="mfa-password">Password</FormLabel>
             <Input id="mfa-password" name="password" type="password" autoComplete="current-password" required />
+            <FormMessage>{error}</FormMessage>
           </div>
           <Button type="submit">Set up MFA</Button>
         </Form>
