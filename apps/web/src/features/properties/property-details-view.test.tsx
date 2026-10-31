@@ -24,6 +24,13 @@ describe("PropertyDetailsView (TP-W3-030, UI-025)", () => {
     expect(html).toMatch(/<button[^>]* disabled=""[^>]*>Submit for review<\/button>/);
   });
 
+  test("submit stays disabled when another tab changed the status, even if the page is not stale", () => {
+    const html = renderToStaticMarkup(
+      <PropertyDetailsView domain="news.example.com" status="verified" asOf={ASOF} changedElsewhere />,
+    );
+    expect(html).toMatch(/<button[^>]* disabled=""[^>]*>Submit for review<\/button>/);
+  });
+
   test("submit for review is enabled only when verified and fresh", () => {
     const html = renderToStaticMarkup(<PropertyDetailsView domain="news.example.com" status="verified" asOf={ASOF} />);
     expect(html).not.toMatch(/<button[^>]* disabled=""[^>]*>Submit for review<\/button>/);

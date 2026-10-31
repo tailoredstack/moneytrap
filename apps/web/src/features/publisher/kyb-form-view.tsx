@@ -6,10 +6,12 @@ export function KybFormView({
   values,
   submitAttempted = false,
   submitting = false,
+  onDocumentSelected,
 }: {
   values: KybValues;
   submitAttempted?: boolean | undefined;
   submitting?: boolean | undefined;
+  onDocumentSelected?: ((file: File | null) => void) | undefined;
 }) {
   const errors = validateKyb(values);
   const firstError = Object.values(errors)[0];
@@ -50,10 +52,17 @@ export function KybFormView({
           Company
         </label>
       </fieldset>
-      <div>
-        <p>Document</p>
-        <p className="text-muted-foreground">Stored securely; we keep a reference only.</p>
-      </div>
+      <label className="block">
+        Document
+        <input
+          type="file"
+          name="document"
+          accept="application/pdf,image/png,image/jpeg"
+          className="mt-1 block w-full text-sm"
+          onChange={(event) => onDocumentSelected?.(event.currentTarget.files?.[0] ?? null)}
+        />
+        <span className="block text-muted-foreground">Stored securely; we keep a reference only.</span>
+      </label>
       <Button type="submit" disabled={!canSubmit}>
         {submitting ? "Submitting…" : "Submit for review"}
       </Button>
