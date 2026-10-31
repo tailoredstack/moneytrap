@@ -343,6 +343,17 @@ describe("preview", () => {
     expect(links.audits).toHaveLength(0);
   });
 
+  test("TP-W5-040: the destination a preview shows is the exact string create stores", async () => {
+    const { deps, links } = setup();
+    const input = { ...createInput, destination: "https://SHOP.example.com/item?ref=a" };
+    const preview = await previewLink(ctxFor(actorId), deps, input);
+    const created = await createActiveLink(ctxFor(actorId), deps, input);
+    expect(preview.ok && created.ok).toBe(true);
+    if (!preview.ok || !created.ok) return;
+    expect(created.value.destinationUrl).toBe(preview.value.destinationUrl);
+    expect(links.rows.get(created.value.id)?.link.destinationUrl).toBe(preview.value.destinationUrl);
+  });
+
   test("a preview of an unapproved property is refused with the same precondition as create", async () => {
     const { deps } = setup({ status: "review_pending" });
     expect(await previewLink(ctxFor(actorId), deps, createInput)).toEqual({
