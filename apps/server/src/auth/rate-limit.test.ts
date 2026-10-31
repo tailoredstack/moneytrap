@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash, createHmac } from "node:crypto";
 import {
   AUTH_RATE_LIMIT_POLICY,
   ipRateLimitRules,
@@ -171,6 +172,18 @@ describe("per-IP storage for Better Auth", () => {
 });
 
 describe("identity keys are an HMAC under the server secret", () => {
+  test("the key is exactly HMAC-SHA256 of the normalized email under the secret, not a plain hash", async () => {
+    const counter = memoryCounter();
+
+    await recordFailedSignIn(counter, { email: "  Ada@Example.test " }, SETTINGS);
+
+    const expected = createHmac("sha256", SETTINGS.secret).update("ada@example.test").digest("hex");
+    expect([...counter.counts.keys()]).toEqual([`identity:sign-in:${expected}`]);
+    // A plain SHA-256 over secret and email would produce a different digest, so this assertion distinguishes them.
+    const plain = createHash("sha256").update(`${SETTINGS.secret}ada@example.test`).digest("hex");
+    expect(expected).not.toBe(plain);
+  });
+
   test("the stored key contains no plaintext email", async () => {
     const counter = memoryCounter();
 
