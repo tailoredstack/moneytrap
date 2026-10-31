@@ -86,6 +86,17 @@ function claimVerificationLink(db: Kysely<any>) {
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
 function settleVerificationLink(db: Kysely<any>) {
   return createAuthMiddleware(async (ctx) => {
+    // A password change made while signed in retires every outstanding reset link for that user (TP-W2-026).
+    // Better Auth keeps reset links valid after a change, so a link mailed before it would still set a password.
+    if (ctx.path === "/change-password") {
+      const userId = ctx.context.session?.user.id;
+      if (userId && !isAPIError(ctx.context.returned)) {
+        await sql`delete from "verification" where "identifier" like 'reset-password:%' and "value" = ${userId}`.execute(
+          db,
+        );
+      }
+      return;
+    }
     if (ctx.path !== "/verify-email") return;
     const token = ctx.query?.token;
     const identifier = typeof token === "string" ? canonicalClaimId(token) : null;
