@@ -11,8 +11,10 @@ export class FakeRiskFlagStore implements RiskFlagStore {
 
   constructor(private readonly bursts: readonly ClickBurst[] = []) {}
 
-  async findClickBursts(): Promise<ClickBurst[]> {
-    return this.bursts.map((burst) => ({ ...burst, dedupKeys: [...burst.dedupKeys] }));
+  async findClickBursts(since: Date): Promise<ClickBurst[]> {
+    return this.bursts
+      .filter((burst) => burst.occurredAt >= since)
+      .map((burst) => ({ ...burst, dedupKeys: [...burst.dedupKeys] }));
   }
 
   async raise(flag: RiskFlagWrite): Promise<RiskFlagWriteOutcome> {
@@ -22,7 +24,8 @@ export class FakeRiskFlagStore implements RiskFlagStore {
     return "raised";
   }
 
-  raised(): readonly RiskFlagWrite[] {
+  // Every flag stored so far, not only those raised by one call.
+  stored(): readonly RiskFlagWrite[] {
     return [...this.flags.values()].map((flag) => ({ ...flag }));
   }
 }
