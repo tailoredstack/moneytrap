@@ -65,6 +65,12 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Check existing threads for duplicates before starting a package.
 - Re-run step 1 after each merge. Start every package that the merge has unblocked, each in its own thread.
 - Packages with no dependency between them merge in the order they become ready: the first one with a clean review and passing checks merges first. The package that merges second rebases onto updated `main`, reruns its checks, and reruns the full-diff review on the rebased head before it merges.
+**Resource cleanup**
+- Every process or container a step starts must be stopped before the step ends, including on failure. Use a `finally` block or an equivalent trap.
+- Before ending a turn, list what this session started, such as Docker containers (`docker ps`), local servers, and background processes. Stop only what this session started. Leave anything you did not start.
+- Use a unique container name and a free port for each test run. Don't reuse a port that another process holds.
+- Remove temporary branches, worktrees, and probe files you created.
+
 **Self-sufficiency**
 - Resolve blockers from the repo docs and the transcript before asking the user. Ask only for decisions that are genuinely the user's.
 - Improve this sequence as you go. When the same problem appears twice, add a rule for it here.
