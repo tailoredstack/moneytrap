@@ -196,19 +196,26 @@ const INVITATION_ROUTES = new Set([
 async function refuseForeignInvitation(ctx: AuthContext, db: Kysely<any>): Promise<void> {
   if (!INVITATION_ROUTES.has(ctx.path ?? "")) return;
   const session = await getSessionFromCtx(ctx);
-  const input = { ...ctx.query, ...(isRecord(ctx.body) ? ctx.body : {}) };
-  const invitationId = typeof input.invitationId === "string" ? input.invitationId : input.id;
-  const invitation = await sql<{ organizationId: string; email: string }>`
-    select "organizationId", "email" from "invitation" where "id" = ${String(invitationId ?? "")}`.execute(db);
-  const row = invitation.rows[0];
   const refuse = () => new APIError("NOT_FOUND", { code: "RESOURCE_NOT_FOUND", message: "Resource not found" });
-  if (!session || !row) throw refuse();
-  if (row.email === session.user.email) return;
-  const member =
-    await sql`select 1 from "member" where "organizationId" = ${row.organizationId} and "userId" = ${session.user.id}`.execute(
-      db,
-    );
-  if (member.rows.length === 0) throw refuse();
+  if (!session) throw refuse();
+  // Each route reads its invitation from a different field (`id` or `invitationId`), and a request may name both.
+  // Every named ID is checked, so the one the endpoint acts on is always one the caller may act on.
+  const input = { ...ctx.query, ...(isRecord(ctx.body) ? ctx.body : {}) };
+  const named = [input.invitationId, input.id].filter((value): value is string => typeof value === "string");
+  if (named.length === 0) throw refuse();
+  for (const invitationId of new Set(named)) {
+    const row = (
+      await sql<{ organizationId: string; email: string }>`
+        select "organizationId", "email" from "invitation" where "id" = ${invitationId}`.execute(db)
+    ).rows[0];
+    if (!row) throw refuse();
+    if (row.email === session.user.email) continue;
+    const member =
+      await sql`select 1 from "member" where "organizationId" = ${row.organizationId} and "userId" = ${session.user.id}`.execute(
+        db,
+      );
+    if (member.rows.length === 0) throw refuse();
+  }
 }
 
 // Slugs are chosen by the server, so a create never reveals whether a slug is taken (CT-005). The client's slug is

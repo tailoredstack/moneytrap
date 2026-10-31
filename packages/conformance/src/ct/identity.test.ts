@@ -418,6 +418,43 @@ describeWithDatabase("[M1] identity conformance", () => {
       expect(await membershipCount(org.id, ADA)).toBe(0);
     });
 
+    test("naming the caller's own invitation in one field does not authorize a foreign one named in the other", async () => {
+      const adaSession = await signUpVerified(ADA);
+      const outsiderSession = await signUpVerified(OUTSIDER);
+      const graceSession = await signUpVerified(GRACE);
+      const ownOrg = await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Org A", slug: "org-a" }, adaSession),
+      );
+      const ownInvitation = await json<{ id: string }>(
+        await post(
+          "/api/auth/organization/invite-member",
+          { email: GRACE, role: "member", organizationId: ownOrg.id },
+          adaSession,
+        ),
+      );
+      const foreignOrg = await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession),
+      );
+      const foreignInvitation = await json<{ id: string }>(
+        await post(
+          "/api/auth/organization/invite-member",
+          { email: "other-invitee@example.test", role: "member", organizationId: foreignOrg.id },
+          outsiderSession,
+        ),
+      );
+
+      const mixed = await get(
+        `/api/auth/organization/get-invitation?id=${foreignInvitation.id}&invitationId=${ownInvitation.id}`,
+        graceSession,
+      );
+      const missing = await get("/api/auth/organization/get-invitation?id=inv_missing", graceSession);
+
+      const mixedBody = await bodyOf(mixed);
+      expect(mixed.status).toBe(missing.status);
+      expect(mixedBody).toEqual(await bodyOf(missing));
+      expect(JSON.stringify(mixedBody)).not.toContain(foreignInvitation.id);
+    });
+
     test("a member leaving an organization gets a success and loses the membership", async () => {
       const ownerSession = await signUpVerified(ADA);
       const inviteeSession = await signUpVerified(GRACE);
