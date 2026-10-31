@@ -65,8 +65,8 @@ export function parseMoney(input: unknown, currency: string): ParseResult {
   }
   const [, sign, whole, fraction = ""] = match;
   const digits = exponentOf(currency);
-  if (fraction.length > digits) {
-    return { ok: false, error: new MoneyError(`${currency} allows ${digits} fraction digits`) };
+  if (fraction.length > 0 && fraction.length !== digits) {
+    return { ok: false, error: new MoneyError(`${currency} needs exactly ${digits} fraction digits`) };
   }
   const minor = BigInt(`${whole}${fraction.padEnd(digits, "0")}`);
   return { ok: true, value: Money.of(sign ? -minor : minor, currency) };

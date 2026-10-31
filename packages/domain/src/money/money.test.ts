@@ -6,15 +6,16 @@ describe("Money", () => {
     expect(Money.of(12537n, "USD").format()).toBe("125.37");
   });
 
-  test("TP-W1-002 parse rejects extra fractional digits", () => {
-    expect(parseMoney("125.37", "USD").ok).toBe(true);
+  test("TP-W1-002 parse requires the exact fraction width", () => {
+    const ok = parseMoney("125.37", "USD");
+    expect(ok.ok && ok.value.amount).toBe(12537n);
     const bad = parseMoney("125.3x", "USD");
     expect(bad.ok).toBe(false);
-    const extra = parseMoney("125.3", "USD");
-    expect(extra.ok).toBe(true);
+    const short = parseMoney("125.3", "USD");
+    expect(short.ok).toBe(false);
+    if (!short.ok) expect(short.error.code).toBe("VALIDATION_FAILED");
     const tooMany = parseMoney("125.377", "USD");
     expect(tooMany.ok).toBe(false);
-    if (!tooMany.ok) expect(tooMany.error.code).toBe("VALIDATION_FAILED");
   });
 
   test("TP-W1-003 rejects fractions for a zero-exponent currency", () => {
