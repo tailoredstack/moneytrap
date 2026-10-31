@@ -57,6 +57,10 @@
     "packages/adapter-redis": {
       "name": "@moneytrap/adapter-redis",
       "version": "0.0.0",
+      "dependencies": {
+        "bullmq": "6.5.2",
+        "ioredis": "5.10.0",
+      },
     },
     "packages/app": {
       "name": "@moneytrap/app",
