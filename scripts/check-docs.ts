@@ -18,7 +18,9 @@ function walk(dir: string): string[] {
 }
 
 const rel = (p: string) => p.slice(root.length + 1);
-const files = walk(docsDir);
+// The review comment template uses placeholder link targets, so it is exempt from link and reference checks.
+const reviewTemplate = join(docsDir, "MONEYTRAP_REVIEW.md");
+const files = walk(docsDir).filter((f) => f !== reviewTemplate);
 const legacyDir = join(docsDir, "legacy") + sep;
 const isLegacy = (f: string) => f.startsWith(legacyDir);
 const read = (f: string) => readFileSync(f, "utf8");
