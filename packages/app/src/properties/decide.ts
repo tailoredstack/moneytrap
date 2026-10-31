@@ -52,6 +52,7 @@ export async function decideProperty(
   if (!transition.ok) return { ok: false, code: "STATE_CONFLICT" };
 
   const applied = await store.recordTransition({
+    expectedOrganizationId: input.organizationId,
     expectedStatus: record.property.status,
     property: transition.value,
     audit: {
