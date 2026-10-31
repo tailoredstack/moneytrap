@@ -123,5 +123,5 @@ Sign-up through invitation works, sessions and recovery are safe under concurren
 ## 6. Risks
 
 - Timing side-channels on known vs unknown email (TP-W2-007/008). Compare response timing bucket with a tolerance; do not assert exact timing.
-- Step-up error code must match the API catalog before TP-W2-016 can be finalized.
+- Step-up error code: `STEP_UP_REQUIRED` (403) is added to the §7.1 closed set and the guard returns it (WP-2.4). The API catalog must list it before TP-W2-016 is finalized.
 - Most credential, session, and recovery behavior is delegated to Better Auth. Tests here cover our configuration and our guards, not the library's cryptography.

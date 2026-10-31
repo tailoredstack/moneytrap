@@ -17,7 +17,7 @@ describe("OpenAPI generation", () => {
     };
     const roundTripped = JSON.parse(JSON.stringify(components));
     expect(roundTripped.schemas.Money.properties.amount.pattern).toBeString();
-    expect(roundTripped.schemas.Error.properties.error.properties.code.anyOf).toHaveLength(14);
+    expect(roundTripped.schemas.Error.properties.error.properties.code.anyOf).toHaveLength(15);
     expect(roundTripped.schemas.Page.properties.meta.properties.next_cursor.anyOf).toHaveLength(2);
   });
 });

@@ -13,6 +13,7 @@ export const ERROR_CODES = [
   "PAYOUT_OUTCOME_UNKNOWN",
   "CONSENT_REQUIRED",
   "PROGRAM_INELIGIBLE",
+  "STEP_UP_REQUIRED",
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

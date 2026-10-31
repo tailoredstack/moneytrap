@@ -9,6 +9,18 @@ import type { AuthMailer } from "./mailer";
 // settings we change, and each one tightens a default rather than loosening it.
 export const MIN_PASSWORD_LENGTH = 12;
 
+// Blueprint §7: privileged routes need a second factor this recently. Operators set STEP_UP_WINDOW_SECONDS;
+// 900 seconds (15 minutes) is the default when it is unset.
+export const DEFAULT_STEP_UP_WINDOW_SECONDS = 900;
+
+export function stepUpWindowSeconds(raw: string | undefined): number {
+  if (!raw) return DEFAULT_STEP_UP_WINDOW_SECONDS;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error("STEP_UP_WINDOW_SECONDS must be a positive whole number of seconds");
+  }
+  return Number(raw);
+}
+
 export type AuthConfigDeps = {
   pool: Pool;
   secret: string;
