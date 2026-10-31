@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { migrate, migrationProvider } from "@moneytrap/adapter-postgres";
 import type { NotificationMessage, Notifier } from "@moneytrap/app";
 import { createEmailVerificationToken } from "better-auth/api";
@@ -434,7 +434,163 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       ]),
     );
   });
+
+  describe("multi-factor authentication (WP-2.6)", () => {
+    const ADDRESS = "ada@example.test";
+    const cookieHeader = (response: Response) =>
+      response.headers
+        .getSetCookie()
+        .map((cookie) => cookie.split(";")[0])
+        .join("; ");
+    const signInWithPassword = () =>
+      auth.api.signInEmail({ body: { email: ADDRESS, password: VALID_PASSWORD }, asResponse: true });
+    const twoFactorEnabled = async () =>
+      (
+        await sql<{
+          enabled: boolean;
+        }>`select "twoFactorEnabled" as enabled from "user" where "email" = ${ADDRESS}`.execute(db)
+      ).rows[0]?.enabled;
+
+    // Signs in with the password only. Enrollment happens on this session, so it has no second factor yet.
+    const passwordSession = async () => {
+      await signUp(VALID_PASSWORD);
+      await verifyLink(tokenFromSentEmail());
+      return cookieHeader(await signInWithPassword());
+    };
+
+    // Enrolls TOTP on a signed-in session and confirms it with a valid code. Better Auth rotates the session on confirm.
+    const enrollTotp = async (cookie: string) => {
+      const enabled = await auth.api.enableTwoFactor({
+        body: { password: VALID_PASSWORD },
+        headers: new Headers({ cookie }),
+      });
+      if (enabled.method !== "totp") throw new Error("expected a TOTP enrollment");
+      const { totpURI, backupCodes } = enabled;
+      const confirmed = await auth.api.verifyTOTP({
+        body: { code: totpCode(totpSecret(totpURI)) },
+        headers: new Headers({ cookie }),
+        asResponse: true,
+      });
+      return { backupCodes, totpURI, cookie: cookieHeader(confirmed) };
+    };
+
+    const disableRequest = (cookie: string) =>
+      auth.handler(
+        new Request("https://moneytrap.test/api/auth/two-factor/disable", {
+          method: "POST",
+          headers: { "content-type": "application/json", cookie, origin: "https://moneytrap.test" },
+          body: JSON.stringify({ password: VALID_PASSWORD }),
+        }),
+      );
+
+    test("TP-W2-017: a TOTP code confirms MFA enrollment and a wrong code does not", async () => {
+      const cookie = await passwordSession();
+      const enabled = await auth.api.enableTwoFactor({
+        body: { password: VALID_PASSWORD },
+        headers: new Headers({ cookie }),
+      });
+      if (enabled.method !== "totp") throw new Error("expected a TOTP enrollment");
+      const { totpURI } = enabled;
+
+      await expect(
+        auth.api.verifyTOTP({ body: { code: "000000" }, headers: new Headers({ cookie }) }),
+      ).rejects.toThrow();
+      expect(await twoFactorEnabled()).toBe(false);
+
+      await auth.api.verifyTOTP({
+        body: { code: totpCode(totpSecret(totpURI)) },
+        headers: new Headers({ cookie }),
+      });
+      expect(await twoFactorEnabled()).toBe(true);
+    });
+
+    test("TP-W2-018: a recovery code signs in once and is rejected the second time", async () => {
+      const { backupCodes } = await enrollTotp(await passwordSession());
+
+      const first = cookieHeader(await signInWithPassword());
+      await expect(
+        auth.api.verifyBackupCode({ body: { code: backupCodes[0] ?? "" }, headers: new Headers({ cookie: first }) }),
+      ).resolves.toBeDefined();
+
+      const second = cookieHeader(await signInWithPassword());
+      await expect(
+        auth.api.verifyBackupCode({ body: { code: backupCodes[0] ?? "" }, headers: new Headers({ cookie: second }) }),
+      ).rejects.toThrow();
+    });
+
+    test("TP-W2-019: changing MFA without a recent second factor is refused", async () => {
+      const { cookie: enrolledCookie, totpURI } = await enrollTotp(await passwordSession());
+
+      // The session that confirmed enrollment has not passed a second factor, so disabling is refused.
+      const refused = await disableRequest(enrolledCookie);
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toMatchObject({ code: "STEP_UP_REQUIRED" });
+      expect(await twoFactorEnabled()).toBe(true);
+
+      // A sign-in that passes the TOTP challenge records a fresh second factor, so disabling succeeds.
+      const challenge = cookieHeader(await signInWithPassword());
+      const totpSignIn = await auth.api.verifyTOTP({
+        body: { code: totpCode(totpSecret(totpURI)) },
+        headers: new Headers({ cookie: challenge }),
+        asResponse: true,
+      });
+      const allowed = await disableRequest(cookieHeader(totpSignIn));
+      expect(allowed.status).toBe(200);
+      expect(await twoFactorEnabled()).toBe(false);
+    });
+
+    test("TP-W2-019: a second factor older than the step-up window no longer counts", async () => {
+      const { totpURI } = await enrollTotp(await passwordSession());
+      const challenge = cookieHeader(await signInWithPassword());
+      const signedIn = await auth.api.verifyTOTP({
+        body: { code: totpCode(totpSecret(totpURI)) },
+        headers: new Headers({ cookie: challenge }),
+        asResponse: true,
+      });
+      const cookie = cookieHeader(signedIn);
+
+      await sql`update "session" set "secondFactorAt" = now() - interval '1 hour'`.execute(db);
+
+      const stale = await disableRequest(cookie);
+      expect(stale.status).toBe(403);
+      expect(await stale.json()).toMatchObject({ code: "STEP_UP_REQUIRED" });
+    });
+  });
 });
+
+function totpSecret(totpURI: string): string {
+  return new URL(totpURI).searchParams.get("secret") ?? "";
+}
+
+// RFC 6238 time-based code with a 30-second step, SHA-1, and six digits, as Better Auth's default TOTP.
+function totpCode(base32Secret: string, at = Date.now()): string {
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(at / 1000 / 30)));
+  const digest = createHmac("sha1", base32Decode(base32Secret)).update(counter).digest();
+  const offset = (digest[digest.length - 1] ?? 0) & 0x0f;
+  const binary =
+    ((digest[offset] ?? 0) & 0x7f) * 2 ** 24 +
+    (digest[offset + 1] ?? 0) * 2 ** 16 +
+    (digest[offset + 2] ?? 0) * 2 ** 8 +
+    (digest[offset + 3] ?? 0);
+  return String(binary % 1_000_000).padStart(6, "0");
+}
+
+function base32Decode(input: string): Buffer {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const bytes: number[] = [];
+  let buffer = 0;
+  let bits = 0;
+  for (const char of input.replace(/=+$/, "").toUpperCase()) {
+    buffer = ((buffer << 5) | alphabet.indexOf(char)) & 0xfff;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((buffer >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(bytes);
+}
 
 function sha1Suffix(password: string): string {
   return createHash("sha1").update(password).digest("hex").slice(5).toUpperCase();

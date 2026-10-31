@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { apiKey } from "@better-auth/api-key";
-import { type BetterAuthOptions, betterAuth } from "better-auth";
+import { type BetterAuthOptions, type BetterAuthPlugin, betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
+import { getSessionCookie } from "better-auth/cookies";
 import { haveIBeenPwned, organization, twoFactor } from "better-auth/plugins";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import type { Pool } from "pg";
+import { requireRecentSecondFactor } from "../http/guards/assurance";
 import type { AuthMailer } from "./mailer";
 
 // Blueprint §7: Better Auth keeps its defaults for hashing, tokens, and expiry. These are the only
@@ -29,6 +31,7 @@ export type AuthConfigDeps = {
   secret: string;
   baseURL: string;
   mailer: AuthMailer;
+  stepUpWindow?: number;
 };
 
 // Better Auth verifies email tokens statelessly and never records their use, so a second click on the same
@@ -137,7 +140,86 @@ function settleVerificationLink(db: Kysely<any>) {
   });
 }
 
-export function authOptions({ pool, secret, baseURL, mailer }: AuthConfigDeps): BetterAuthOptions {
+// WP-2.6 step-up. Better Auth's disable route checks only the password, so disabling MFA also needs a second factor
+// verified recently on this session (Blueprint §7, TP-W2-019). Better Auth issues a session on sign-in, so the
+// sign-in second factor stamps the session it creates. Enrollment runs on an existing session and stamps nothing.
+const SIGN_IN_SECOND_FACTOR_ROUTES = ["/two-factor/verify-totp", "/two-factor/verify-backup-code"];
+
+function sessionTokenOf(headers: Headers | undefined): string | null {
+  const cookie = headers ? getSessionCookie(headers) : null;
+  return cookie ? (cookie.split(".")[0] ?? null) : null;
+}
+
+async function issuedSessionToken(returned: unknown): Promise<string | null> {
+  const body =
+    returned instanceof Response
+      ? await returned
+          .clone()
+          .json()
+          .catch(() => null)
+      : returned;
+  const token = (body as { token?: unknown } | null)?.token;
+  return typeof token === "string" ? token : null;
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+function requireRecentSecondFactorToDisable(db: Kysely<any>, windowSeconds: number) {
+  return createAuthMiddleware(async (ctx) => {
+    const token = sessionTokenOf(ctx.headers);
+    const row = token
+      ? await sql<{ secondFactorAt: Date | null }>`
+          select "secondFactorAt" from "session"
+          where "token" = ${token} and "expiresAt" > ${new Date()}`.execute(db)
+      : null;
+    const result = requireRecentSecondFactor({
+      secondFactorAt: row?.rows[0]?.secondFactorAt ?? null,
+      now: new Date(),
+      windowSeconds,
+    });
+    if (!result.ok) {
+      throw new APIError("FORBIDDEN", { code: "STEP_UP_REQUIRED", message: "A recent second factor is required" });
+    }
+  });
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+function stampSecondFactor(db: Kysely<any>) {
+  return createAuthMiddleware(async (ctx) => {
+    if (sessionTokenOf(ctx.headers) || isAPIError(ctx.context.returned)) return;
+    const token = await issuedSessionToken(ctx.context.returned);
+    if (!token) return;
+    await sql`update "session" set "secondFactorAt" = ${new Date()} where "token" = ${token}`.execute(db);
+  });
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+function mfaStepUpPlugin(db: Kysely<any>, windowSeconds: number): BetterAuthPlugin {
+  return {
+    id: "moneytrap-mfa-step-up",
+    hooks: {
+      before: [
+        {
+          matcher: (ctx) => ctx.path === "/two-factor/disable",
+          handler: requireRecentSecondFactorToDisable(db, windowSeconds),
+        },
+      ],
+      after: [
+        {
+          matcher: (ctx) => SIGN_IN_SECOND_FACTOR_ROUTES.includes(ctx.path ?? ""),
+          handler: stampSecondFactor(db),
+        },
+      ],
+    },
+  };
+}
+
+export function authOptions(deps: AuthConfigDeps): BetterAuthOptions {
+  return buildAuthOptions(deps);
+}
+
+// Not exported with a return annotation: the literal keeps the plugin list, so createAuth's auth.api has the twoFactor
+// endpoints. `satisfies` checks the shape without widening it.
+function buildAuthOptions({ pool, secret, baseURL, mailer, stepUpWindow }: AuthConfigDeps) {
   // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
   const db = new Kysely<any>({ dialect: new PostgresDialect({ pool }) });
   return {
@@ -170,12 +252,13 @@ export function authOptions({ pool, secret, baseURL, mailer }: AuthConfigDeps): 
     plugins: [
       haveIBeenPwned(),
       twoFactor({ issuer: "Moneytrap" }),
+      mfaStepUpPlugin(db, stepUpWindow ?? DEFAULT_STEP_UP_WINDOW_SECONDS),
       organization(),
       apiKey({ enableSessionForAPIKeys: true }),
     ],
-  };
+  } satisfies BetterAuthOptions;
 }
 
 export function createAuth(deps: AuthConfigDeps) {
-  return betterAuth(authOptions(deps));
+  return betterAuth(buildAuthOptions(deps));
 }
