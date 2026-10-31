@@ -120,14 +120,16 @@ export function DirectoryView({
                       <td>{row.countries.join(", ")}</td>
                       <td>{statusText(row.decision)}</td>
                       <td>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          aria-label={`${actionLabel(row.decision)} ${row.name}`}
-                          onClick={() => onOpen?.(row.id)}
-                        >
-                          {actionLabel(row.decision)}
-                        </Button>
+                        {onOpen ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            aria-label={`${actionLabel(row.decision)} ${row.name}`}
+                            onClick={() => onOpen(row.id)}
+                          >
+                            {actionLabel(row.decision)}
+                          </Button>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

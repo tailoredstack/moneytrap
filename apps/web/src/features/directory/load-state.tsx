@@ -35,9 +35,11 @@ export function LoadStateFrame<T>({
       <div role="alert" className="space-y-2 text-sm">
         <p>We couldn't load {label}.</p>
         {state.ref ? <p className="text-muted-foreground">Ref: {state.ref}</p> : null}
-        <Button variant="outline" size="sm" onClick={() => onRetry?.()}>
-          Try again
-        </Button>
+        {onRetry ? (
+          <Button variant="outline" size="sm" onClick={() => onRetry()}>
+            Try again
+          </Button>
+        ) : null}
       </div>
     );
   }
@@ -45,8 +47,11 @@ export function LoadStateFrame<T>({
 }
 
 // The machine value stays in `dateTime`; the visible copy is readable, e.g. "2026-10-31 12:04 UTC".
+// The instant is converted to UTC first, so an offset such as +02:00 is shown as the UTC time it names.
 export function formatTimestamp(iso: string): string {
-  return `${iso.slice(0, 16).replace("T", " ")} UTC`;
+  const instant = new Date(iso);
+  if (Number.isNaN(instant.getTime())) return iso;
+  return `${instant.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
 // Stale data is labelled in words, never by colour. The numbers beside it stay visible.

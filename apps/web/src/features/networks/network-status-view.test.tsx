@@ -54,7 +54,7 @@ describe("NetworkStatusView (UI-026, UI-076, TP-W4-029, TP-W4-030)", () => {
   });
 
   test("the credential panel shows status and rotation date, never the credential value (TP-W4-030)", () => {
-    const html = renderToStaticMarkup(<NetworkStatusView state={ready()} ops />);
+    const html = renderToStaticMarkup(<NetworkStatusView state={ready()} ops onRetrySync={() => {}} />);
     expect(html).toContain('aria-hidden="true">✓</span> configured');
     expect(html).toContain("2026-08-02");
     expect(html).toMatch(/<button[^>]*>Retry sync<\/button>/);
