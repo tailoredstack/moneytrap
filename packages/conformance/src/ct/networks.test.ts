@@ -83,9 +83,13 @@ describe("[M3] network conformance", () => {
       const revisionsBefore = revisionsOf(store, "prg-1").length;
       expect(syncedProgram(store, "prg-1").approval).toBe("approved");
 
-      const result = await run(new RecordedNetworkSimulator("disabled-credential"));
+      const connector = new RecordedNetworkSimulator("disabled-credential");
+
+      const result = await run(connector);
 
       expect(result.ok).toBe(false);
+      // Only the credential check is attempted. A sync that skipped it would also request the catalog here.
+      expect(connector.requests).toEqual([{ operation: "validate_connection", cursor: null }]);
       expect(revisionsOf(store, "prg-1")).toHaveLength(revisionsBefore);
       expect(syncedProgram(store, "prg-1").approval).toBe("approved");
     });
@@ -146,6 +150,32 @@ describe("[M3] network conformance", () => {
       expect(decision).toMatchObject({ decision: "deny", reasons: ["unknown"] });
     });
 
+    test("TP-W4-019 a property that is not approved is denied for property_not_approved", async () => {
+      const { store, run } = harness();
+      await run(new RecordedNetworkSimulator("clean-catalog"));
+      const input: EligibilityInput = {
+        ...eligibilityFor(syncedProgram(store, "prg-1"), "US", "website"),
+        property: { status: "draft" },
+      };
+
+      const decision = evaluateEligibility(input);
+
+      expect(decision).toMatchObject({ decision: "deny", reasons: ["property_not_approved"] });
+    });
+
+    test("TP-W4-020 consent not required in M3 is ignored: the same inputs allow without a consent grant", async () => {
+      const { store, run } = harness();
+      await run(new RecordedNetworkSimulator("clean-catalog"));
+      const base = eligibilityFor(syncedProgram(store, "prg-1"), "US", "website");
+
+      const decision = evaluateEligibility({ ...base, consent: { required: false, granted: false } });
+
+      expect(decision.decision).toBe("allow");
+    });
+
+    // The link half (a tracking link is created or resolved) needs the link create gate, which lands in WP-5.2.
+    test.todo("[M4] CT-010 offer not permitted in user country or channel: link created or resolved");
+
     test("TP-W4-021 allow only when every rule passes, across publisher, property, approval, contract, geography, channel, and consent", async () => {
       const { store, run } = harness();
       await run(new RecordedNetworkSimulator("clean-catalog"));
@@ -159,38 +189,47 @@ describe("[M3] network conformance", () => {
       ] as const;
       let cases = 0;
 
+      // The contract lists vary too: one permits both values used, the other permits only the second of each, so a
+      // missing contract-side check changes at least one outcome.
+      const contractCountries: readonly (readonly string[])[] = [["US", "GB"], ["GB"]];
+      const contractChannels: readonly (readonly string[])[] = [["website", "sms"], ["sms"]];
+
       for (const publisher of statuses)
         for (const property of statuses)
           for (const approval of approvals)
             for (const active of [true, false])
               for (const geography of ["US", "GB"])
                 for (const channel of ["website", "sms"])
-                  for (const consent of consents) {
-                    const input: EligibilityInput = {
-                      publisher: { status: publisher },
-                      property: { status: property },
-                      program: { approval, countries: program.countries, channels: program.channels },
-                      geography,
-                      channel,
-                      contract: { active, countries: ["US", "GB"], channels: ["website", "sms"] },
-                      consent,
-                    };
-                    const permitted =
-                      publisher === "approved" &&
-                      property === "approved" &&
-                      approval === "approved" &&
-                      active &&
-                      program.countries.includes(geography) &&
-                      program.channels.includes(channel) &&
-                      (!consent.required || consent.granted);
-                    const decision = evaluateEligibility(input);
+                  for (const consent of consents)
+                    for (const countries of contractCountries)
+                      for (const channels of contractChannels) {
+                        const input: EligibilityInput = {
+                          publisher: { status: publisher },
+                          property: { status: property },
+                          program: { approval, countries: program.countries, channels: program.channels },
+                          geography,
+                          channel,
+                          contract: { active, countries: [...countries], channels: [...channels] },
+                          consent,
+                        };
+                        const permitted =
+                          publisher === "approved" &&
+                          property === "approved" &&
+                          approval === "approved" &&
+                          active &&
+                          program.countries.includes(geography) &&
+                          program.channels.includes(channel) &&
+                          countries.includes(geography) &&
+                          channels.includes(channel) &&
+                          (!consent.required || consent.granted);
+                        const decision = evaluateEligibility(input);
 
-                    expect(decision.decision === "allow").toBe(permitted);
-                    if (decision.decision === "deny") expect(decision.reasons.length).toBeGreaterThan(0);
-                    cases++;
-                  }
+                        expect(decision.decision === "allow").toBe(permitted);
+                        if (decision.decision === "deny") expect(decision.reasons.length).toBeGreaterThan(0);
+                        cases++;
+                      }
 
-      expect(cases).toBe(2 * 2 * 4 * 2 * 2 * 2 * 3);
+      expect(cases).toBe(2 * 2 * 4 * 2 * 2 * 2 * 3 * 2 * 2);
     });
   });
 
