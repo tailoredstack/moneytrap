@@ -219,7 +219,10 @@ describe("create", () => {
   test("TP-W5-005: an approved property with an eligible program creates an active link", async () => {
     const { deps, links } = setup();
     const result = await createActiveLink(ctxFor(actorId), deps, createInput);
-    expect(result).toMatchObject({ ok: true, value: { status: "active", version: 2, destinationUrl: destination } });
+    expect(result).toMatchObject({ ok: true, value: { status: "active", version: 1, destinationUrl: destination } });
+    // A new link starts at version 1, as the domain documents, and the stored row carries the same version.
+    expect(links.rows.get(linkId)?.link.version).toBe(1);
+    expect(links.events[0]?.aggregateVersion).toBe(1);
     expect(links.events).toHaveLength(1);
     expect(links.events[0]?.topic).toBe("link.created");
     expect(links.audits[0]?.action).toBe("create");
