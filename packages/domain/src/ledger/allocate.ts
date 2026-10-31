@@ -33,16 +33,16 @@ export function allocate(recognized: Money, rule: ShareRule): Allocation {
   let i = 0;
   while (leftover > 0n) {
     const r = remainders[i % remainders.length];
-    const idx = r!.idx;
+    const idx = r?.idx ?? 0;
     floors[idx] = (floors[idx] ?? 0n) + 1n;
     leftover -= 1n;
     i++;
   }
 
   return {
-    publisher: Money.of(floors[0]!, recognized.currency),
-    platform: Money.of(floors[1]!, recognized.currency),
-    other: Money.of(floors[2]!, recognized.currency),
+    publisher: Money.of(floors[0] ?? 0n, recognized.currency),
+    platform: Money.of(floors[1] ?? 0n, recognized.currency),
+    other: Money.of(floors[2] ?? 0n, recognized.currency),
     roundingVersion: rule.roundingVersion,
     currency: recognized.currency,
   };
