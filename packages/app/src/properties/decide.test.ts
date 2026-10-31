@@ -74,6 +74,7 @@ class MemoryPropertyStore implements PropertyReviewStore {
 
   async recordTransition(write: PropertyTransitionWrite): Promise<boolean> {
     const current = this.records.find((r) => r.property.id === write.property.id);
+    if (current?.organizationId !== write.expectedOrganizationId) return false;
     if (current?.property.status !== write.expectedStatus) return false;
     if (this.failAudit) throw new Error("audit insert failed");
     this.records = this.records.map((r) =>
@@ -135,6 +136,7 @@ describe("decideProperty: compliance decision (TP-W3-016, TP-W3-017)", () => {
     expect(isMonetizable(store.current()!)).toBe(true);
     expect(store.writes).toEqual([
       {
+        expectedOrganizationId: orgId,
         expectedStatus: "review_pending",
         property: expect.objectContaining({ id: propertyId, status: "approved" }),
         audit: {
@@ -240,5 +242,17 @@ describe("verified is not approved (CT-006, end to end through submit and decide
     );
     expect(approved).toEqual({ ok: true, value: { status: "approved" } });
     expect(isMonetizable(store.current()!)).toBe(true);
+  });
+
+  test("a property that moves to another organization after it was read writes nothing (tenant race)", async () => {
+    const store = storeWith("review_pending");
+    const stale = store.records[0]!;
+    store.records = [{ ...stale, organizationId: otherOrgId }];
+    store.find = async () => stale;
+    const result = await decideProperty(ctxFor(reviewerId), store, input({ decision: "approve", reason: "Site live" }));
+
+    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(store.writes).toHaveLength(0);
+    expect(store.current()?.status).toBe("review_pending");
   });
 });

@@ -65,6 +65,7 @@ class MemoryPropertyStore implements PropertyReviewStore {
 
   async recordTransition(write: PropertyTransitionWrite): Promise<boolean> {
     const current = this.records.find((r) => r.property.id === write.property.id);
+    if (current?.organizationId !== write.expectedOrganizationId) return false;
     if (current?.property.status !== write.expectedStatus) return false;
     this.records = this.records.map((r) =>
       r.property.id === write.property.id ? { ...r, property: write.property } : r,
@@ -93,6 +94,7 @@ describe("submitProperty: a verified property goes to review (TP-W3-014)", () =>
     expect(store.statusOf()).toBe("review_pending");
     expect(store.writes).toEqual([
       {
+        expectedOrganizationId: orgId,
         expectedStatus: "verified",
         property: expect.objectContaining({ id: propertyId, status: "review_pending" }),
         audit: {
@@ -159,5 +161,17 @@ describe("submitProperty: a verified property goes to review (TP-W3-014)", () =>
 
     expect(result).toEqual({ ok: false, code: "UNAUTHENTICATED" });
     expect(store.findCalls).toBe(0);
+  });
+
+  test("a property that moves to another organization after it was read writes nothing (tenant race)", async () => {
+    const store = storeWith("verified");
+    const stale = store.records[0]!;
+    // The read sees the caller's organization, but the stored row has moved to another tenant with the same status.
+    store.records = [{ ...stale, organizationId: otherOrgId }];
+    store.find = async () => stale;
+    const result = await submitProperty(ctxFor(actorId), store, input);
+
+    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(store.writes).toHaveLength(0);
   });
 });

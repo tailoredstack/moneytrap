@@ -18,7 +18,9 @@ export interface PropertyTransitionAudit {
 }
 
 export interface PropertyTransitionWrite {
-  // The status the property must still hold for the write to apply. A changed status writes nothing.
+  // The organization and status the property must still hold for the write to apply. The adapter checks both in the
+  // same conditional update as the status change, so a property that moved tenants writes nothing.
+  expectedOrganizationId: Id<"organization">;
   expectedStatus: PropertyStatus;
   property: Property;
   audit: PropertyTransitionAudit;

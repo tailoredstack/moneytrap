@@ -19,6 +19,7 @@ export class FakePropertyReviewStore implements PropertyReviewStore {
 
   async recordTransition(write: PropertyTransitionWrite): Promise<boolean> {
     const current = this.records.find((record) => record.property.id === write.property.id);
+    if (current?.organizationId !== write.expectedOrganizationId) return false;
     if (current?.property.status !== write.expectedStatus) return false;
     const staged = { property: { ...write.property }, audit: { ...write.audit } };
     if (this.failAudit) throw new Error("audit write failed");
