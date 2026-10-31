@@ -167,6 +167,11 @@ async function settleVerificationLink(ctx: AuthContext, db: Kysely<any>) {
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
 async function refuseForeignOrganization(ctx: AuthContext, db: Kysely<any>): Promise<void> {
   if (!ctx.path?.startsWith("/organization/")) return;
+  // Slug availability answers whether a slug is taken, which reveals a foreign organization. No client uses it, so
+  // every caller gets the same not-found answer, whether the slug is taken or free.
+  if (ctx.path === "/organization/check-slug") {
+    throw new APIError("NOT_FOUND", { code: "RESOURCE_NOT_FOUND", message: "Resource not found" });
+  }
   const userId = (await getSessionFromCtx(ctx))?.user.id;
   if (!userId) return;
   // Every named organization is checked, so a request that names two cannot pass on the one the caller belongs to.

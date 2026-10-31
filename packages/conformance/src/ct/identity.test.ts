@@ -353,6 +353,18 @@ describeWithDatabase("[M1] identity conformance", () => {
       expect(await bodyOf(mixed)).toEqual(await bodyOf(missing));
     });
 
+    test("slug availability answers the same for a taken slug as for a free one", async () => {
+      const adaSession = await signUpVerified(ADA);
+      const outsiderSession = await signUpVerified(OUTSIDER);
+      await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession);
+
+      const taken = await post("/api/auth/organization/check-slug", { slug: "org-b" }, adaSession);
+      const free = await post("/api/auth/organization/check-slug", { slug: "org-free" }, adaSession);
+
+      expect(taken.status).toBe(free.status);
+      expect(await bodyOf(taken)).toEqual(await bodyOf(free));
+    });
+
     test("a member leaving an organization gets a success and loses the membership", async () => {
       const ownerSession = await signUpVerified(ADA);
       const inviteeSession = await signUpVerified(GRACE);
