@@ -73,6 +73,15 @@ describe("destination allow-list", () => {
     expect(validateDestination("https://shop.example.com/\x7f", allowed)).toMatchObject({ reason: "malformed" });
   });
 
+  test("an IPv6 literal is refused as a host, not as a port", () => {
+    expect(validateDestination("https://[::1]/", allowed)).toEqual({
+      ok: false,
+      code: "VALIDATION_FAILED",
+      reason: "host-not-allowed",
+    });
+    expect(validateDestination("https://[::1]:443/", allowed)).toMatchObject({ reason: "host-not-allowed" });
+  });
+
   test("a trailing-dot host does not match the entry without the dot", () => {
     expect(validateDestination("https://shop.example.com./", allowed)).toMatchObject({ reason: "host-not-allowed" });
   });

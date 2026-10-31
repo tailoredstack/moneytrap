@@ -25,6 +25,8 @@ export function validateDestination(input: string, allowedHosts: readonly string
   // The WHATWG parser takes `https:host` and `https:/host` as an authority too, so any run of slashes is skipped.
   const authority = /^https:[\\/]*([^/?#\\]*)/i.exec(raw)?.[1] ?? "";
   if (authority.includes("@")) return { ok: false, code: "VALIDATION_FAILED", reason: "credentials" };
+  // An IP literal is never on the allow-list, so it is refused as a host, not as a port (its colons are not a port).
+  if (authority.startsWith("[")) return { ok: false, code: "VALIDATION_FAILED", reason: "host-not-allowed" };
   if (authority.includes(":")) return { ok: false, code: "VALIDATION_FAILED", reason: "port" };
   const host = url.hostname;
   const allowed = allowedHosts.some((entry) => hostOf(entry) === host);
