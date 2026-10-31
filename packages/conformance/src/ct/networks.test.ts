@@ -96,6 +96,11 @@ function sweepInput(program: ProgramFactPayload, c: SweepCase): EligibilityInput
   };
 }
 
+// The policy compares countries and channels without case or surrounding space. The oracle states the same rule.
+const normalise = (value: string) => value.trim().toLowerCase();
+const listHas = (values: readonly string[], value: string) =>
+  values.some((candidate) => normalise(candidate) === normalise(value));
+
 // The rules written out independently of the policy: allow only when every rule passes.
 function expectedAllow(program: ProgramFactPayload, c: SweepCase): boolean {
   return (
@@ -103,10 +108,10 @@ function expectedAllow(program: ProgramFactPayload, c: SweepCase): boolean {
     c.property === "approved" &&
     c.approval === "approved" &&
     c.contractActive &&
-    program.countries.includes(c.geography) &&
-    program.channels.includes(c.channel) &&
-    c.contractCountries.includes(c.geography) &&
-    c.contractChannels.includes(c.channel) &&
+    listHas(program.countries, c.geography) &&
+    listHas(program.channels, c.channel) &&
+    listHas(c.contractCountries, c.geography) &&
+    listHas(c.contractChannels, c.channel) &&
     (!c.consent.required || c.consent.granted)
   );
 }
@@ -126,8 +131,8 @@ function expectedReasons(program: ProgramFactPayload, c: SweepCase): DenyReason[
     programValues: readonly string[],
     contractValues: readonly string[],
   ) => {
-    if (value === "") reasons.add("unknown");
-    else if (!programValues.includes(value) || !contractValues.includes(value)) reasons.add(reason);
+    if (normalise(value) === "") reasons.add("unknown");
+    else if (!listHas(programValues, value) || !listHas(contractValues, value)) reasons.add(reason);
   };
   dimension("geography", c.geography, program.countries, c.contractCountries);
   dimension("channel", c.channel, program.channels, c.contractChannels);
@@ -329,8 +334,9 @@ describe("[M3] network conformance", () => {
 
       // Generated cases over wider values, so the policy also sees values outside the grid.
       const random = seeded(GENERATED_SEED);
-      const geographies = ["US", "GB", "CA", "AU", ""];
-      const channels = ["website", "sms", "email", ""];
+      // Case and surrounding space vary, so a regression that drops trimming or case folding changes an outcome.
+      const geographies = ["US", "GB", "CA", "AU", "", " us ", "Us", "gb ", "   "];
+      const channels = ["website", "sms", "email", "", " WEBSITE", "Sms ", " "];
       for (let i = 0; i < GENERATED_CASES; i++) {
         assertSweepCase(program, {
           publisher: pick(random, statuses),
@@ -346,6 +352,30 @@ describe("[M3] network conformance", () => {
         cases++;
       }
       expect(cases - gridCases).toBe(GENERATED_CASES);
+    });
+
+    test("a malformed input denies with the reason for the section it breaks and never throws", async () => {
+      const { store, run } = harness();
+      await run(new RecordedNetworkSimulator("clean-catalog"));
+      const base = eligibilityFor(syncedProgram(store, "prg-1"), "US", "website");
+      // A malformed payload can leave any section undefined, or a value of the wrong type. Each must deny, not throw.
+      const malformed: [string, unknown, DenyReason][] = [
+        ["publisher missing", { ...base, publisher: undefined }, "publisher_not_approved"],
+        ["property missing", { ...base, property: undefined }, "property_not_approved"],
+        ["program section missing", { ...base, program: undefined }, "unknown"],
+        ["approval missing", { ...base, program: { ...base.program, approval: undefined } }, "unknown"],
+        ["contract missing", { ...base, contract: undefined }, "contract"],
+        ["consent missing", { ...base, consent: undefined }, "consent"],
+        ["geography not a string", { ...base, geography: 5 }, "unknown"],
+        ["channel null", { ...base, channel: null }, "unknown"],
+        ["program countries not a list", { ...base, program: { ...base.program, countries: "US" } }, "geography"],
+      ];
+
+      for (const [label, input, reason] of malformed) {
+        const decision = evaluateEligibility(input as EligibilityInput);
+        if (decision.decision !== "deny") throw new Error(`${label} was allowed`);
+        expect(decision.reasons, label).toContain(reason);
+      }
     });
   });
 
