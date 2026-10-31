@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "check:ports": "bun src/port-coverage.ts"
+  },
+  "dependencies": {
+    "@moneytrap/app": "workspace:*",
+    "@moneytrap/domain": "workspace:*"
   }
 }

@@ -49,6 +49,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@moneytrap/domain": "workspace:*",
+        "kysely": "0.29.7",
       },
     },
     "packages/conformance": {
@@ -74,6 +75,10 @@
     "packages/test-kit": {
       "name": "@moneytrap/test-kit",
       "version": "0.0.0",
+      "dependencies": {
+        "@moneytrap/app": "workspace:*",
+        "@moneytrap/domain": "workspace:*",
+      },
     },
     "spikes/binary": {
       "name": "moneytrap-binary-spike",
