@@ -23,6 +23,9 @@ import type {
   LinkWritePrecondition,
 } from "../ports/link-store";
 import type { PropertyReviewRecord, PropertyReviewStore } from "../ports/property-review-store";
+import type { RouteCache } from "../ports/route-cache";
+import type { RouteSource } from "../ports/route-source";
+import { type RouteView, readRouteView } from "../routing/route-view";
 import {
   allowsHost,
   createActiveLink,
@@ -181,8 +184,38 @@ function setup(
   };
   const properties = new MemoryProperties(live);
   const links = new MemoryLinks(live);
-  const deps = { links, properties, policy: policyFor(live) };
-  return { deps, links, live };
+  const routeCache = new RecordingRouteCache();
+  const deps = { links, properties, policy: policyFor(live), routeCache };
+  return { deps, links, live, routeCache };
+}
+
+// The ADR-007 version rule as the redirect applies it: a cached view is served only at the version last published for its
+// link. Only that rule and the publish calls are modelled here; the age bound belongs to the Redis adapter.
+class RecordingRouteCache implements RouteCache {
+  views = new Map<string, RouteView>();
+  published = new Map<string, number>();
+  publishes: { linkId: string; version: number }[] = [];
+  stall = false;
+  failing = false;
+
+  async readServerTime() {
+    return 0;
+  }
+  async get(token: string): Promise<RouteView | null> {
+    const view = this.views.get(token);
+    if (!view) return null;
+    const published = this.published.get(view.linkId);
+    return published !== undefined && published !== view.version ? null : view;
+  }
+  async put(token: string, view: RouteView) {
+    this.views.set(token, view);
+  }
+  async publishVersion(linkId: Id<"link">, version: number) {
+    this.publishes.push({ linkId, version });
+    if (this.failing) throw new Error("route cache down");
+    if (this.stall) return new Promise<void>(() => {});
+    if (version > (this.published.get(linkId) ?? -1)) this.published.set(linkId, version);
+  }
 }
 
 // A link in the given state, seeded directly, so each test starts from a known row.
@@ -674,5 +707,64 @@ describe("pause, resume, revoke", () => {
     expect(await pauseLinkAction(ctxFor(null), deps, scope)).toEqual({ ok: false, code: "UNAUTHENTICATED" });
     expect(await resumeLinkAction(ctxFor(null), deps, scope)).toEqual({ ok: false, code: "UNAUTHENTICATED" });
     expect(await revokeLinkAction(ctxFor(null), deps, scope)).toEqual({ ok: false, code: "UNAUTHENTICATED" });
+  });
+});
+
+describe("route cache invalidation (ADR-007)", () => {
+  const token = "tok";
+
+  test("every committed link write publishes its new version after the commit", async () => {
+    const { deps, links, routeCache } = setup();
+    seededLink(links, "active");
+    await pauseLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
+    expect(routeCache.publishes.at(-1)).toEqual({ linkId, version: 3 });
+    await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
+    expect(routeCache.publishes.at(-1)).toEqual({ linkId, version: 4 });
+  });
+
+  test("a refused write publishes nothing", async () => {
+    const { deps, links, routeCache } = setup();
+    seededLink(links, "revoked");
+    await pauseLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
+    expect(routeCache.publishes).toHaveLength(0);
+  });
+
+  test("a cached allow is refused on the next read after revoke, and the source reports revoked", async () => {
+    const { deps, links, routeCache } = setup();
+    seededLink(links, "active");
+    const source: RouteSource = {
+      async findByToken() {
+        const row = links.rows.get(linkId);
+        return row ? { link: row.link, eligible: true } : null;
+      },
+    };
+    const warm = await readRouteView({ cache: routeCache, source }, token);
+    expect(warm).toMatchObject({ kind: "found", view: { decision: "allow", version: 2 } });
+
+    expect(await revokeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId })).toMatchObject({
+      ok: true,
+    });
+    const after = await readRouteView({ cache: routeCache, source }, token);
+    expect(after).toMatchObject({ kind: "found", view: { decision: "deny", state: "revoked", version: 3 } });
+  });
+
+  test("a stalled publish does not hold the command, and the write still commits", async () => {
+    const { deps, links, routeCache } = setup();
+    seededLink(links, "active");
+    routeCache.stall = true;
+    const started = Date.now();
+    const result = await revokeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
+    expect(result).toMatchObject({ ok: true, value: { status: "revoked" } });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(links.rows.get(linkId)?.link.status).toBe("revoked");
+  });
+
+  test("a failed publish leaves the committed write in place and still answers ok", async () => {
+    const { deps, links, routeCache } = setup();
+    seededLink(links, "active");
+    routeCache.failing = true;
+    const result = await revokeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
+    expect(result).toMatchObject({ ok: true, value: { status: "revoked" } });
+    expect(links.rows.get(linkId)?.link.status).toBe("revoked");
   });
 });

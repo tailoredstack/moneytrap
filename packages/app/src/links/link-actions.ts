@@ -25,11 +25,15 @@ import type {
   LinkWritePrecondition,
 } from "../ports/link-store";
 import type { PropertyReviewStore } from "../ports/property-review-store";
+import type { RouteCache } from "../ports/route-cache";
+import { invalidateRouteView } from "../routing/invalidate";
 
 export interface LinkDeps {
   links: LinkStore;
   properties: PropertyReviewStore;
   policy: LinkPolicy;
+  // Receives the new version after each committed write, so a cached route view at an older version is refused (ADR-007).
+  routeCache: RouteCache;
 }
 
 // PROGRAM_INELIGIBLE carries the eligibility reasons, and STATE_CONFLICT with reason "property_not_approved" carries the
@@ -175,8 +179,11 @@ async function commit(
           event,
           precondition: input.precondition,
         });
-  if (applied) return { ok: true, value: view(input.record) };
-  return refusalOf(deps, input.organizationId, input.precondition);
+  if (!applied) return refusalOf(deps, input.organizationId, input.precondition);
+  // Publishes after the commit, so the cache never moves ahead of the row. Every write bumps the version, so every write
+  // publishes it (create, edit, pause, resume, revoke), and a revoked link is refused on its next redirect.
+  await invalidateRouteView(deps.routeCache, link.id, link.version);
+  return { ok: true, value: view(input.record) };
 }
 
 // A refused write has one of two causes: the version moved (a plain STATE_CONFLICT), or the gate no longer holds. The
