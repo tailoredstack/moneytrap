@@ -2,6 +2,7 @@ export { createOrganizationStore } from "./access/organization-store";
 export { createClickStore } from "./attribution/click-store";
 export { createCatalogSyncStore } from "./catalog/catalog-sync-store";
 export { createSourceFactStore, type SourceFactStore, type UpsertOutcome } from "./catalog/source-fact-store";
+export { createLinkStore } from "./links/link-store";
 export { migrate } from "./migrate";
 export { migrationProvider } from "./migrations";
 export { createNetworkAccountStore } from "./networks/network-account-store";
