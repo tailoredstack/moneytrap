@@ -224,7 +224,7 @@ An **operation** is defined by an actor, inputs, preconditions, result, domain e
 }
 ```
 
-Error category examples: `VALIDATION_FAILED`, `UNAUTHENTICATED`, `FORBIDDEN`, `RESOURCE_NOT_FOUND`, `STATE_CONFLICT`, `ALREADY_PROCESSED`, `TOKEN_EXPIRED`, `RATE_LIMITED`, `SOURCE_STALE`, `PROVIDER_UNAVAILABLE`, `PAYOUT_OUTCOME_UNKNOWN`, `CONSENT_REQUIRED`, `PROGRAM_INELIGIBLE`. These are semantic error codes; particular numeric transport statuses are optional mappings.
+Error category examples: `VALIDATION_FAILED`, `UNAUTHENTICATED`, `FORBIDDEN`, `RESOURCE_NOT_FOUND`, `STATE_CONFLICT`, `ALREADY_PROCESSED`, `TOKEN_EXPIRED`, `RATE_LIMITED`, `SOURCE_STALE`, `PROVIDER_UNAVAILABLE`, `PAYOUT_OUTCOME_UNKNOWN`, `CONSENT_REQUIRED`, `PROGRAM_INELIGIBLE`, `STEP_UP_REQUIRED` (privileged route without a recent second factor; 403). These are semantic error codes; particular numeric transport statuses are optional mappings.
 
 ### 7.2 Monetary value contract (illustrative representation)
 

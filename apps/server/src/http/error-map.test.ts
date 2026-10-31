@@ -24,6 +24,7 @@ describe("error HTTP map", () => {
       UNAUTHENTICATED: 401,
       TOKEN_EXPIRED: 401,
       FORBIDDEN: 403,
+      STEP_UP_REQUIRED: 403,
       CONSENT_REQUIRED: 403,
       RESOURCE_NOT_FOUND: 404,
       STATE_CONFLICT: 409,

@@ -16,6 +16,7 @@ const SPEC_SEC_7_1 = [
   "PAYOUT_OUTCOME_UNKNOWN",
   "CONSENT_REQUIRED",
   "PROGRAM_INELIGIBLE",
+  "STEP_UP_REQUIRED",
 ];
 
 describe("error codes", () => {
