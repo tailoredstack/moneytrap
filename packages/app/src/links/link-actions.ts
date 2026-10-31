@@ -4,6 +4,7 @@ import {
   createLink,
   type DenyReason,
   type EligibilityDecision,
+  type ErrorCode,
   type Id,
   type Link,
   type LinkTransition,
@@ -14,7 +15,15 @@ import {
   validateDestination,
 } from "@moneytrap/domain";
 import type { Ctx } from "../ctx";
-import type { LinkAction, LinkAudit, LinkEvent, LinkPolicy, LinkRecord, LinkStore } from "../ports/link-store";
+import type {
+  LinkAction,
+  LinkAudit,
+  LinkEvent,
+  LinkPolicy,
+  LinkRecord,
+  LinkStore,
+  LinkWritePrecondition,
+} from "../ports/link-store";
 import type { PropertyReviewStore } from "../ports/property-review-store";
 
 export interface LinkDeps {
@@ -62,6 +71,12 @@ function actorOf(ctx: Ctx): Actor | null {
   return { type: "user", id: ctx.actor.id };
 }
 
+// The domain returns only validation and state codes from these transitions. Anything else maps to VALIDATION_FAILED,
+// so an unexpected code is never passed through with the wrong type.
+function domainDenial(code: ErrorCode): LinkActionDenial {
+  return code === "STATE_CONFLICT" ? { ok: false, code: "STATE_CONFLICT" } : { ok: false, code: "VALIDATION_FAILED" };
+}
+
 function view(record: LinkRecord): LinkView {
   return {
     id: record.link.id,
@@ -107,8 +122,8 @@ async function gate(
   return { ok: true, publisherId: property.property.publisherId, hosts };
 }
 
-// Writes the change with its audit row and outbox event in one store call. An update that loses the version race
-// returns STATE_CONFLICT and writes nothing, so the caller must reload and retry.
+// Writes the change with its audit row and outbox event in one store call. The store refuses the write when the version
+// moved or the precondition no longer holds, and then the caller gets STATE_CONFLICT and nothing is written.
 async function commit(
   ctx: Ctx,
   deps: LinkDeps,
@@ -118,6 +133,7 @@ async function commit(
     record: LinkRecord;
     action: LinkAction;
     expectedVersion: number | null;
+    precondition: LinkWritePrecondition | null;
   },
 ): Promise<LinkResult> {
   const { link } = input.record;
@@ -139,16 +155,17 @@ async function commit(
     payload: { action: input.action, status: link.status },
   };
 
-  if (input.expectedVersion === null) {
-    await deps.links.insert({ record: input.record, audit, event });
-    return { ok: true, value: view(input.record) };
-  }
-  const applied = await deps.links.update({
-    expectedVersion: input.expectedVersion,
-    record: input.record,
-    audit,
-    event,
-  });
+  const applied =
+    input.expectedVersion === null
+      ? await deps.links.insert({ record: input.record, audit, event, precondition: input.precondition })
+      : await deps.links.update({
+          organizationId: input.organizationId,
+          expectedVersion: input.expectedVersion,
+          record: input.record,
+          audit,
+          event,
+          precondition: input.precondition,
+        });
   if (!applied) return { ok: false, code: "STATE_CONFLICT" };
   return { ok: true, value: view(input.record) };
 }
@@ -206,9 +223,9 @@ export async function createActiveLink(ctx: Ctx, deps: LinkDeps, input: CreateLi
     destination: input.destination,
     allowedHosts: checked.hosts,
   });
-  if (!created.ok) return { ok: false, code: created.code as "VALIDATION_FAILED" };
+  if (!created.ok) return domainDenial(created.code);
   const active = activateLink(created.value, checked.hosts);
-  if (!active.ok) return { ok: false, code: active.code as "VALIDATION_FAILED" };
+  if (!active.ok) return domainDenial(active.code);
 
   return commit(ctx, deps, {
     actor,
@@ -216,20 +233,26 @@ export async function createActiveLink(ctx: Ctx, deps: LinkDeps, input: CreateLi
     record: { link: active.value, organizationId: input.organizationId, programId },
     action: "create",
     expectedVersion: null,
+    precondition: { propertyId, programId },
   });
 }
 
 // Loads a link inside the caller's organization. A link of another tenant is RESOURCE_NOT_FOUND.
-async function loadLink(deps: LinkDeps, organizationId: Id<"organization">, linkId: string) {
+async function loadLink(
+  deps: LinkDeps,
+  organizationId: Id<"organization">,
+  linkId: string,
+): Promise<{ ok: true; record: LinkRecord } | LinkActionDenial> {
   const id = parseId("link", linkId);
-  if (id === null) return { ok: false as const, code: "VALIDATION_FAILED" as const };
+  if (id === null) return { ok: false, code: "VALIDATION_FAILED" };
   const record = await deps.links.find(organizationId, id);
-  if (!record) return { ok: false as const, code: "RESOURCE_NOT_FOUND" as const };
-  return { ok: true as const, record };
+  if (!record) return { ok: false, code: "RESOURCE_NOT_FOUND" };
+  return { ok: true, record };
 }
 
-// Changes the destination of a link (API-039). The destination is re-checked against the program's allow-list, and the
-// version goes up only when the change applies. Revoked links cannot change (STATE_CONFLICT from the domain).
+// Changes the destination of a link (API-039). A revoked link reports STATE_CONFLICT before the gate runs, so a revoked
+// link never reports a property or eligibility reason. The destination is re-checked against the program's allow-list,
+// and the version goes up only when the change applies.
 export async function editLinkDestination(
   ctx: Ctx,
   deps: LinkDeps,
@@ -240,18 +263,20 @@ export async function editLinkDestination(
   const loaded = await loadLink(deps, input.organizationId, input.linkId);
   if (!loaded.ok) return loaded;
   const { record } = loaded;
+  if (record.link.status === "revoked") return { ok: false, code: "STATE_CONFLICT" };
 
   const checked = await gate(deps, input.organizationId, record.link.propertyId, record.programId);
   if (!checked.ok) return checked;
 
   const changed = changeDestination(record.link, input.destination, checked.hosts);
-  if (!changed.ok) return { ok: false, code: changed.code as "STATE_CONFLICT" | "VALIDATION_FAILED" };
+  if (!changed.ok) return domainDenial(changed.code);
   return commit(ctx, deps, {
     actor,
     organizationId: input.organizationId,
     record: { ...record, link: changed.value },
     action: "edit",
     expectedVersion: record.link.version,
+    precondition: { propertyId: record.link.propertyId, programId: record.programId },
   });
 }
 
@@ -266,6 +291,7 @@ export async function pauseLinkAction(
 }
 
 // Resumes a paused link. Resuming monetizes again, so it passes the gate and re-checks the destination (activateLink).
+// A revoked link reports STATE_CONFLICT before the gate runs.
 export async function resumeLinkAction(
   ctx: Ctx,
   deps: LinkDeps,
@@ -276,18 +302,20 @@ export async function resumeLinkAction(
   const loaded = await loadLink(deps, input.organizationId, input.linkId);
   if (!loaded.ok) return loaded;
   const { record } = loaded;
+  if (record.link.status === "revoked") return { ok: false, code: "STATE_CONFLICT" };
 
   const checked = await gate(deps, input.organizationId, record.link.propertyId, record.programId);
   if (!checked.ok) return checked;
 
   const resumed = activateLink(record.link, checked.hosts);
-  if (!resumed.ok) return { ok: false, code: resumed.code as "STATE_CONFLICT" | "VALIDATION_FAILED" };
+  if (!resumed.ok) return domainDenial(resumed.code);
   return commit(ctx, deps, {
     actor,
     organizationId: input.organizationId,
     record: { ...record, link: resumed.value },
     action: "resume",
     expectedVersion: record.link.version,
+    precondition: { propertyId: record.link.propertyId, programId: record.programId },
   });
 }
 
@@ -315,12 +343,13 @@ async function transition(
   const { record } = loaded;
 
   const next = step(record.link);
-  if (!next.ok) return { ok: false, code: next.code as "STATE_CONFLICT" | "VALIDATION_FAILED" };
+  if (!next.ok) return domainDenial(next.code);
   return commit(ctx, deps, {
     actor,
     organizationId: input.organizationId,
     record: { ...record, link: next.value },
     action,
     expectedVersion: record.link.version,
+    precondition: null,
   });
 }

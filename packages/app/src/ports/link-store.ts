@@ -42,10 +42,32 @@ export interface LinkPolicy {
   ): Promise<EligibilityDecision | null>;
 }
 
-// Each write commits its row with its audit row and outbox event, or none of them. An update applies only when the
-// stored version still equals expectedVersion; otherwise it returns false and writes nothing.
+// A monetized write (create, edit, resume) must still hold the gate it passed. The adapter checks, in the same
+// transaction as the link row, that the property is approved and the latest eligibility decision allows the program.
+// A suspension or a deny decision that lands after the gate therefore blocks the write (CT-006, CT-010).
+export interface LinkWritePrecondition {
+  propertyId: Id<"property">;
+  programId: Id<"program">;
+}
+
+// Each write commits its row with its audit row and outbox event, or none of them. The write applies only when the
+// stored version still equals expectedVersion (update), and when the precondition still holds (if one is given).
+// It returns false and writes nothing when either check fails, so the caller must reload and decide again.
 export interface LinkStore {
   find(organizationId: Id<"organization">, linkId: Id<"link">): Promise<LinkRecord | null>;
-  insert(write: { record: LinkRecord; audit: LinkAudit; event: LinkEvent }): Promise<void>;
-  update(write: { expectedVersion: number; record: LinkRecord; audit: LinkAudit; event: LinkEvent }): Promise<boolean>;
+  insert(write: {
+    record: LinkRecord;
+    audit: LinkAudit;
+    event: LinkEvent;
+    precondition: LinkWritePrecondition | null;
+  }): Promise<boolean>;
+  // The organization is part of the match, so an update can never reach another tenant's row.
+  update(write: {
+    organizationId: Id<"organization">;
+    expectedVersion: number;
+    record: LinkRecord;
+    audit: LinkAudit;
+    event: LinkEvent;
+    precondition: LinkWritePrecondition | null;
+  }): Promise<boolean>;
 }
