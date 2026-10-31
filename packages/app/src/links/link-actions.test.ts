@@ -27,6 +27,7 @@ import type { RouteCache } from "../ports/route-cache";
 import type { RouteSource } from "../ports/route-source";
 import { type RouteView, readRouteView } from "../routing/route-view";
 import {
+  activateLinkAction,
   allowsHost,
   createActiveLink,
   editLinkDestination,
@@ -794,5 +795,24 @@ describe("route cache invalidation (ADR-007)", () => {
     const result = await revokeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
     expect(result).toMatchObject({ ok: true, value: { status: "revoked" } });
     expect(links.rows.get(linkId)?.link.status).toBe("revoked");
+  });
+});
+
+describe("draft activation (WP-5.3)", () => {
+  test("a draft publishes link.updated when written, and link.created when it becomes active", async () => {
+    const { deps, links } = setup();
+    const drafted = await createActiveLink(ctxFor(actorId), deps, {
+      organizationId: orgId,
+      propertyId,
+      programId,
+      destination,
+      status: "draft",
+    });
+    expect(drafted.ok && drafted.value.status).toBe("draft");
+    expect(links.events.at(-1)?.topic).toBe("link.updated");
+
+    const activated = await activateLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
+    expect(activated.ok && activated.value.status).toBe("active");
+    expect(links.events.at(-1)?.topic).toBe("link.created");
   });
 });

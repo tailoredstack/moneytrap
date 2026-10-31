@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { BulkJob } from "@moneytrap/app/src/ports/bulk-job-store";
+import type { BulkJob, BulkJobRow } from "@moneytrap/app/src/ports/bulk-job-store";
 import { type Id, parseId } from "@moneytrap/domain";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
@@ -43,6 +43,10 @@ const job = (overrides: Partial<BulkJob> = {}): BulkJob => ({
   ],
   ...overrides,
 });
+
+const LEASE_MS = 5 * 60 * 1000;
+const t0 = new Date("2026-10-31T10:00:00.000Z");
+const claimAt = (owner: string, now: Date) => ({ owner, now, expiresAt: new Date(now.getTime() + LEASE_MS) });
 
 describeWithDatabase("bulk job store (DM-029, TP-W5-017, WP-5.3)", () => {
   let pool: Pool;
@@ -89,20 +93,71 @@ describeWithDatabase("bulk job store (DM-029, TP-W5-017, WP-5.3)", () => {
     expect(await store.find(otherOrgId, submissionId)).toBeNull();
   });
 
-  test("a saved row replaces the pending result, and saving it again leaves one row", async () => {
+  test("a pending row is claimed once, a live claim is not taken over, and a lapsed claim can be", async () => {
     const store = createBulkJobStore(db);
     await store.create(job());
-    const created = {
+    expect(await store.claimRow(orgId, submissionId, 1, claimAt("run-a", t0))).toBe(true);
+    expect(await store.claimRow(orgId, submissionId, 1, claimAt("run-b", t0))).toBe(false);
+    const later = new Date(t0.getTime() + LEASE_MS + 1);
+    expect(await store.claimRow(orgId, submissionId, 1, claimAt("run-b", later))).toBe(true);
+    expect(await store.claimRow(orgId, submissionId, 2, claimAt("run-b", later))).toBe(false);
+  });
+
+  test("a run that lost its row to a lapsed claim cannot save it, and the holder can", async () => {
+    const store = createBulkJobStore(db);
+    await store.create(job());
+    const created: BulkJobRow = {
       row: 1,
       programId,
       destination: "https://shop.example.com/a",
-      status: "created" as const,
+      status: "created",
       linkId: "lnk_x",
       code: null,
       reason: null,
     };
-    await store.saveRow(orgId, submissionId, created);
-    await store.saveRow(orgId, submissionId, created);
+    const later = new Date(t0.getTime() + LEASE_MS + 1);
+    await store.claimRow(orgId, submissionId, 1, claimAt("run-a", t0));
+    await store.claimRow(orgId, submissionId, 1, claimAt("run-b", later));
+    expect(await store.saveRow(orgId, submissionId, created, "run-a")).toBe(false);
+    expect(await store.saveRow(orgId, submissionId, created, "run-b")).toBe(true);
+    const stored = await store.find(orgId, submissionId);
+    expect(stored?.rows[0]).toEqual({ ...created, programId });
+  });
+
+  test("a final row is not replaced by a later save", async () => {
+    const store = createBulkJobStore(db);
+    await store.create(job());
+    const rejected: BulkJobRow = {
+      row: 2,
+      programId: null,
+      destination: "x",
+      status: "rejected",
+      linkId: null,
+      code: "STATE_CONFLICT",
+      reason: "property_not_approved",
+    };
+    expect(await store.saveRow(orgId, submissionId, { ...rejected, status: "created", linkId: "lnk_y" }, "run-a")).toBe(
+      false,
+    );
+    const stored = await store.find(orgId, submissionId);
+    expect(stored?.rows[1]).toEqual(job().rows[1]);
+  });
+
+  test("a saved row is final: saving it again leaves one row", async () => {
+    const store = createBulkJobStore(db);
+    await store.create(job());
+    const created: BulkJobRow = {
+      row: 1,
+      programId,
+      destination: "https://shop.example.com/a",
+      status: "created",
+      linkId: "lnk_x",
+      code: null,
+      reason: null,
+    };
+    await store.claimRow(orgId, submissionId, 1, claimAt("run-a", t0));
+    expect(await store.saveRow(orgId, submissionId, created, "run-a")).toBe(true);
+    expect(await store.saveRow(orgId, submissionId, created, "run-a")).toBe(false);
     await store.setState(orgId, submissionId, "completed");
     const stored = await store.find(orgId, submissionId);
     expect(stored?.state).toBe("completed");

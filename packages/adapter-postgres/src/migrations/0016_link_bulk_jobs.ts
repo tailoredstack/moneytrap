@@ -27,6 +27,8 @@ export const linkBulkJobs: Migration = {
       .addColumn("link_id", "text")
       .addColumn("code", "text")
       .addColumn("reason", "text")
+      .addColumn("claim_owner", "text")
+      .addColumn("claim_expires_at", "timestamptz")
       .addPrimaryKeyConstraint("link_bulk_rows_pk", ["organization_id", "submission_id", "row_index"])
       .addForeignKeyConstraint(
         "link_bulk_rows_job_fk",

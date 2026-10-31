@@ -100,6 +100,12 @@ function storeWith(status: PropertyStatus, organizationId = orgId): MemoryProper
 
 const input = (body: unknown) => ({ propertyId, organizationId: orgId, body });
 
+// Returns the value, or fails the test when it is missing, so a test never reads through a null.
+function required<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error("expected a value");
+  return value;
+}
+
 describe("decideProperty: reason is required", () => {
   test("an approval without a reason is refused with VALIDATION_FAILED and nothing is written", async () => {
     const store = storeWith("review_pending");
@@ -138,7 +144,7 @@ describe("decideProperty: compliance decision (TP-W3-016, TP-W3-017)", () => {
 
     expect(result).toEqual({ ok: true, value: { status: "approved" } });
     expect(store.current()?.status).toBe("approved");
-    expect(isMonetizable(store.current()!)).toBe(true);
+    expect(isMonetizable(required(store.current()))).toBe(true);
     expect(store.writes).toEqual([
       {
         expectedOrganizationId: orgId,
@@ -168,7 +174,7 @@ describe("decideProperty: compliance decision (TP-W3-016, TP-W3-017)", () => {
 
     expect(result).toEqual({ ok: true, value: { status: "rejected" } });
     expect(store.current()).toEqual(expect.objectContaining({ status: "rejected", rejectionReason: "Site is parked" }));
-    expect(isMonetizable(store.current()!)).toBe(false);
+    expect(isMonetizable(required(store.current()))).toBe(false);
     expect(store.writes[0]?.audit).toEqual(
       expect.objectContaining({ action: "reject", metadata: { reason: "Site is parked" } }),
     );
@@ -196,7 +202,7 @@ describe("decideProperty: compliance decision (TP-W3-016, TP-W3-017)", () => {
 
   test("a property another writer moved after it was read is STATE_CONFLICT and nothing is written", async () => {
     const store = storeWith("review_pending");
-    const stale = store.records[0]!;
+    const stale = required(store.records[0]);
     store.records = [{ ...stale, property: { ...stale.property, status: "suspended" } }];
     store.find = async () => stale;
     const result = await decideProperty(ctxFor(reviewerId), store, input({ decision: "approve", reason: "Site live" }));
@@ -234,11 +240,11 @@ describe("decideProperty: scope and identity", () => {
 describe("verified is not approved (CT-006, end to end through submit and decide)", () => {
   test("a verified property is not monetizable until a reviewer approves it", async () => {
     const store = storeWith("verified");
-    expect(isMonetizable(store.current()!)).toBe(false);
+    expect(isMonetizable(required(store.current()))).toBe(false);
 
     const submitted = await submitProperty(ctxFor(reviewerId), store, { propertyId, organizationId: orgId });
     expect(submitted).toEqual({ ok: true, value: { status: "review_pending" } });
-    expect(isMonetizable(store.current()!)).toBe(false);
+    expect(isMonetizable(required(store.current()))).toBe(false);
 
     const approved = await decideProperty(
       ctxFor(reviewerId),
@@ -246,12 +252,12 @@ describe("verified is not approved (CT-006, end to end through submit and decide
       input({ decision: "approve", reason: "Site live" }),
     );
     expect(approved).toEqual({ ok: true, value: { status: "approved" } });
-    expect(isMonetizable(store.current()!)).toBe(true);
+    expect(isMonetizable(required(store.current()))).toBe(true);
   });
 
   test("a property that moves to another organization after it was read writes nothing (tenant race)", async () => {
     const store = storeWith("review_pending");
-    const stale = store.records[0]!;
+    const stale = required(store.records[0]);
     store.records = [{ ...stale, organizationId: otherOrgId }];
     store.find = async () => stale;
     const result = await decideProperty(ctxFor(reviewerId), store, input({ decision: "approve", reason: "Site live" }));

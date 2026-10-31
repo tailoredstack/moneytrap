@@ -29,6 +29,12 @@ function seeded(): FakePublisherReviewStore {
   return store;
 }
 
+// Returns the value, or fails the test when it is missing, so a test never reads through a null.
+function required<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error("expected a value");
+  return value;
+}
+
 describe("FakePublisherReviewStore", () => {
   test("commits the new status and the audit row together", async () => {
     const store = seeded();
@@ -39,7 +45,7 @@ describe("FakePublisherReviewStore", () => {
 
   test("a write against a status the publisher no longer holds applies nothing", async () => {
     const store = seeded();
-    store.records = [{ ...store.records[0]!, publisher: { ...publisher, status: "suspended" } }];
+    store.records = [{ ...required(store.records[0]), publisher: { ...publisher, status: "suspended" } }];
     expect(await store.recordDecision(write())).toBe(false);
     expect(store.records[0]?.publisher.status).toBe("suspended");
     expect(store.audits).toHaveLength(0);

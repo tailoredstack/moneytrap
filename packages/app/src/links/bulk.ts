@@ -1,7 +1,13 @@
 import { type Id, parseId } from "@moneytrap/domain";
 import type { Ctx } from "../ctx";
 import type { BulkJob, BulkJobRow, BulkJobState, BulkJobStore } from "../ports/bulk-job-store";
-import { createActiveLink, type LinkActionDenial, type LinkDeps } from "./link-actions";
+import {
+  activateLinkAction,
+  createActiveLink,
+  type LinkActionDenial,
+  type LinkDeps,
+  revokeLinkAction,
+} from "./link-actions";
 
 // Bulk CSV link creation (UC12, API-041, API-042, DM-029, WP-5.3). A job is submitted once under a stable key, and each
 // row then goes through createActiveLink, the same action and guards as a single create (UC11). A row's result is final
@@ -11,6 +17,9 @@ export const MAX_BULK_CSV_BYTES = 1024 * 1024;
 export const MAX_BULK_ROWS = 10_000;
 const SUBMISSION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const HEADER = ["program_id", "destination"];
+// How long a run holds a row before another run may take it over. A live run is not interrupted, and a run that stopped
+// releases its rows once this has passed.
+const CLAIM_LEASE_MS = 5 * 60 * 1000;
 
 export interface BulkDeps {
   jobs: BulkJobStore;
@@ -26,6 +35,8 @@ export interface BulkJobView {
   submissionId: string;
   propertyId: Id<"property">;
   state: BulkJobState;
+  // Set once the job is completed: succeeded when no row was rejected, partial when some were, failed when all were.
+  outcome: "succeeded" | "partial" | "failed" | null;
   total: number;
   processed: number;
   failed: number;
@@ -70,7 +81,7 @@ export async function submitBulkJob(ctx: Ctx, deps: BulkDeps, input: SubmitBulkI
   const header = records?.[0];
   if (!records || !header || !isHeader(header)) return { ok: false, code: "VALIDATION_FAILED" };
   const dataRecords = records.slice(1);
-  if (dataRecords.length > MAX_BULK_ROWS) return { ok: false, code: "VALIDATION_FAILED" };
+  if (dataRecords.length === 0 || dataRecords.length > MAX_BULK_ROWS) return { ok: false, code: "VALIDATION_FAILED" };
 
   const job: BulkJob = {
     organizationId: input.organizationId,
@@ -86,9 +97,10 @@ export async function submitBulkJob(ctx: Ctx, deps: BulkDeps, input: SubmitBulkI
   return stored ? sameSubmission(stored) : { ok: false, code: "STATE_CONFLICT" };
 }
 
-// Runs every pending row of a job through createActiveLink, then marks the job completed. A row that already has a final
-// result is skipped, so a retry after a crash resumes at the first row that is not final (TP-W5-015). A completed job is
-// returned as it is.
+// Runs the rows of a job through createActiveLink, then marks the job completed once every row is final. A run claims each
+// row it works on, and it saves only the rows it still holds. A row a stopped run left at processing is taken over and
+// resumed: its link ID is fixed, so a second attempt cannot create a second link (TP-W5-015). A completed job is returned
+// as it is.
 export async function runBulkJob(ctx: Ctx, deps: BulkDeps, ref: BulkJobRef): Promise<BulkResult> {
   if (!signedIn(ctx)) return { ok: false, code: "UNAUTHENTICATED" };
   const job = await deps.jobs.find(ref.organizationId, ref.submissionId);
@@ -96,47 +108,146 @@ export async function runBulkJob(ctx: Ctx, deps: BulkDeps, ref: BulkJobRef): Pro
   if (job.state === "completed") return { ok: true, value: viewOf(job) };
 
   await deps.jobs.setState(ref.organizationId, ref.submissionId, "running");
-  const rows: BulkJobRow[] = [];
+  // Each run has its own owner, so a row another run takes over cannot be saved by this one.
+  const owner: string = ctx.ids.next("event");
   for (const row of job.rows) {
-    if (row.status !== "pending") {
-      rows.push(row);
-      continue;
-    }
-    const final = await processRow(ctx, deps, job, row);
-    await deps.jobs.saveRow(ref.organizationId, ref.submissionId, final);
-    rows.push(final);
+    if (row.status !== "pending" && row.status !== "processing") continue;
+    const now = ctx.clock.now();
+    const claim = { owner, now, expiresAt: new Date(now.getTime() + CLAIM_LEASE_MS) };
+    if (!(await deps.jobs.claimRow(ref.organizationId, ref.submissionId, row.row, claim))) continue;
+    const final = await processRow(ctx, deps, job, row, claim.expiresAt, owner);
+    // The claim lapsed before the link was written, so nothing was written and another run takes the row.
+    if (final === null) continue;
+    // A save is refused when another run took the row or it is already final. The row then belongs to that run, so this run
+    // writes nothing more for it. The end-of-run sweep below covers any link under a rejected row.
+    const saved = await deps.jobs.saveRow(ref.organizationId, ref.submissionId, final, owner);
+    if (!saved) continue;
   }
-  await deps.jobs.setState(ref.organizationId, ref.submissionId, "completed");
-  return { ok: true, value: viewOf({ ...job, state: "completed", rows }) };
+
+  // The view and the completion check read the stored rows, so another run's results are reported as they are stored. A
+  // job completes only when every row is final and no rejected row keeps a live link.
+  const latest = await deps.jobs.find(ref.organizationId, ref.submissionId);
+  if (!latest) return { ok: false, code: "RESOURCE_NOT_FOUND" };
+  const revoked = await revokeRejectedLinks(ctx, deps, ref, latest.rows);
+  const activated = await activateCreatedLinks(ctx, deps, ref, latest.rows);
+  if (revoked && activated && latest.rows.every((row) => row.status === "created" || row.status === "rejected")) {
+    await deps.jobs.setState(ref.organizationId, ref.submissionId, "completed");
+    return { ok: true, value: viewOf({ ...latest, state: "completed" }) };
+  }
+  return { ok: true, value: viewOf(latest) };
+}
+
+// A rejected row never keeps a live link. A link under a rejected row's ID can only come from a run that raced for the row,
+// and that run may finish after this one, so every run checks the rejected rows at its end. Returns false when a revoke was
+// refused, and then the job does not complete, so the next run tries again.
+async function revokeRejectedLinks(ctx: Ctx, deps: BulkDeps, ref: BulkJobRef, rows: BulkJobRow[]): Promise<boolean> {
+  let clean = true;
+  for (const row of rows) {
+    if (row.status !== "rejected") continue;
+    const linkId = await rowLinkId(ref.organizationId, ref.submissionId, row.row);
+    const stored = await deps.links.links.find(ref.organizationId, linkId);
+    // Only an active or paused link can be revoked. A draft was never routable, so it is left as it is.
+    if (!stored || (stored.link.status !== "active" && stored.link.status !== "paused")) continue;
+    const revoked = await revokeLinkAction(ctx, deps.links, { organizationId: ref.organizationId, linkId });
+    if (!revoked.ok) clean = false;
+  }
+  return clean;
 }
 
 // Reads a job and its per-row results (API-042). The job is tenant-scoped, so another organization's submission is
 // RESOURCE_NOT_FOUND.
-export async function readBulkJob(deps: BulkDeps, ref: BulkJobRef): Promise<BulkResult> {
+export async function readBulkJob(ctx: Ctx, deps: BulkDeps, ref: BulkJobRef): Promise<BulkResult> {
+  if (!signedIn(ctx)) return { ok: false, code: "UNAUTHENTICATED" };
   const job = await deps.jobs.find(ref.organizationId, ref.submissionId);
   return job ? { ok: true, value: viewOf(job) } : { ok: false, code: "RESOURCE_NOT_FOUND" };
 }
 
-// Creates the link for one pending row. The link ID is derived from the organization, the submission, and the row, so
-// a retry names the same link. If the link already exists, an earlier attempt created it before it saved the row, and
-// the row is created with that link. A second link is never written.
-async function processRow(ctx: Ctx, deps: BulkDeps, job: BulkJob, row: BulkJobRow): Promise<BulkJobRow> {
+// A created row's link becomes active only here, after the row is final. A link still in draft under a created row is
+// activated by any run that sees it. A link that cannot activate, because its gate no longer holds, keeps the job running,
+// so the next run tries again.
+async function activateCreatedLinks(ctx: Ctx, deps: BulkDeps, ref: BulkJobRef, rows: BulkJobRow[]): Promise<boolean> {
+  let clean = true;
+  for (const row of rows) {
+    if (row.status !== "created") continue;
+    const linkId = await rowLinkId(ref.organizationId, ref.submissionId, row.row);
+    const stored = await deps.links.links.find(ref.organizationId, linkId);
+    if (stored?.link.status !== "draft") continue;
+    const activated = await activateLinkAction(ctx, deps.links, { organizationId: ref.organizationId, linkId });
+    if (!activated.ok) clean = false;
+  }
+  return clean;
+}
+
+// Creates the link for one pending row. The link ID is derived from the organization, the submission, and the row, so a
+// retry names the same link, and a second link is never written. A new link is written as a draft under the fence, so a
+// lapsed claim writes nothing (null: left for the run that holds the row). Whatever link the row has, it is settled the
+// same way: the row is held before any draft is activated, so a row another run has finalized is never activated.
+async function processRow(
+  ctx: Ctx,
+  deps: BulkDeps,
+  job: BulkJob,
+  row: BulkJobRow,
+  expiresAt: Date,
+  owner: string,
+): Promise<BulkJobRow | null> {
   if (row.programId === null || row.destination === null) {
     return { ...row, status: "rejected", code: "VALIDATION_FAILED", reason: "row_incomplete" };
   }
   const linkId = await rowLinkId(job.organizationId, job.submissionId, row.row);
-  const result = await createActiveLink(ctx, deps.links, {
-    organizationId: job.organizationId,
-    propertyId: job.propertyId,
-    programId: row.programId,
-    destination: row.destination,
-    linkId,
-  });
-  if (result.ok) return { ...row, status: "created", linkId, code: null, reason: null };
-  if (await deps.links.links.find(job.organizationId, linkId)) {
-    return { ...row, status: "created", linkId, code: null, reason: null };
+  // Look first: a link already stored under this ID is the outcome of an earlier attempt, whatever the store does on a
+  // repeat insert.
+  if (!(await deps.links.links.find(job.organizationId, linkId))) {
+    let lapsed = false;
+    const result = await createActiveLink(ctx, deps.links, {
+      organizationId: job.organizationId,
+      propertyId: job.propertyId,
+      programId: row.programId,
+      destination: row.destination,
+      linkId,
+      status: "draft",
+      rowClaim: { organizationId: job.organizationId, submissionId: job.submissionId, row: row.row, owner },
+      beforeWrite: () => {
+        lapsed = ctx.clock.now().getTime() >= expiresAt.getTime();
+        return !lapsed;
+      },
+    });
+    if (!result.ok && !(await deps.links.links.find(job.organizationId, linkId))) {
+      if (lapsed) return null;
+      return { ...row, status: "rejected", linkId: null, code: result.code, reason: reasonOf(result) };
+    }
   }
-  return { ...row, status: "rejected", linkId: null, code: result.code, reason: reasonOf(result) };
+  // The row is held before the link is activated. A row another run has finalized is refused here, so its draft is never
+  // activated, and a lost claim leaves the row for the run that holds it.
+  const held = await deps.jobs.saveRow(
+    job.organizationId,
+    job.submissionId,
+    { ...row, status: "processing", linkId },
+    owner,
+  );
+  if (!held) return null;
+  const stored = await deps.links.links.find(job.organizationId, linkId);
+  if (stored?.link.status === "draft") {
+    const activated = await activateLinkAction(ctx, deps.links, {
+      organizationId: job.organizationId,
+      linkId,
+      rowClaim: { organizationId: job.organizationId, submissionId: job.submissionId, row: row.row, owner },
+    });
+    // The gate refused activation, so the row is rejected and its link stays a draft.
+    if (!activated.ok)
+      return { ...row, status: "rejected", linkId: null, code: activated.code, reason: reasonOf(activated) };
+  }
+  // A link that is neither a draft nor active is not live. A row that is still processing cannot finish created with it: a
+  // link revoked or paused after an earlier attempt activated it is a rejection, not a success.
+  if (stored?.link.status !== "active" && stored?.link.status !== "draft") {
+    return {
+      ...row,
+      status: "rejected",
+      linkId: null,
+      code: "STATE_CONFLICT",
+      reason: stored ? `link_${stored.link.status}` : "link_missing",
+    };
+  }
+  return { ...row, status: "created", linkId, code: null, reason: null };
 }
 
 // Validates one data row's shape. A row with the wrong number of cells, an invalid program ID, or an empty destination is
@@ -170,11 +281,19 @@ function viewOf(job: BulkJob): BulkJobView {
     submissionId: job.submissionId,
     propertyId: job.propertyId,
     state: job.state,
+    outcome: job.state === "completed" ? outcomeOf(job) : null,
     total: job.rows.length,
-    processed: job.rows.filter((row) => row.status !== "pending").length,
+    processed: job.rows.filter((row) => row.status === "created" || row.status === "rejected").length,
     failed: job.rows.filter((row) => row.status === "rejected").length,
     rows: job.rows,
   };
+}
+
+// The job's result as a whole. A job with any rejected row is never a success.
+function outcomeOf(job: BulkJob): "succeeded" | "partial" | "failed" {
+  const rejected = job.rows.filter((row) => row.status === "rejected").length;
+  if (rejected === 0) return "succeeded";
+  return rejected === job.rows.length ? "failed" : "partial";
 }
 
 function reasonOf(denial: LinkActionDenial): string | null {
@@ -203,7 +322,9 @@ async function rowLinkId(organizationId: string, submissionId: string, row: numb
 
 // RFC 4180 records. Commas separate cells, a quoted cell may hold commas and line breaks, and a doubled quote is a literal
 // quote. Blank lines are skipped. An unclosed quote returns null, so a broken file is refused as a whole.
-export function parseCsv(text: string): string[][] | null {
+export function parseCsv(input: string): string[][] | null {
+  // A UTF-8 byte order mark, which spreadsheet exports often add, is not part of the first cell.
+  const text = input.startsWith("﻿") ? input.slice(1) : input;
   const records: string[][] = [];
   let record: string[] = [];
   let cell = "";

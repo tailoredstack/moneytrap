@@ -58,7 +58,16 @@ async function holds(
   organizationId: Id<"organization">,
   precondition: LinkWritePrecondition,
 ): Promise<boolean> {
-  const { propertyId, programId, host } = precondition;
+  const { propertyId, programId, host, rowClaim } = precondition;
+  // A bulk row's claim is still held by this owner. The row is locked for share, so a takeover or a final save of the row
+  // waits until this write commits, and a run that lost its row writes nothing (WP-5.3).
+  if (rowClaim) {
+    const held = await sql`select 1 from link_bulk_rows
+      where organization_id = ${rowClaim.organizationId} and submission_id = ${rowClaim.submissionId}
+        and row_index = ${rowClaim.row} and status = 'processing' and claim_owner = ${rowClaim.owner}
+      for share`.execute(tx);
+    if (held.rows.length === 0) return false;
+  }
   const property = await sql<{ status: string }>`select status from properties
     where id = ${propertyId} and organization_id = ${organizationId} for share`.execute(tx);
   if (property.rows[0]?.status !== "approved") return false;

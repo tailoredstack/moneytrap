@@ -5,6 +5,7 @@ import type {
   LinkRecord,
   LinkStore,
   LinkWritePrecondition,
+  RowClaimFence,
 } from "@moneytrap/app/src/ports/link-store";
 import type { EligibilityDecision, Id, PropertyStatus } from "@moneytrap/domain";
 
@@ -19,6 +20,8 @@ export class FakeLinkStore implements LinkStore, LinkPolicy {
   readonly propertyStatuses = new Map<string, PropertyStatus>();
   // Organization, property, and program (`organizationId|propertyId|programId`) to the latest eligibility decision.
   readonly decisions = new Map<string, EligibilityDecision>();
+  // Whether a bulk row claim still holds. Without it, a write that names a row claim is refused (fails closed).
+  rowClaimHolds: ((claim: RowClaimFence) => boolean) | null = null;
 
   setAllowedHosts(programId: Id<"program">, hosts: readonly string[]): void {
     this.hosts.set(programId, hosts);
@@ -94,6 +97,7 @@ export class FakeLinkStore implements LinkStore, LinkPolicy {
   // and the host must still be on the program's allow-list, as the port requires.
   private holds(organizationId: Id<"organization">, precondition: LinkWritePrecondition | null): boolean {
     if (!precondition) return true;
+    if (precondition.rowClaim && !this.rowClaimHolds?.(precondition.rowClaim)) return false;
     const { propertyId, programId, host } = precondition;
     if (this.propertyStatuses.get(`${organizationId}|${propertyId}`) !== "approved") return false;
     if (this.decisions.get(`${organizationId}|${propertyId}|${programId}`)?.decision !== "allow") return false;
