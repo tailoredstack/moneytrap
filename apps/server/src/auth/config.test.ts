@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Pool } from "pg";
 import { authOptions } from "./config";
 import type { AuthMailer } from "./mailer";
+import { recordFailedSignIn } from "./rate-limit";
 
 // Config assertions only. No database is opened: the pool is never connected here.
 function setup() {
@@ -19,6 +20,14 @@ function setup() {
     secret: "test-secret-at-least-32-characters-long",
     baseURL: "https://moneytrap.test",
     mailer,
+    rateLimitCounter: {
+      async increment() {
+        return 1;
+      },
+      async count() {
+        return 0;
+      },
+    },
   });
   return { options, sent };
 }
@@ -94,5 +103,54 @@ describe("Better Auth config (Blueprint §7)", () => {
 
     expect(options.secret).toBe("test-secret-at-least-32-characters-long");
     expect(options.baseURL).toBe("https://moneytrap.test");
+  });
+});
+
+describe("auth rate limits (WP-2.14)", () => {
+  test("enables Better Auth limits with the per-IP rules and the shared counter", () => {
+    const { options } = setup();
+
+    expect(options.rateLimit?.enabled).toBe(true);
+    expect(Object.keys(options.rateLimit?.customRules ?? {}).sort()).toEqual([
+      "/forget-password",
+      "/request-password-reset",
+      "/sign-in/email",
+    ]);
+    expect(options.rateLimit?.customStorage).toBeDefined();
+  });
+
+  test("refuses a login once the email has used up its failed attempts, before the password is checked", async () => {
+    const counts = new Map<string, number>();
+    const counter = {
+      async increment(key: string) {
+        const next = (counts.get(key) ?? 0) + 1;
+        counts.set(key, next);
+        return next;
+      },
+      async count(key: string) {
+        return counts.get(key) ?? 0;
+      },
+    };
+    const options = authOptions({
+      pool: new Pool({ connectionString: "postgres://unused.invalid/db" }),
+      secret: "test-secret-at-least-32-characters-long",
+      baseURL: "https://moneytrap.test",
+      mailer: { async sendVerification() {}, async sendPasswordReset() {} },
+      rateLimitCounter: counter,
+    });
+    const before = options.hooks?.before;
+    expect(before).toBeDefined();
+
+    const ctx = { path: "/sign-in/email", body: { email: "ada@example.test" }, query: {} };
+    // A correct-password login is not recorded, so the limit does not move however often it is tried.
+    for (let i = 0; i < 10; i++) await expect(before?.(ctx as never)).resolves.toBeUndefined();
+
+    // Five recorded failures spend the budget, and the next login is refused without touching the database.
+    await recordFailedSignIn(counter, ctx.body);
+    await recordFailedSignIn(counter, ctx.body);
+    await recordFailedSignIn(counter, ctx.body);
+    await recordFailedSignIn(counter, ctx.body);
+    await recordFailedSignIn(counter, ctx.body);
+    await expect(before?.(ctx as never)).rejects.toMatchObject({ statusCode: 429 });
   });
 });

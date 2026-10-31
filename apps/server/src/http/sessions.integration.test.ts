@@ -61,6 +61,14 @@ describeWithDatabase("Password change revokes other sessions (TP-W2-022)", () =>
       secret: "test-secret-at-least-32-characters-long",
       baseURL: "https://moneytrap.test",
       mailer,
+      rateLimitCounter: {
+        async increment() {
+          return 1;
+        },
+        async count() {
+          return 0;
+        },
+      },
     });
     app = new Elysia().use(authRoutes(auth)).use(sessionRoutes(auth));
   });

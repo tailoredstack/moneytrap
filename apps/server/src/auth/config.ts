@@ -7,6 +7,13 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import type { Pool } from "pg";
 import { requireRecentSecondFactor } from "../http/guards/assurance";
 import type { AuthMailer } from "./mailer";
+import {
+  ipRateLimitRules,
+  ipRateLimitStorage,
+  type RateLimitCounter,
+  recordFailedSignIn,
+  refuseIfSpent,
+} from "./rate-limit";
 
 // Blueprint §7: Better Auth keeps its defaults for hashing, tokens, and expiry. These are the only
 // settings we change, and each one tightens a default rather than loosening it.
@@ -31,6 +38,8 @@ export type AuthConfigDeps = {
   baseURL: string;
   mailer: AuthMailer;
   stepUpWindowSeconds?: number;
+  // Redis-backed counter for login and recovery limits (WP-2.14). Both per-IP and per-identity limits use it.
+  rateLimitCounter: RateLimitCounter;
 };
 
 // Better Auth verifies email tokens statelessly and never records their use, so a second click on the same
@@ -61,9 +70,11 @@ function canonicalClaimId(token: string): string | null {
 // shared state, means a concurrent request cannot clear it.
 const RESET_OWNER = "resetOwnerId";
 
+type AuthContext = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
+
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
-function claimVerificationLink(db: Kysely<any>) {
-  return createAuthMiddleware(async (ctx) => {
+async function claimVerificationLink(ctx: AuthContext, db: Kysely<any>) {
+  {
     if (ctx.path === "/reset-password") {
       // Better Auth reads the body token first and falls back to the query string, so both must be checked.
       const token = ctx.body?.token || ctx.query?.token;
@@ -99,7 +110,7 @@ function claimVerificationLink(db: Kysely<any>) {
     if (!claimed) {
       throw new APIError("BAD_REQUEST", { code: "VERIFICATION_LINK_ALREADY_USED", message: "Link already used" });
     }
-  });
+  }
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
@@ -108,8 +119,8 @@ function retireResetLinks(db: Kysely<any>, userId: string) {
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
-function settleVerificationLink(db: Kysely<any>) {
-  return createAuthMiddleware(async (ctx) => {
+async function settleVerificationLink(ctx: AuthContext, db: Kysely<any>) {
+  {
     // A password change made while signed in, or a successful reset, retires every other outstanding reset link
     // for that user (TP-W2-026). Better Auth keeps those links valid, so each would still set a password afterwards.
     if (ctx.path === "/change-password") {
@@ -136,7 +147,12 @@ function settleVerificationLink(db: Kysely<any>) {
         db,
       );
     }
-  });
+  }
+}
+
+// A failed sign-in is any 4xx/5xx except 429. A 429 is a refusal, not a password guess, so it is not recorded.
+function isFailedSignIn(returned: unknown): boolean {
+  return isAPIError(returned) && returned.statusCode >= 400 && returned.statusCode !== 429;
 }
 
 // Better Auth's disable route only requires a session, not a fresh one, so the step-up check runs before it.
@@ -165,6 +181,7 @@ export function authOptions({
   baseURL,
   mailer,
   stepUpWindowSeconds: stepUpWindow = DEFAULT_STEP_UP_WINDOW_SECONDS,
+  rateLimitCounter,
 }: AuthConfigDeps): BetterAuthOptions {
   // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
   const db = new Kysely<any>({ dialect: new PostgresDialect({ pool }) });
@@ -173,9 +190,24 @@ export function authOptions({
       db,
       type: "postgres",
     },
+    // Per-IP limits come from Better Auth through the Redis counter. The per-identity check runs before the password
+    // check, and failed sign-ins are recorded after it, so a correct password is never throttled.
+    rateLimit: {
+      enabled: true,
+      customStorage: ipRateLimitStorage(rateLimitCounter),
+      customRules: ipRateLimitRules(),
+    },
     hooks: {
-      before: claimVerificationLink(db),
-      after: settleVerificationLink(db),
+      before: createAuthMiddleware(async (ctx) => {
+        await refuseIfSpent(rateLimitCounter, ctx.path, ctx.body ?? {});
+        return claimVerificationLink(ctx, db);
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === "/sign-in/email" && isFailedSignIn(ctx.context.returned)) {
+          await recordFailedSignIn(rateLimitCounter, ctx.body ?? {});
+        }
+        await settleVerificationLink(ctx, db);
+      }),
     },
     secret,
     baseURL,
