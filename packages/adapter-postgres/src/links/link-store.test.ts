@@ -100,6 +100,8 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
         reasons, checks, inputs, input_hash, evaluated_at)
       values ('eld_1', ${orgA}, ${propertyId}, ${programId}, 1, 'allow', '[]'::jsonb, '[]'::jsonb, '{}'::jsonb,
         'hash-1', ${now})`.execute(db);
+    await sql`insert into eligibility_evaluations (organization_id, property_id, program_id, decision_id, evaluated_at)
+      values (${orgA}, ${propertyId}, ${programId}, 'eld_1', ${now})`.execute(db);
   });
 
   afterEach(async () => {
@@ -381,5 +383,21 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
 
     expect(await store.find(orgA, linkId)).toEqual(record());
     expect(await counts()).toEqual({ audits: 1, events: 1 });
+  });
+
+  test("a repeat evaluation that now denies blocks the write, even with an older deny row (CT-010)", async () => {
+    // The stored deny is older than the allow, but the policy ran again on its inputs after the allow, and denied.
+    await sql`insert into eligibility_decisions (id, organization_id, property_id, program_id, policy_version, decision,
+        reasons, checks, inputs, input_hash, evaluated_at)
+      values ('eld_deny', ${orgA}, ${propertyId}, ${programId}, 1, 'deny', '["geography"]'::jsonb, '[]'::jsonb,
+        '{}'::jsonb, 'hash-deny', ${new Date("2026-10-01T10:00:00.000Z")})`.execute(db);
+    await sql`insert into eligibility_evaluations (organization_id, property_id, program_id, decision_id, evaluated_at)
+      values (${orgA}, ${propertyId}, ${programId}, 'eld_deny', ${now})`.execute(db);
+    const store = createLinkStore(db);
+
+    expect(
+      await store.insert({ record: record(), audit: audit("aud_1"), event: event("evt_1", 1), precondition: allowed }),
+    ).toBe(false);
+    expect(await linkRows()).toEqual([]);
   });
 });

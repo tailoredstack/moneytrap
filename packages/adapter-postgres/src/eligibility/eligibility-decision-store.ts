@@ -186,6 +186,19 @@ async function selectOne(
   return row ? toDecision(row) : null;
 }
 
+// Appends one evaluation row for every run of the policy, including a repeat that reuses a stored decision. The link gate
+// reads the latest of these, so a repeat that reaches a different outcome is never hidden behind an older row.
+async function writeEvaluation(
+  tx: Transaction<unknown>,
+  write: EligibilityDecisionWrite,
+  decisionId: string,
+): Promise<void> {
+  await sql`insert into eligibility_evaluations (organization_id, property_id, program_id, decision_id, evaluated_at)
+    values (${write.organizationId}, ${write.propertyId}, ${write.programId}, ${decisionId}, ${write.occurredAt})`.execute(
+    tx,
+  );
+}
+
 // Records a decision and its audit row in one transaction (TP-W3-006 pattern). If either write fails, neither commits.
 // The insert is idempotent on (property, program, policy version, input hash). The hash covers the revision too, so the
 // same inputs read from a later revision add a row that names that revision.
@@ -242,6 +255,7 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
         const created = inserted.rows[0];
         if (created) {
           const decision = toDecision(created);
+          await writeEvaluation(tx, write, decision.id);
           await writeAudit(tx, write, decision);
           return { outcome: "recorded", decision };
         }
@@ -252,6 +266,7 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
             and policy_version = ${evaluation.policyVersion} and input_hash = ${inputHash}`,
         );
         if (!existing) throw new Error("eligibility: conflicting decision row missing after insert");
+        await writeEvaluation(tx, write, existing.id);
         return { outcome: "existing", decision: existing };
       });
     },
