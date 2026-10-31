@@ -57,8 +57,10 @@ describe("publisher review guard (TP-W3-007)", () => {
     expect(actionCalls).toBe(0);
   });
 
-  test("an admin of the publisher's organization may reach the decision action", async () => {
-    expect(await decide(reviewPublisher, adminOfA, { id: "res_a" })).toEqual({ ok: true });
+  test("an owner or admin of the publisher's organization is refused, so a tenant cannot approve its own publisher", async () => {
+    const ownerOfA: Principal = { userId, memberships: [{ organizationId: orgA, role: "owner" }] };
+    expect(await decide(reviewPublisher, ownerOfA, { id: "res_a" })).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(await decide(reviewPublisher, adminOfA, { id: "res_a" })).toEqual({ ok: false, code: "FORBIDDEN" });
   });
 });
 

@@ -38,7 +38,9 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
-const ALL = PERMISSIONS;
+// publisher:review is held by no tenant role. Owners and admins submit KYB, so a tenant role must not approve its own
+// publisher (UC06). The grant comes from a trusted compliance source, which does not exist yet.
+const ALL = PERMISSIONS.filter((permission) => permission !== "publisher:review");
 const WRITER = [
   "organization:read",
   "members:read",
