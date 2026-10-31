@@ -39,6 +39,16 @@ export function runNotifierContract(adapters: ReadonlyArray<{ name: string; crea
       ]);
     });
 
+    test("a missing dedup key is rejected with the same error as a blank one", async () => {
+      const { notifier, sent } = create();
+      const untyped = { ...verification, dedupKey: undefined } as unknown as NotificationMessage;
+      await expect(notifier.send(untyped)).rejects.toThrow("dedupKey is required");
+      await expect(
+        notifier.send({ ...verification, dedupKey: null } as unknown as NotificationMessage),
+      ).rejects.toThrow("dedupKey is required");
+      expect(sent()).toEqual([]);
+    });
+
     test("a blank dedup key is rejected and nothing is recorded", async () => {
       const { notifier, sent } = create();
       await expect(notifier.send({ ...verification, dedupKey: "   " })).rejects.toThrow("dedupKey is required");
