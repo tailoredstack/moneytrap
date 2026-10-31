@@ -46,7 +46,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Start a read-only, full-diff review with `gpt-6-sol` at low effort. If it hits its usage limit, fall back in this order: haiku 5.5 low, then codex gpt-6-luna low, then copilot gpt-6-luna low.
 - Run at most three reviews at once across all threads. Start the next review when one finishes. Each package still gets its own review.
 - Run every reviewer with full-access permission, and keep it read-only in the brief.
-- Use the comment formats in `docs/MONEYTRAP_REVIEW.md`. The main review comment starts with `<!-- ccr-overview-v2 -->`. Each inline thread starts with `### [High | Medium | Low] <Issue title>`.
+- The reviewer posts its review on the pull request, not only as text in the thread. Use the comment formats in `docs/MONEYTRAP_REVIEW.md`: one main review comment starting with `<!-- ccr-overview-v2 -->`, then one inline thread comment per finding, starting with `### [High | Medium | Low] <Issue title>`. Put this requirement in every reviewer brief, including fallback reviewers.
 - **Finance review.** A package that is labeled `needs-finance-review`, or that changes `domain/src/ledger`, `domain/src/payouts`, `domain/src/access`, or `app/src/identity`, also gets a finance review. Run it with the same rules as the code review: read-only, full-access, counted in the three-review limit, and the same usage-limit fallback order. Its brief covers double-entry, immutability, linkage, money as bigint minor units, audit events, and tests for the done-when criteria. It reports APPROVE or REQUEST CHANGES with numbered findings, each marked blocking or non-blocking. The implementing thread fixes the findings and reruns both reviews on the new head.
 
 **6. Triage every thread**
