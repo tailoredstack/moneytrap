@@ -14,7 +14,14 @@ import {
   suspendProperty,
 } from "@moneytrap/domain";
 import type { Ctx } from "../ctx";
-import type { LinkAudit, LinkEvent, LinkPolicy, LinkRecord, LinkStore } from "../ports/link-store";
+import type {
+  LinkAudit,
+  LinkEvent,
+  LinkPolicy,
+  LinkRecord,
+  LinkStore,
+  LinkWritePrecondition,
+} from "../ports/link-store";
 import type { PropertyReviewRecord, PropertyReviewStore } from "../ports/property-review-store";
 import {
   createActiveLink,
@@ -52,6 +59,13 @@ function ctxFor(id: string | null): Ctx {
 
 const allowEligibility: EligibilityDecision = { decision: "allow", policyVersion: 1, checks: [] };
 
+// The state the gate reads and the store checks in its precondition. One object, so a test can change it mid-command.
+interface Live {
+  status: PropertyStatus;
+  decision: EligibilityDecision | null;
+  hosts: readonly string[];
+}
+
 // Builds a property at the given status through the domain state machine, so fixtures obey the real lifecycle.
 function propertyIn(status: PropertyStatus): Property {
   const created = createWebsiteProperty({ id: propertyId, publisherId, canonicalIdentifier: "example.com" });
@@ -74,10 +88,12 @@ function propertyIn(status: PropertyStatus): Property {
   return suspended.value;
 }
 
+// Reads the property's status from the live state, so a change made mid-command is what the gate sees next.
 class MemoryProperties implements PropertyReviewStore {
-  constructor(public record: PropertyReviewRecord) {}
-  async find(id: Id<"property">) {
-    return id === this.record.property.id ? this.record : null;
+  constructor(private readonly live: Live) {}
+  async find(id: Id<"property">): Promise<PropertyReviewRecord | null> {
+    if (id !== propertyId) return null;
+    return { property: propertyIn(this.live.status), organizationId: orgId };
   }
   async recordTransition() {
     return false;
@@ -88,10 +104,13 @@ class MemoryProperties implements PropertyReviewStore {
 }
 
 // Models the adapter contract: an insert or a version-checked update writes its row with its audit and event, or nothing.
+// The precondition is checked against the same live state the gate read.
 class MemoryLinks implements LinkStore {
   rows = new Map<string, LinkRecord>();
   audits: LinkAudit[] = [];
   events: LinkEvent[] = [];
+
+  constructor(private readonly live: Live) {}
 
   seed(record: LinkRecord) {
     this.rows.set(record.link.id, record);
@@ -100,38 +119,64 @@ class MemoryLinks implements LinkStore {
     const row = this.rows.get(id);
     return row && row.organizationId === organizationId ? row : null;
   }
-  async insert(write: { record: LinkRecord; audit: LinkAudit; event: LinkEvent }) {
-    this.rows.set(write.record.link.id, write.record);
-    this.audits.push(write.audit);
-    this.events.push(write.event);
-  }
-  async update(write: { expectedVersion: number; record: LinkRecord; audit: LinkAudit; event: LinkEvent }) {
-    const stored = this.rows.get(write.record.link.id);
-    if (!stored || stored.link.version !== write.expectedVersion) return false;
+  async insert(write: {
+    record: LinkRecord;
+    audit: LinkAudit;
+    event: LinkEvent;
+    precondition: LinkWritePrecondition | null;
+  }) {
+    if (!this.holds(write.precondition)) return false;
     this.rows.set(write.record.link.id, write.record);
     this.audits.push(write.audit);
     this.events.push(write.event);
     return true;
   }
+  async update(write: {
+    organizationId: Id<"organization">;
+    expectedVersion: number;
+    record: LinkRecord;
+    audit: LinkAudit;
+    event: LinkEvent;
+    precondition: LinkWritePrecondition | null;
+  }) {
+    const stored = this.rows.get(write.record.link.id);
+    if (!stored || stored.organizationId !== write.organizationId) return false;
+    if (stored.link.version !== write.expectedVersion) return false;
+    if (!this.holds(write.precondition)) return false;
+    this.rows.set(write.record.link.id, write.record);
+    this.audits.push(write.audit);
+    this.events.push(write.event);
+    return true;
+  }
+  private holds(precondition: LinkWritePrecondition | null): boolean {
+    if (!precondition) return true;
+    return this.live.status === "approved" && this.live.decision?.decision === "allow";
+  }
 }
 
-function policyWith(overrides: { hosts?: readonly string[]; decision?: EligibilityDecision | null } = {}): LinkPolicy {
+function policyFor(live: Live): LinkPolicy {
   return {
     async allowedHosts() {
-      return overrides.hosts ?? allowed;
+      return live.hosts;
     },
     async latestEligibility() {
-      return overrides.decision === undefined ? allowEligibility : overrides.decision;
+      return live.decision;
     },
   };
 }
 
-function setup(options: { status?: PropertyStatus; policy?: LinkPolicy } = {}) {
-  const property = propertyIn(options.status ?? "approved");
-  const properties = new MemoryProperties({ property, organizationId: orgId });
-  const links = new MemoryLinks();
-  const deps = { links, properties, policy: options.policy ?? policyWith() };
-  return { deps, links };
+function setup(
+  options: { status?: PropertyStatus; decision?: EligibilityDecision | null; hosts?: readonly string[] } = {},
+) {
+  const live: Live = {
+    status: options.status ?? "approved",
+    decision: options.decision === undefined ? allowEligibility : options.decision,
+    hosts: options.hosts ?? allowed,
+  };
+  const properties = new MemoryProperties(live);
+  const links = new MemoryLinks(live);
+  const deps = { links, properties, policy: policyFor(live) };
+  return { deps, links, live };
 }
 
 // A link in the given state, seeded directly, so each test starts from a known row.
@@ -146,6 +191,20 @@ function seededLink(links: MemoryLinks, status: "active" | "paused" | "revoked",
     version,
   } as const;
   links.seed({ link, organizationId: orgId, programId });
+}
+
+// Changes the live state between the gate and the write, as a concurrent suspension or decision would.
+function changeBeforeWrite(links: MemoryLinks, change: (live: Live) => void, live: Live) {
+  const insert = links.insert.bind(links);
+  const update = links.update.bind(links);
+  links.insert = async (write) => {
+    change(live);
+    return insert(write);
+  };
+  links.update = async (write) => {
+    change(live);
+    return update(write);
+  };
 }
 
 const createInput = { organizationId: orgId, propertyId, programId, destination };
@@ -175,20 +234,15 @@ describe("create", () => {
   });
 
   test("TP-W5-007: an ineligible program is refused with its reasons", async () => {
-    const decision: EligibilityDecision = {
-      decision: "deny",
-      policyVersion: 1,
-      reasons: ["geography"],
-      checks: [],
-    };
-    const { deps, links } = setup({ policy: policyWith({ decision }) });
+    const decision: EligibilityDecision = { decision: "deny", policyVersion: 1, reasons: ["geography"], checks: [] };
+    const { deps, links } = setup({ decision });
     const result = await createActiveLink(ctxFor(actorId), deps, createInput);
     expect(result).toEqual({ ok: false, code: "PROGRAM_INELIGIBLE", reasons: ["geography"] });
     expect(links.rows.size).toBe(0);
   });
 
   test("a program with no recorded eligibility decision is refused as unknown", async () => {
-    const { deps } = setup({ policy: policyWith({ decision: null }) });
+    const { deps } = setup({ decision: null });
     const result = await createActiveLink(ctxFor(actorId), deps, createInput);
     expect(result).toEqual({ ok: false, code: "PROGRAM_INELIGIBLE", reasons: ["unknown"] });
   });
@@ -214,6 +268,26 @@ describe("create", () => {
     const { deps } = setup();
     expect(await createActiveLink(ctxFor(null), deps, createInput)).toEqual({ ok: false, code: "UNAUTHENTICATED" });
   });
+
+  test("the property is suspended between the gate and the write: the write is refused and nothing is stored", async () => {
+    const { deps, links, live } = setup();
+    changeBeforeWrite(links, (state) => (state.status = "suspended"), live);
+    const result = await createActiveLink(ctxFor(actorId), deps, createInput);
+    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(links.rows.size).toBe(0);
+    expect(links.events).toHaveLength(0);
+  });
+
+  test("the decision flips to deny between the gate and the write: the write is refused", async () => {
+    const { deps, links, live } = setup();
+    changeBeforeWrite(
+      links,
+      (state) => (state.decision = { decision: "deny", policyVersion: 1, reasons: ["contract"], checks: [] }),
+      live,
+    );
+    expect(await createActiveLink(ctxFor(actorId), deps, createInput)).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(links.rows.size).toBe(0);
+  });
 });
 
 describe("preview", () => {
@@ -238,6 +312,14 @@ describe("preview", () => {
       ok: false,
       code: "STATE_CONFLICT",
       reason: "property_not_approved",
+    });
+  });
+
+  test("a preview of another tenant's property is RESOURCE_NOT_FOUND", async () => {
+    const { deps } = setup();
+    expect(await previewLink(ctxFor(actorId), deps, { ...createInput, organizationId: otherOrgId })).toEqual({
+      ok: false,
+      code: "RESOURCE_NOT_FOUND",
     });
   });
 });
@@ -270,19 +352,58 @@ describe("edit destination", () => {
   test("an edit of a link whose property was suspended is refused", async () => {
     const { deps, links } = setup({ status: "suspended" });
     seededLink(links, "active");
+    const result = await editLinkDestination(ctxFor(actorId), deps, { organizationId: orgId, linkId, destination });
+    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT", reason: "property_not_approved" });
+  });
+
+  test("a revoked link reports STATE_CONFLICT, not the property reason, even when its property is suspended", async () => {
+    const { deps, links } = setup({ status: "suspended" });
+    seededLink(links, "revoked");
+    const result = await editLinkDestination(ctxFor(actorId), deps, { organizationId: orgId, linkId, destination });
+    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT" });
+  });
+
+  test("a stale version loses the compare-and-set and writes nothing", async () => {
+    const { deps, links } = setup();
+    seededLink(links, "active");
+    const original = links.update.bind(links);
+    links.update = async (write) => {
+      links.rows.set(linkId, { ...write.record, link: { ...write.record.link, version: 99 } });
+      return original(write);
+    };
     const result = await editLinkDestination(ctxFor(actorId), deps, {
       organizationId: orgId,
       linkId,
       destination,
     });
-    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT", reason: "property_not_approved" });
+    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(links.audits).toHaveLength(0);
   });
 
-  test("a revoked link cannot change its destination", async () => {
-    const { deps, links } = setup();
-    seededLink(links, "revoked");
-    const result = await editLinkDestination(ctxFor(actorId), deps, { organizationId: orgId, linkId, destination });
+  test("the decision flips to deny between the gate and the write: the edit is refused", async () => {
+    const { deps, links, live } = setup();
+    seededLink(links, "active");
+    changeBeforeWrite(
+      links,
+      (state) => (state.decision = { decision: "deny", policyVersion: 1, reasons: ["channel"], checks: [] }),
+      live,
+    );
+    const result = await editLinkDestination(ctxFor(actorId), deps, {
+      organizationId: orgId,
+      linkId,
+      destination: "https://shop.example.com/other",
+    });
     expect(result).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(links.rows.get(linkId)?.link.destinationUrl).toBe(destination);
+  });
+
+  test("a caller that is not a user is UNAUTHENTICATED", async () => {
+    const { deps, links } = setup();
+    seededLink(links, "active");
+    expect(await editLinkDestination(ctxFor(null), deps, { organizationId: orgId, linkId, destination })).toEqual({
+      ok: false,
+      code: "UNAUTHENTICATED",
+    });
   });
 });
 
@@ -305,6 +426,47 @@ describe("pause, resume, revoke", () => {
     expect(result).toEqual({ ok: false, code: "STATE_CONFLICT", reason: "property_not_approved" });
   });
 
+  test("resume is refused when the program is now ineligible", async () => {
+    const decision: EligibilityDecision = { decision: "deny", policyVersion: 1, reasons: ["contract"], checks: [] };
+    const { deps, links } = setup({ decision });
+    seededLink(links, "paused");
+    const result = await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
+    expect(result).toEqual({ ok: false, code: "PROGRAM_INELIGIBLE", reasons: ["contract"] });
+    expect(links.rows.get(linkId)?.link.status).toBe("paused");
+  });
+
+  test("resume re-checks the destination against the allow-list (spec §4.4)", async () => {
+    const { deps, links } = setup({ hosts: [] });
+    seededLink(links, "paused");
+    const result = await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
+    expect(result).toEqual({ ok: false, code: "VALIDATION_FAILED" });
+    expect(links.rows.get(linkId)?.link.status).toBe("paused");
+  });
+
+  test("a stale version loses the compare-and-set on resume and writes nothing", async () => {
+    const { deps, links } = setup();
+    seededLink(links, "paused");
+    const original = links.update.bind(links);
+    links.update = async (write) => {
+      links.rows.set(linkId, { ...write.record, link: { ...write.record.link, version: 99 } });
+      return original(write);
+    };
+    expect(await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId })).toEqual({
+      ok: false,
+      code: "STATE_CONFLICT",
+    });
+    expect(links.audits).toHaveLength(0);
+  });
+
+  test("a revoked link cannot resume, and reports STATE_CONFLICT before any property reason", async () => {
+    const { deps, links } = setup({ status: "suspended" });
+    seededLink(links, "revoked");
+    expect(await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId })).toEqual({
+      ok: false,
+      code: "STATE_CONFLICT",
+    });
+  });
+
   test("TP-W5-011: revoke makes the link revoked, and a revoked link cannot resume", async () => {
     const { deps, links } = setup();
     seededLink(links, "active");
@@ -316,12 +478,8 @@ describe("pause, resume, revoke", () => {
   });
 
   test("revoke is not blocked by a suspended property or an ineligible program", async () => {
-    const { deps, links } = setup({
-      status: "suspended",
-      policy: policyWith({
-        decision: { decision: "deny", policyVersion: 1, reasons: ["contract"], checks: [] },
-      }),
-    });
+    const decision: EligibilityDecision = { decision: "deny", policyVersion: 1, reasons: ["contract"], checks: [] };
+    const { deps, links } = setup({ status: "suspended", decision });
     seededLink(links, "active");
     const result = await revokeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
     expect(result).toMatchObject({ ok: true, value: { status: "revoked" } });
@@ -336,18 +494,26 @@ describe("pause, resume, revoke", () => {
     expect(links.rows.get(linkId)?.link.status).toBe("active");
   });
 
-  test("a stale version loses the compare-and-set and writes nothing", async () => {
+  test("a stale version loses the compare-and-set on pause and writes nothing", async () => {
     const { deps, links } = setup();
     seededLink(links, "active");
-    const store = deps.links;
-    const original = store.update.bind(store);
+    const original = links.update.bind(links);
     // Another writer moves the link between the read and the write.
-    store.update = async (write) => {
+    links.update = async (write) => {
       links.rows.set(linkId, { ...write.record, link: { ...write.record.link, version: 99 } });
       return original(write);
     };
     const result = await pauseLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
     expect(result).toEqual({ ok: false, code: "STATE_CONFLICT" });
     expect(links.audits).toHaveLength(0);
+  });
+
+  test("a caller that is not a user is UNAUTHENTICATED for pause, resume, and revoke", async () => {
+    const { deps, links } = setup();
+    seededLink(links, "active");
+    const scope = { organizationId: orgId, linkId };
+    expect(await pauseLinkAction(ctxFor(null), deps, scope)).toEqual({ ok: false, code: "UNAUTHENTICATED" });
+    expect(await resumeLinkAction(ctxFor(null), deps, scope)).toEqual({ ok: false, code: "UNAUTHENTICATED" });
+    expect(await revokeLinkAction(ctxFor(null), deps, scope)).toEqual({ ok: false, code: "UNAUTHENTICATED" });
   });
 });
