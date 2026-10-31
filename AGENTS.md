@@ -16,19 +16,20 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Work one wave at a time. The current wave is the lowest-numbered wave that still has a package not Done in Linear. Only packages in the current wave are eligible. Wave N+1 starts only after every package in wave N is merged.
 - Build the set of eligible packages: every WP issue or sub-issue in the current wave whose Linear status is Todo or Backlog and whose dependencies are merged to `main`. Include sub-issues of any parent within that wave.
 - Within the current wave, run every unblocked sub-issue in parallel. Only blocked packages wait.
-- Start every eligible package, not just one. Packages with no unmerged dependency between them can run in parallel.
-- Defer a package that shares a file or port with an open package until that package merges.
-- Packages that touch shared hot files merge one at a time. Hot files include `packages/adapter-postgres/src/migrations/index.ts` and the `contracts/` package. A later package rebases before it merges.
+- Packages that share a file or port do not run in parallel. Hot files include `packages/adapter-postgres/src/migrations/index.ts` and the `contracts/` package. The later package waits until the earlier one merges, then rebases before it merges.
 - Match each Linear issue to its WP ID, and put the WP ID in the issue title, so the match is unambiguous.
 - Before launching, read the package's done-when criteria against its test plan. If they need persistence or other work outside the listed "Depends on", that work is a dependency too. Fix the plan or Linear first, or hold the package.
 - Move each Linear issue to In Progress before starting it, so no one else picks it up.
 
 **2. Start an isolated branch**
 - Branch from updated `main` as `wave-<n>/<WP-id>-<slug>`, one work package per branch.
+- Docs-only changes use `docs/<slug>` instead.
 - Write the failing check first, then the implementation.
 
 **3. Implement and check locally**
+- Run `bun install` once per worktree before the checks.
 - Run `check:docs`, `typecheck`, `lint`, `boundaries`, and `bun test`.
+- If CI fails, pull the failing job's logs. Re-run failures that look transient (timeout, runner died, network). Fix real failures before triage.
 - Commit with a Conventional Commit subject that includes the Linear ID. Use `Refs OZE-<id>` on interim commits and `Closes OZE-<id>` on the completing commit.
 - No co-author or generated-by trailers in commit messages or PR bodies. Run `git log -1 --format=%B` before pushing and remove any trailer a tool added.
 
@@ -55,11 +56,13 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Merge only when checks pass, no threads are open, and any required finance review has approved, using rebase-merge.
 - Unwatch the PR once it merges.
 - Set the Linear issue to Done.
+- When the last package in a wave merges, the wave's exit gate in `docs/implementation/WAVES.md` must pass before the next wave starts.
 
 **8. Start the unblocked packages**
 - Check existing threads for duplicates before starting a package.
 - Re-run step 1 after each merge. Start every package that the merge has unblocked, each in its own thread.
 - Packages with no dependency between them merge in the order they become ready: the first one with a clean review and passing checks merges first. The package that merges second rebases onto updated `main`, reruns its checks, and reruns the full-diff review on the rebased head before it merges.
+**Loop control**
 - Before any thread ends its turn, the coordinating thread checks Linear for newly eligible packages and starts them. It doesn't settle while eligible work remains.
 - The coordinating thread keeps a fallback wake-up scheduled, so the loop runs without a PR event.
 - A thread waiting on a decision or an event stays in the waiting state and keeps its PR watched. It doesn't end its turn or unwatch.
