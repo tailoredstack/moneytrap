@@ -173,7 +173,11 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
   test("an evaluation cannot name a decision of another property or another program (composite key)", async () => {
     const store = createEligibilityDecisionStore(db);
     const decision = (await store.record(writeFor(allowed))).decision;
-    // A second, real program, so the refusal below is the composite key and not a missing row.
+    // Real second property and program, so each refusal below is the composite key and not a missing row.
+    await sql`insert into properties (id, organization_id, publisher_id, type, canonical_identifier, normalized_identifier,
+        status, version, created_at, updated_at)
+      values ('prp_other', ${orgId}, 'pub_elig_one', 'website', 'other.example.com', 'other.example.com', 'approved', 1,
+        ${now}, ${now})`.execute(db);
     await sql`insert into network_advertisers (id, network_id, external_id, created_at, updated_at)
       values ('adv_other', ${networkId}, 'adv-other', ${now}, ${now})`.execute(db);
     await sql`insert into programs (id, network_advertiser_id, external_id, created_at, updated_at)
@@ -182,11 +186,11 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     await expect(
       sql`insert into eligibility_evaluations (organization_id, property_id, program_id, decision_id, evaluated_at)
         values (${orgId}, 'prp_other', ${programId}, ${decision.id}, ${now})`.execute(db),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/eligibility_evaluations_decision_fk/);
     await expect(
       sql`insert into eligibility_evaluations (organization_id, property_id, program_id, decision_id, evaluated_at)
         values (${orgId}, ${propertyId}, 'prg_other', ${decision.id}, ${now})`.execute(db),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/eligibility_evaluations_decision_fk/);
   });
 
   test("the backfill breaks an evaluated_at tie by policy version, then by id, and down removes the table", async () => {
@@ -195,10 +199,10 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
           reasons, checks, inputs, input_hash, evaluated_at)
         values (${id}, ${orgId}, ${propertyId}, ${programId}, ${policyVersion}, 'allow', '[]'::jsonb, '[]'::jsonb,
           '{}'::jsonb, ${`hash-${id}`}, ${now})`.execute(db);
-    // Same evaluated_at for all three: the policy version orders the two version-1 rows by id, then version 2.
-    await insertDecision("eld_v2", 2);
-    await insertDecision("eld_b", 1);
-    await insertDecision("eld_a", 1);
+    // Same evaluated_at. The version-2 row has the id that sorts first, so only the policy version puts the version-1 row first.
+    await insertDecision("eld_a", 2);
+    await insertDecision("eld_z", 1);
+    // The migration adds its scope key and table, so the test removes both to run it as on a database before 0015.
     await sql`drop table eligibility_evaluations`.execute(db);
     await sql`alter table eligibility_decisions drop constraint eligibility_decisions_scope_uq`.execute(db);
 
@@ -206,7 +210,7 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     const ordered = await sql<{
       decision_id: string;
     }>`select decision_id from eligibility_evaluations order by seq`.execute(db);
-    expect(ordered.rows.map((row) => row.decision_id)).toEqual(["eld_a", "eld_b", "eld_v2"]);
+    expect(ordered.rows.map((row) => row.decision_id)).toEqual(["eld_z", "eld_a"]);
 
     // If down were missing, the table would still exist and the check below would fail.
     await eligibilityEvaluations.down?.(db);
