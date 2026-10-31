@@ -1,5 +1,5 @@
 import { Button } from "@moneytrap/ui";
-import { Freshness, type LoadState, LoadStateFrame } from "../directory/load-state";
+import { Freshness, formatTimestamp, type LoadState, LoadStateFrame } from "../directory/load-state";
 
 // The network connector's answer per operation (spec §6.1). Only `supported` lets a feature run.
 export type CapabilityState = "supported" | "unsupported" | "temporarily_unavailable" | "not_authorized";
@@ -69,7 +69,7 @@ export function NetworkStatusView({
             <p className="text-sm">
               Last successful sync:{" "}
               {data.lastSuccessfulSync ? (
-                <time dateTime={data.lastSuccessfulSync}>{data.lastSuccessfulSync}</time>
+                <time dateTime={data.lastSuccessfulSync}>{formatTimestamp(data.lastSuccessfulSync)}</time>
               ) : (
                 "none yet"
               )}
@@ -98,11 +98,19 @@ export function NetworkStatusView({
             {ops ? (
               <div className="space-y-3 border-t pt-4">
                 <p className="text-sm">
-                  Credential: {data.credential.configured ? "✓ configured" : "not configured"}
+                  Credential:{" "}
+                  {data.credential.configured ? (
+                    <>
+                      <span aria-hidden="true">✓</span> configured
+                    </>
+                  ) : (
+                    "not configured"
+                  )}
                   {data.credential.lastRotated ? (
                     <>
                       {" "}
-                      · last rotated <time dateTime={data.credential.lastRotated}>{data.credential.lastRotated}</time>
+                      · last rotated{" "}
+                      <time dateTime={data.credential.lastRotated}>{formatTimestamp(data.credential.lastRotated)}</time>
                     </>
                   ) : null}
                 </p>

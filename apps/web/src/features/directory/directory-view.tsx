@@ -93,9 +93,11 @@ export function DirectoryView({
               filtered ? (
                 <div className="space-y-2 text-sm">
                   <p>No programs match. Try removing a filter.</p>
-                  <Button variant="outline" size="sm" onClick={() => onClearFilters?.()}>
-                    Clear filters
-                  </Button>
+                  {onClearFilters ? (
+                    <Button variant="outline" size="sm" onClick={() => onClearFilters()}>
+                      Clear filters
+                    </Button>
+                  ) : null}
                 </div>
               ) : (
                 <p className="text-sm">No programs yet. Programs appear after your first catalog sync.</p>
@@ -132,8 +134,8 @@ export function DirectoryView({
                 </tbody>
               </table>
             )}
-            {data.hasMore ? (
-              <Button variant="outline" onClick={() => onLoadMore?.()}>
+            {data.hasMore && onLoadMore ? (
+              <Button variant="outline" onClick={() => onLoadMore()}>
                 Load more
               </Button>
             ) : null}

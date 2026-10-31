@@ -44,15 +44,20 @@ export function LoadStateFrame<T>({
   return <>{children(state.data)}</>;
 }
 
+// The machine value stays in `dateTime`; the visible copy is readable, e.g. "2026-10-31 12:04 UTC".
+export function formatTimestamp(iso: string): string {
+  return `${iso.slice(0, 16).replace("T", " ")} UTC`;
+}
+
 // Stale data is labelled in words, never by colour. The numbers beside it stay visible.
 export function Freshness({ asOf, stale }: { asOf: string; stale: boolean }) {
   return stale ? (
     <p className="text-sm">
-      Data stale · last update <time dateTime={asOf}>{asOf}</time>
+      Data stale · last update <time dateTime={asOf}>{formatTimestamp(asOf)}</time>
     </p>
   ) : (
     <p className="text-sm text-muted-foreground">
-      as of <time dateTime={asOf}>{asOf}</time>
+      as of <time dateTime={asOf}>{formatTimestamp(asOf)}</time>
     </p>
   );
 }
