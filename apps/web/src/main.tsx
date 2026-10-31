@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { AppErrorBoundary } from "./app/error-boundary";
 import { createAppQueryClient } from "./app/query-client";
 import { createAppRouter } from "./app/router";
+import "./styles.css";
 
 const queryClient = createAppQueryClient();
 const router = createAppRouter(createBrowserHistory());
