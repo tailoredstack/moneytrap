@@ -2,8 +2,8 @@ import type { ClickCountRow, ClickReportStore } from "@moneytrap/app/src/ports/c
 import { type Kysely, sql } from "kysely";
 
 // Reads only. Every query joins clicks to links and filters by the links' organization, so a click of another tenant
-// never counts (WP-5.9). The window query has no index on occurred_at alone, so its scan is bounded by the links of the
-// organization; clicks_link_occurred_idx serves the join when the link filter is selective.
+// never counts (WP-5.9). The window query uses clicks_occurred_idx (0013) for the occurred_at range, and the freshness
+// query uses clicks_recorded_idx (0017) for the recorded_at range.
 export function createClickReportStore(db: Kysely<unknown>): ClickReportStore {
   return {
     async countByLink(query): Promise<readonly ClickCountRow[]> {
