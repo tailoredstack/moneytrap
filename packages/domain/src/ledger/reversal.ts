@@ -18,7 +18,7 @@ export type ReversalResult = { ok: true; value: RecordedJournal } | { ok: false;
 // This function cannot see the ledger, so the caller passes `alreadyReversed` from the store.
 // Reversing the same original twice would undo its movement twice, so that case is rejected too.
 // Trust boundary: the caller must load `original` by ID from the ledger store. This function does not check that it is genuine.
-// The persistence layer must enforce one reversal per original with a unique constraint on reversal_of (WP-6.3, migration 0007_ledger).
+// The unique constraint on reversal_of is deferred to WP-6.3 (acceptance criteria in IMPLEMENTATION_PLAN.md). Until it lands, the caller's alreadyReversed check is the only guard.
 export function reverse(original: RecordedJournal, reversalId: string, alreadyReversed: boolean): ReversalResult {
   if (original.reversalOf !== null) {
     return { ok: false, error: new MoneyError("a reversal cannot be reversed") };
