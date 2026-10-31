@@ -7,6 +7,7 @@ import { serveWebAsset } from "./assets";
 import { createAuth } from "./auth/config";
 import { notifierMailer } from "./auth/mailer";
 import { authRoutes } from "./http/auth";
+import { sessionRoutes } from "./http/sessions";
 import { randomIds, systemClock } from "./system";
 
 // The only runtime inputs are environment variables and argv. Migrations are not run on boot; `--migrate` runs them
@@ -50,6 +51,7 @@ function serve(): void {
 
   createApp({ clock: systemClock, ids: randomIds, readiness: [] })
     .use(authRoutes(auth))
+    .use(sessionRoutes(auth))
     .get("/api/health", () => ({ status: "ok" }))
     .get("/*", ({ request }) => {
       const { pathname } = new URL(request.url);
