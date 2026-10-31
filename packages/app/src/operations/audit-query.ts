@@ -48,13 +48,14 @@ export function toReviewDecisionEntry(row: AuditLogRow): ReviewDecisionEntry {
 
 export async function listReviewDecisionAudit(
   ctx: Ctx<AuditDatabase>,
-  input: { organizationId?: string; entityId?: string; limit?: number } = {},
+  // The organization is required: the caller derives it from the authorized scope, so the query never returns other tenants' rows.
+  input: { organizationId: string; entityId?: string; limit?: number },
 ): Promise<ReviewDecisionEntry[]> {
   let query = ctx.db
     .selectFrom("audit_logs")
     .selectAll()
+    .where("organization_id", "=", input.organizationId)
     .where("action", "in", [...REVIEW_DECISION_ACTIONS]);
-  if (input.organizationId !== undefined) query = query.where("organization_id", "=", input.organizationId);
   if (input.entityId !== undefined) query = query.where("entity_id", "=", input.entityId);
   const rows = await query
     .orderBy("occurred_at", "desc")
