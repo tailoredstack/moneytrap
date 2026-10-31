@@ -29,6 +29,7 @@ export function DirectoryView({
   onOpen,
   onLoadMore,
   onRetry,
+  onClearFilters,
 }: {
   state: LoadState<DirectoryData>;
   countries: readonly string[];
@@ -37,6 +38,7 @@ export function DirectoryView({
   onOpen?: ((id: string) => void) | undefined;
   onLoadMore?: (() => void) | undefined;
   onRetry?: (() => void) | undefined;
+  onClearFilters?: (() => void) | undefined;
 }) {
   const filtered = filters.q !== "" || filters.country !== "" || filters.eligibleOnly;
   const change = (patch: Partial<DirectoryFilters>) => onFiltersChange?.({ ...filters, ...patch });
@@ -84,12 +86,20 @@ export function DirectoryView({
         {(data) => (
           <div className="space-y-3">
             <Freshness asOf={data.asOf} stale={data.stale} />
+            <p role="status" className="text-sm">
+              {data.rows.length} {data.rows.length === 1 ? "program" : "programs"} shown
+            </p>
             {data.rows.length === 0 ? (
-              <p className="text-sm">
-                {filtered
-                  ? "No programs match. Try removing a filter."
-                  : "No programs yet. Programs appear after your first catalog sync."}
-              </p>
+              filtered ? (
+                <div className="space-y-2 text-sm">
+                  <p>No programs match. Try removing a filter.</p>
+                  <Button variant="outline" size="sm" onClick={() => onClearFilters?.()}>
+                    Clear filters
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm">No programs yet. Programs appear after your first catalog sync.</p>
+              )
             ) : (
               <table className="w-full text-sm">
                 <caption className="sr-only">Programs and whether your property may promote them</caption>
