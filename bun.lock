@@ -24,6 +24,14 @@
     "apps/web": {
       "name": "@moneytrap/web",
       "version": "0.0.0",
+      "dependencies": {
+        "react": "19.2.0",
+        "react-dom": "19.2.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.2.2",
+        "@types/react-dom": "19.2.2",
+      },
     },
     "packages/adapter-notify": {
       "name": "@moneytrap/adapter-notify",
