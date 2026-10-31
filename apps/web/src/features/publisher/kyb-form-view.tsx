@@ -20,8 +20,18 @@ export function KybFormView({
   onSubmit?: (() => void) | undefined;
 }) {
   // The fields are controlled from here, so validation, aria-disabled, and submit all read what the user sees.
-  // `values` seeds the first render only.
+  // When the parent loads or switches the record, the fields follow it. Compared by content, so a parent that
+  // rebuilds the same values on each render does not wipe what the user has typed.
   const [current, setCurrent] = useState<KybValues>(values);
+  const [seen, setSeen] = useState<KybValues>(values);
+  if (
+    seen.legalName !== values.legalName ||
+    seen.country !== values.country ||
+    seen.businessType !== values.businessType
+  ) {
+    setSeen(values);
+    setCurrent(values);
+  }
   const errors = validateKyb(current);
   const invalid = Object.keys(errors).length > 0;
   // A disabled-looking Submit must say what is missing, so the reason is linked to it for screen reader users.
