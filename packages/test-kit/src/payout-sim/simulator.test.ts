@@ -183,6 +183,26 @@ describe("PayoutProviderSimulator (WP-7.4)", () => {
     expect(beyondTimeline).toEqual({ ok: false, failure: { state: "rejected", reason: "event-mismatch" } });
   });
 
+  test("a signed callback with a foreign eventId or timestamp for a real sequence is refused as event-mismatch", async () => {
+    const provider = new PayoutProviderSimulator("happy");
+    await provider.initiateTransfer(request);
+    const [callback] = provider.takeCallbacks();
+    const event = JSON.parse(callback?.body ?? "{}");
+    const headers = callback?.headers ?? {};
+
+    const foreignId = await provider.receiveStatusCallback({
+      headers,
+      body: JSON.stringify({ ...event, eventId: "evt_other" }),
+    });
+    const shiftedTime = await provider.receiveStatusCallback({
+      headers,
+      body: JSON.stringify({ ...event, occurredAt: "2026-01-01T00:05:00.000Z" }),
+    });
+
+    expect(foreignId).toEqual({ ok: false, failure: { state: "rejected", reason: "event-mismatch" } });
+    expect(shiftedTime).toEqual({ ok: false, failure: { state: "rejected", reason: "event-mismatch" } });
+  });
+
   test("a callback with an empty event ID is refused as malformed, so dedupe cannot merge unrelated events", async () => {
     const provider = new PayoutProviderSimulator("happy");
     await provider.initiateTransfer(request);

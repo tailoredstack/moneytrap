@@ -103,7 +103,18 @@ export class PayoutProviderSimulator implements PayoutProvider {
       return { ok: false, failure: { state: "rejected", reason: "unknown-transfer" } };
     }
     // The event must be one this transfer produced: a real sequence step, carrying the status the timeline gives it.
-    if (record.timeline[parsed.sequence - 1] !== parsed.status) {
+    // The event identity and provider timestamp are part of the event too, so a consumer that dedupes by eventId sees
+    // the same identity the provider issued for that step.
+    const expected = {
+      eventId: `evt_${record.transferId}_${parsed.sequence}`,
+      status: record.timeline[parsed.sequence - 1],
+      occurredAt: occurredAt(parsed.sequence).getTime(),
+    };
+    if (
+      parsed.eventId !== expected.eventId ||
+      parsed.status !== expected.status ||
+      parsed.occurredAt.getTime() !== expected.occurredAt
+    ) {
       return { ok: false, failure: { state: "rejected", reason: "event-mismatch" } };
     }
     return { ok: true, value: parsed };
