@@ -4,13 +4,13 @@
 export const REDACTED = "[REDACTED]";
 
 const SENSITIVE_KEY = /token|secret|passw|authorization|cookie|api[-_]?key|credential|session|private[-_]?key/i;
-const BEARER = /^bearer\s+\S+/i;
-// Userinfo in a URL (scheme://user:secret@host) is a credential wherever it appears, including inside messages.
+// A bearer credential is masked wherever it appears, including mid-message. Userinfo in a URL
+// (scheme://user:secret@host) is a credential wherever it appears too.
+const BEARER = /bearer\s+[^\s,;"']+/gi;
 const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
 
 function redactString(value: string): string {
-  if (BEARER.test(value)) return REDACTED;
-  return value.replace(URL_USERINFO, `$1${REDACTED}@`);
+  return value.replace(BEARER, REDACTED).replace(URL_USERINFO, `$1${REDACTED}@`);
 }
 
 export function redact(value: unknown, seen = new WeakSet<object>()): unknown {
