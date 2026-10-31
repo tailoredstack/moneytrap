@@ -52,6 +52,16 @@ describe("destination allow-list", () => {
     expect(validateDestination("https://:@shop.example.com/", allowed)).toMatchObject({ reason: "credentials" });
   });
 
+  test("credentials and ports are rejected when https: is not followed by //", () => {
+    expect(validateDestination("https:user:pw@shop.example.com/", allowed)).toMatchObject({ reason: "credentials" });
+    expect(validateDestination("https:\\\\user:pw@shop.example.com/", allowed)).toMatchObject({
+      reason: "credentials",
+    });
+    expect(validateDestination("https:@shop.example.com/", allowed)).toMatchObject({ reason: "credentials" });
+    expect(validateDestination("https:/shop.example.com:8443/", allowed)).toMatchObject({ reason: "port" });
+    expect(validateDestination("https:shop.example.com:443/", allowed)).toMatchObject({ reason: "port" });
+  });
+
   test("a trailing-dot host does not match the entry without the dot", () => {
     expect(validateDestination("https://shop.example.com./", allowed)).toMatchObject({ reason: "host-not-allowed" });
   });

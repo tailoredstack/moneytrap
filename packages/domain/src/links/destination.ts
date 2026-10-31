@@ -19,7 +19,8 @@ export function validateDestination(input: string, allowedHosts: readonly string
   }
   if (url.protocol !== "https:") return { ok: false, code: "VALIDATION_FAILED", reason: "scheme" };
   // URL drops empty userinfo and default ports, so the authority is read from the raw input as well.
-  const authority = /^https:\/\/([^/?#\\]*)/i.exec(raw)?.[1] ?? "";
+  // The WHATWG parser takes `https:host` and `https:/host` as an authority too, so any run of slashes is skipped.
+  const authority = /^https:[\\/]*([^/?#\\]*)/i.exec(raw)?.[1] ?? "";
   if (authority.includes("@")) return { ok: false, code: "VALIDATION_FAILED", reason: "credentials" };
   if (authority.includes(":")) return { ok: false, code: "VALIDATION_FAILED", reason: "port" };
   const host = url.hostname;
