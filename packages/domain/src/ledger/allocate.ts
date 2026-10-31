@@ -18,7 +18,7 @@ export function allocate(recognized: Money, rule: ShareRule): Allocation {
   const remainders: { idx: number; rem: bigint }[] = [];
   let sumFloors = 0n;
   for (let i = 0; i < 3; i++) {
-    const num = total * BigInt(bps[i]);
+    const num = total * BigInt(bps[i] ?? 0);
     const floor = num / 10000n;
     const rem = num % 10000n;
     floors[i] = floor;
@@ -29,16 +29,17 @@ export function allocate(recognized: Money, rule: ShareRule): Allocation {
   remainders.sort((a, b) => (a.rem > b.rem ? -1 : a.rem < b.rem ? 1 : a.idx - b.idx));
   let i = 0;
   while (leftover > 0n) {
-    const idx = remainders[i % remainders.length].idx;
+    const r = remainders[i % remainders.length];
+    const idx = r!.idx;
     floors[idx] = (floors[idx] ?? 0n) + 1n;
     leftover -= 1n;
     i++;
   }
 
   return {
-    publisher: Money.of(floors[0], recognized.currency),
-    platform: Money.of(floors[1], recognized.currency),
-    other: Money.of(floors[2], recognized.currency),
+    publisher: Money.of(floors[0]!, recognized.currency),
+    platform: Money.of(floors[1]!, recognized.currency),
+    other: Money.of(floors[2]!, recognized.currency),
     roundingVersion: rule.roundingVersion,
     currency: recognized.currency,
   };
