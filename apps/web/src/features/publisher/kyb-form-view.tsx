@@ -19,7 +19,10 @@ export function KybFormView({
   onDocumentSelected?: ((file: File | null) => void) | undefined;
   onSubmit?: (() => void) | undefined;
 }) {
-  const errors = validateKyb(values);
+  // The fields are controlled from here, so validation, aria-disabled, and submit all read what the user sees.
+  // `values` seeds the first render only.
+  const [current, setCurrent] = useState<KybValues>(values);
+  const errors = validateKyb(current);
   const invalid = Object.keys(errors).length > 0;
   const [attempted, setAttempted] = useState(false);
   const shown = submitAttempted || attempted ? errors : {};
@@ -48,7 +51,8 @@ export function KybFormView({
           id="kyb-legal-name"
           className="mt-1 block w-full rounded-md border p-2"
           name="legalName"
-          defaultValue={values.legalName}
+          value={current.legalName}
+          onChange={(event) => setCurrent({ ...current, legalName: event.currentTarget.value })}
           aria-invalid={shown.legalName !== undefined}
           aria-describedby={shown.legalName !== undefined ? "kyb-legal-name-error" : undefined}
         />
@@ -61,7 +65,8 @@ export function KybFormView({
           id="kyb-country"
           className="mt-1 block w-full rounded-md border p-2"
           name="country"
-          defaultValue={values.country}
+          value={current.country}
+          onChange={(event) => setCurrent({ ...current, country: event.currentTarget.value })}
           aria-invalid={shown.country !== undefined}
           aria-describedby={shown.country !== undefined ? "kyb-country-error" : undefined}
         >
@@ -79,7 +84,8 @@ export function KybFormView({
             type="radio"
             name="businessType"
             value="individual"
-            defaultChecked={values.businessType === "individual"}
+            checked={current.businessType === "individual"}
+            onChange={() => setCurrent({ ...current, businessType: "individual" })}
             aria-invalid={shown.businessType !== undefined}
             aria-describedby={shown.businessType !== undefined ? "kyb-business-type-error" : undefined}
           />{" "}
@@ -90,7 +96,8 @@ export function KybFormView({
             type="radio"
             name="businessType"
             value="company"
-            defaultChecked={values.businessType === "company"}
+            checked={current.businessType === "company"}
+            onChange={() => setCurrent({ ...current, businessType: "company" })}
             aria-invalid={shown.businessType !== undefined}
             aria-describedby={shown.businessType !== undefined ? "kyb-business-type-error" : undefined}
           />{" "}
