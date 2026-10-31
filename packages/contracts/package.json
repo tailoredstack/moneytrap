@@ -5,5 +5,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@moneytrap/domain": "workspace:*",
+    "@sinclair/typebox": "^0.34.52"
   }
 }

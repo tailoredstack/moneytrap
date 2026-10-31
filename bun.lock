@@ -46,6 +46,10 @@
     "packages/contracts": {
       "name": "@moneytrap/contracts",
       "version": "0.0.0",
+      "dependencies": {
+        "@moneytrap/domain": "workspace:*",
+        "@sinclair/typebox": "^0.34.52",
+      },
     },
     "packages/domain": {
       "name": "@moneytrap/domain",
