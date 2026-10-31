@@ -33,9 +33,9 @@ describe("decideRevision (DM-021, DM-022, TP-W4-008, TP-W4-009)", () => {
     expect(decideRevision(latest, { sourceRevision: "r2", payload: changed })).toEqual({ kind: "revise" });
   });
 
-  test("a new upstream revision with identical content still creates a revision", () => {
+  test("a new upstream revision label with identical content creates no revision (TP-W4-008)", () => {
     const latest = { sourceRevision: "r1", payload: advertiser };
-    expect(decideRevision(latest, { sourceRevision: "r2", payload: advertiser })).toEqual({ kind: "revise" });
+    expect(decideRevision(latest, { sourceRevision: "r2", payload: advertiser })).toEqual({ kind: "unchanged" });
   });
 
   test("the order of countries and channels does not count as a change", () => {
