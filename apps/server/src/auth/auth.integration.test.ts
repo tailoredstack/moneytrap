@@ -275,8 +275,24 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       const known = await requestReset("ada@example.test");
       const unknown = await requestReset("grace@example.test");
 
-      expect(known.status).toBe(unknown.status);
+      expect(known.status).toBe(200);
+      expect(unknown.status).toBe(known.status);
+      expect(await unknown.text()).toBe(await known.text());
       expect(resetSent().map((message) => message.to)).toEqual(["ada@example.test"]);
+    });
+
+    test("redeeming one reset link retires the other outstanding reset links of the user", async () => {
+      await verifiedUser();
+      await requestReset();
+      await requestReset();
+      const [older = "", newer = ""] = resetSent().map((message) => new URL(message.url).pathname.split("/").at(-1) ?? "");
+
+      const redeemed = await redeem(newer);
+      const sibling = await redeem(older, "yet another long passphrase");
+
+      expect(redeemed.status).toBe(200);
+      expect(sibling.status).toBeGreaterThanOrEqual(400);
+      expect((await signIn(NEW_PASSWORD)).status).toBe(200);
     });
 
     test("the reset link works once and sets the new password", async () => {
