@@ -138,9 +138,8 @@ export function createLinkStore(db: Kysely<unknown>): LinkStore {
         const updated = await sql`update links
           set slug = ${link.slug}, destination_url = ${link.destinationUrl}, status = ${link.status},
             version = ${link.version}, updated_at = ${write.audit.occurredAt}
-          where id = ${link.id} and organization_id = ${write.organizationId} and version = ${write.expectedVersion}`.execute(
-          tx,
-        );
+          where id = ${link.id} and organization_id = ${write.organizationId} and version = ${write.expectedVersion}
+            and property_id = ${link.propertyId} and program_id = ${record.programId}`.execute(tx);
         if (Number(updated.numAffectedRows ?? 0) === 0) return false;
 
         await writeAudit(tx, write.audit);

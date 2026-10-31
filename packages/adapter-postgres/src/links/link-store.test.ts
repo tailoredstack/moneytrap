@@ -253,7 +253,15 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
         event: event("evt_1", 1),
         precondition: allowed,
       });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Commit only once the insert is queued behind the suspension's lock, so the refusal is not a race.
+      for (let waited = 0; ; waited += 25) {
+        const waiting = await pool.query(
+          "select count(*)::int as n from pg_stat_activity where wait_event_type = 'Lock' and datname = current_database()",
+        );
+        if (waiting.rows[0].n > 0) break;
+        if (waited > 5000) throw new Error("insert never waited on the property lock");
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
       await holder.query("commit");
 
       expect(await pending).toBe(false);
@@ -275,5 +283,38 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
       }),
     ).toBe(false);
     expect(await linkRows()).toEqual([]);
+  });
+
+  test("a precondition naming another property or program than the record writes nothing", async () => {
+    const store = createLinkStore(db);
+    const otherProperty = "prp_01brz3ndektsv4rrffq69g5fav" as Id<"property">;
+    const otherProgram = "prg_01brz3ndektsv4rrffq69g5fav" as Id<"program">;
+    for (const precondition of [
+      { ...allowed, propertyId: otherProperty },
+      { ...allowed, programId: otherProgram },
+    ]) {
+      expect(
+        await store.insert({ record: record(), audit: audit("aud_1"), event: event("evt_1", 1), precondition }),
+      ).toBe(false);
+    }
+    expect(await linkRows()).toEqual([]);
+  });
+
+  test("an update whose record names another program than the stored link writes nothing", async () => {
+    const store = createLinkStore(db);
+    await store.insert({ record: record(), audit: audit("aud_1"), event: event("evt_1", 1), precondition: null });
+    const otherProgram = "prg_01brz3ndektsv4rrffq69g5fav" as Id<"program">;
+
+    expect(
+      await store.update({
+        organizationId: orgA,
+        expectedVersion: 1,
+        record: { ...record(2, "active"), programId: otherProgram },
+        audit: audit("aud_2"),
+        event: event("evt_2", 2),
+        precondition: null,
+      }),
+    ).toBe(false);
+    expect(await store.find(orgA, linkId)).toEqual(record());
   });
 });
