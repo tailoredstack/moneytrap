@@ -11,8 +11,9 @@ export type KybSubmissionInputResult = { ok: true; value: KybSubmissionInput } |
 const ENTITY_TYPE_MAX = 64;
 const COMPANY_REFERENCE_MAX = 120;
 const DOCUMENT_REFERENCE_MAX = 200;
-// Letters, digits, and . _ : / - only. Base64 characters such as + and = are not reference characters.
-const DOCUMENT_REFERENCE_RE = /^[A-Za-z0-9._:/-]+$/;
+// A vault reference: the "vault:" scheme, then letters, digits, and . _ / -. The scheme is required because a base64
+// blob can use only letters and digits, and it has no colon, so a bare blob never passes.
+const DOCUMENT_REFERENCE_RE = /^vault:[A-Za-z0-9._/-]+$/;
 
 // Checks the caller's fields. Unknown fields are not read, so a document body sent under another name never enters
 // the result. A rejection names the field but never echoes its value, so a logged error cannot carry document contents.

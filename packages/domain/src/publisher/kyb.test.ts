@@ -35,6 +35,12 @@ describe("parseKybSubmission (TP-W3-003)", () => {
     });
   });
 
+  test("a base64 blob without the vault prefix is rejected, even when it uses only letters and digits", () => {
+    const blob = "JVBERi0xLjQKJcOkw7zDtsOfCjIgMCBvYmo8PC9UeXBlL0NhdGFsb2c+PgplbmRvYmoK";
+    expect(parseKybSubmission({ ...valid, document_reference: blob }).ok).toBe(false);
+    expect(parseKybSubmission({ ...valid, document_reference: "vault:kyb/doc_0001" }).ok).toBe(true);
+  });
+
   test("a rejection never echoes the submitted value back", () => {
     const secretish = "PRIVATE-PASSPORT-SCAN-CONTENTS+/==";
     const result = parseKybSubmission({ ...valid, document_reference: secretish, entity_type: "" });

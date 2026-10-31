@@ -91,6 +91,13 @@ describe("redact KYB document contents (TP-W3-004)", () => {
     });
   });
 
+  test("drops a bare document field, which holds contents when it is not a reference", () => {
+    expect(redact({ document: "JVBERi0xLjQ=", kyb: { document: "AAEC" } })).toEqual({
+      document: REDACTED,
+      kyb: { document: REDACTED },
+    });
+  });
+
   test("keeps the document reference, which is not document content", () => {
     expect(redact({ document_reference: "vault:kyb/doc_0001", provider_ref: "vault:kyb/doc_0001" })).toEqual({
       document_reference: "vault:kyb/doc_0001",
