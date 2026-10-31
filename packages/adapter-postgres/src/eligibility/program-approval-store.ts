@@ -79,7 +79,7 @@ export function createProgramApprovalStore(db: Kysely<unknown>): ProgramApproval
 
         await sql`insert into audit_logs (id, organization_id, actor_type, actor_id, action, entity_type, entity_id, metadata, occurred_at)
           values (${write.audit.id}, ${write.organizationId}, ${write.actor.type}, ${write.actor.id},
-            'program_approval.requested', 'program_approval', ${write.programId},
+            'program_approval.requested', 'program_approval', ${`${write.propertyId}|${write.programId}`},
             ${JSON.stringify(write.audit.metadata)}::jsonb, ${write.requestedAt})`.execute(tx);
         await appendOutboxEvent(tx, {
           id: write.event.id,
