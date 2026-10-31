@@ -40,6 +40,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Run at most three reviews at once across all threads. Start the next review when one finishes. Each package still gets its own review.
 - Run every reviewer with full-access permission, and keep it read-only in the brief.
 - Use the comment formats in `docs/MONEYTRAP_REVIEW.md`. The main review comment starts with `<!-- ccr-overview-v2 -->`. Each inline thread starts with `### [High | Medium | Low] <Issue title>`.
+- **Finance review.** A package that is labeled `needs-finance-review`, or that changes `domain/src/ledger`, `domain/src/payouts`, `domain/src/access`, or `app/src/identity`, also gets a finance review. Run it with the same rules as the code review: read-only, full-access, counted in the three-review limit, and the same usage-limit fallback order. Its brief covers double-entry, immutability, linkage, money as bigint minor units, audit events, and tests for the done-when criteria. It reports APPROVE or REQUEST CHANGES with numbered findings, each marked blocking or non-blocking. The implementing thread fixes the findings and reruns both reviews on the new head.
 
 **6. Triage every thread**
 - Reply to each thread with `fix`, `incorrect`, or `won't fix`, and give the reason and the commit.
@@ -48,7 +49,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Once every detailed thread is addressed and the review is clean, hide the main review comment as outdated. Do not hide it while any thread is still open.
 
 **7. Merge and close**
-- Merge only when checks pass and no threads are open, using rebase-merge.
+- Merge only when checks pass, no threads are open, and any required finance review has approved, using rebase-merge.
 - Unwatch the PR once it merges.
 - Set the Linear issue to Done.
 
