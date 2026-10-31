@@ -4,6 +4,7 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
 import { createSourceFactStore } from "../catalog/source-fact-store";
 import { migrate } from "../migrate";
+import { eligibilityEvaluations } from "../migrations/0015_eligibility_evaluations";
 import { createEligibilityDecisionStore } from "./eligibility-decision-store";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -146,6 +147,27 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
       join eligibility_decisions d on d.id = e.decision_id order by e.seq desc limit 1`.execute(db);
     expect(latest.rows[0]?.decision).toBe("deny");
     expect(await countRows("eligibility_evaluations")).toBe(3);
+  });
+
+  test("the backfill gives each existing decision one evaluation, in evaluation order", async () => {
+    // Insert decisions out of order, drop the table, then run the migration's backfill over them.
+    const insertDecision = (id: string, at: string) =>
+      sql`insert into eligibility_decisions (id, organization_id, property_id, program_id, policy_version, decision,
+          reasons, checks, inputs, input_hash, evaluated_at)
+        values (${id}, ${orgId}, ${propertyId}, ${programId}, 1, 'allow', '[]'::jsonb, '[]'::jsonb, '{}'::jsonb,
+          ${`hash-${id}`}, ${new Date(at)})`.execute(db);
+    await insertDecision("eld_late", "2026-11-01T12:00:00.000Z");
+    await insertDecision("eld_early", "2026-11-01T09:00:00.000Z");
+    // The migration adds its scope key and table, so the test removes both to run it as on a database before 0015.
+    await sql`drop table eligibility_evaluations`.execute(db);
+    await sql`alter table eligibility_decisions drop constraint eligibility_decisions_scope_uq`.execute(db);
+
+    await eligibilityEvaluations.up(db);
+
+    const rows = await sql<{
+      decision_id: string;
+    }>`select decision_id from eligibility_evaluations order by seq`.execute(db);
+    expect(rows.rows.map((row) => row.decision_id)).toEqual(["eld_early", "eld_late"]);
   });
 
   test("the same inputs twice give an identical decision and no duplicate row (TP-W4-023)", async () => {
