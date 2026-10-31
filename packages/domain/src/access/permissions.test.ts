@@ -96,6 +96,14 @@ describe("can(principal, permission, scope)", () => {
     expect(can(principal, "members:invite", { organizationId: orgA })).toBe(true);
   });
 
+  test("a finance role in one organization cannot move or read money in another", () => {
+    const principal = principalIn(orgB, "finance");
+    for (const permission of ["balances:read", "payouts:read", "payouts:write"] as const) {
+      expect(can(principal, permission, { organizationId: orgA })).toBe(false);
+      expect(can(principal, permission, { organizationId: orgB })).toBe(true);
+    }
+  });
+
   test("is a pure function: the same inputs give the same answer and the input is not mutated", () => {
     const principal = principalIn(orgA, "editor");
     const snapshot = structuredClone(principal);
