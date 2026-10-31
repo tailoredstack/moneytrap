@@ -10,3 +10,5 @@ export { FakePublisherReviewStore } from "./fakes/publisher-review-store";
 export { FakeVerificationTokens } from "./fakes/verification-tokens";
 export { fixtureCtx } from "./fixtures/ctx";
 export { fixtureId } from "./fixtures/ids";
+export { FIXTURE_NAMES, type FixtureName, RECORDED_FIXTURES, type RecordedFixture } from "./network-sim/fixtures";
+export { type ConnectorRequest, RecordedNetworkSimulator } from "./network-sim/simulator";
