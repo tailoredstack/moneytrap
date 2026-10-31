@@ -16,14 +16,19 @@
       "name": "@moneytrap/server",
       "version": "0.0.0",
       "dependencies": {
+        "@moneytrap/adapter-postgres": "workspace:*",
+        "@moneytrap/adapter-redis": "workspace:*",
         "@moneytrap/app": "workspace:*",
         "@moneytrap/contracts": "workspace:*",
         "@moneytrap/domain": "workspace:*",
         "@sinclair/typebox": "^0.34.52",
         "elysia": "2.0.0-rc.1",
+        "kysely": "0.29.7",
+        "pg": "8.16.3",
       },
       "devDependencies": {
         "@moneytrap/test-kit": "workspace:*",
+        "@types/pg": "8.15.5",
       },
     },
     "apps/web": {
