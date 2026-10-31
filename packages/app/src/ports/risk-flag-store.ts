@@ -25,7 +25,7 @@ export interface RiskFlagWrite {
 export type RiskFlagWriteOutcome = "raised" | "existing";
 
 export interface RiskFlagStore {
-  // Bursts of clicks whose occurrence is at or after `since`. Each burst has at least one click.
+  // Bursts of clicks whose occurrence is at or after `since`. Each burst has at least two clicks.
   findClickBursts(since: Date): Promise<ClickBurst[]>;
   raise(flag: RiskFlagWrite): Promise<RiskFlagWriteOutcome>;
 }
