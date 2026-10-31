@@ -20,10 +20,12 @@ const reports = {
   clock,
   principal: async () => null,
 };
+// The redirect is wired with inert deps for the same reason. These tests register the route and never call it.
+const redirect = { cache: {}, source: {}, clicks: {}, clock, onClickError: () => {} } as never;
 
 describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
   test("every route the app serves declares a guard", () => {
-    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth, undefined, reports));
+    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth, undefined, reports, redirect));
     expect(undeclaredRoutes(app.routes)).toEqual([]);
   });
 
@@ -44,7 +46,7 @@ describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
   });
 
   test("the guard table has no entry for a route the app does not serve", () => {
-    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth, undefined, reports));
+    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth, undefined, reports, redirect));
     const served = new Set(app.routes.map((route) => `${route.method} ${route.path}`));
     const stale = Object.keys(ROUTE_GUARDS).filter((key) => !served.has(key));
     expect(stale).toEqual([]);

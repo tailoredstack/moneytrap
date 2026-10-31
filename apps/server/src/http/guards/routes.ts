@@ -9,6 +9,8 @@ export const ROUTE_GUARDS: Readonly<Record<string, Guard>> = {
   "GET /readyz": { access: "public" },
   "GET /api/health": { access: "public" },
   // The web shell and its assets. API paths that match nothing answer 404 inside the handler.
+  // The visitor redirect (UC13). Public, because the visitor has no account; the route view decides every answer.
+  "GET /r/:token": { access: "public" },
   "GET /*": { access: "public" },
 
   ...Object.fromEntries(
