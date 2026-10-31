@@ -19,8 +19,8 @@ export type RedirectResolution =
 
 // Decides one visitor redirect (UC13, ADR-007). The route view decides: only an allow decision redirects, so a revoked,
 // paused, or ineligible link is denied, and an unknown token is missing. The click is enqueued after the decision and is
-// not awaited, so the response never waits on the queue. The request ID is the click's dedup key, so a retry of the same
-// request cannot record a second click.
+// not awaited, so the response never waits on the queue. The request ID is the click's dedup key, so a redelivered job
+// cannot record a second click. A client retry is a new request and so a new click; click counts are best-effort (ADR-007).
 export async function resolveRedirect(
   deps: RedirectDeps,
   token: string,

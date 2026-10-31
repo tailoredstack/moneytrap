@@ -54,6 +54,16 @@ function fakeSource(record: RouteSourceRecord | null | "throw") {
   return { source, calls };
 }
 
+describe("readRouteView cache outage", () => {
+  test("skips the cache clock after a failed cache read, so an outage costs one deadline", async () => {
+    const { cache, calls } = fakeCache({ get: "throw" });
+    const { source } = fakeSource({ link: link(), eligible: true });
+    const result = await readRouteView({ cache, source }, "lnk_1");
+    expect(result.kind).toBe("found");
+    expect(calls).toEqual(["get"]);
+  });
+});
+
 describe("buildRouteView", () => {
   test("allows an active link with an eligible property and program", () => {
     expect(buildRouteView(link(), true)).toEqual({

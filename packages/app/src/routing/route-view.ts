@@ -46,18 +46,23 @@ export async function readRouteView(
   deps: { cache: RouteCache; source: RouteSource },
   token: string,
 ): Promise<RouteViewResult> {
+  let cacheDown = false;
   try {
     const cached = await withDeadline(deps.cache.get(token));
     if (cached) return { kind: "found", view: cached };
   } catch {
     // A cache outage requires a source read. The redirect still answers.
+    cacheDown = true;
   }
 
+  // A cache that just failed will not answer the clock either. Skipping it keeps an outage to one deadline, not two.
   let loadedAt: number | null = null;
-  try {
-    loadedAt = await withDeadline(deps.cache.readServerTime());
-  } catch {
-    // Without a cache clock the view is not stored, so the next request reads the source again.
+  if (!cacheDown) {
+    try {
+      loadedAt = await withDeadline(deps.cache.readServerTime());
+    } catch {
+      // Without a cache clock the view is not stored, so the next request reads the source again.
+    }
   }
 
   let record: RouteSourceRecord | null;
