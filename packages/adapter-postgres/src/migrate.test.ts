@@ -72,10 +72,36 @@ describeWithDatabase("migrate", () => {
   test("the default provider runs cleanly on an empty database, twice", async () => {
     await migrate(db);
     await migrate(db);
-    // The static set is empty until WP-1.5, but Kysely still creates its bookkeeping table.
     const { rows } = await pool.query<{ exists: boolean }>(`select to_regclass($1) is not null as exists`, [
       `${schema}.kysely_migration`,
     ]);
     expect(rows[0]?.exists).toBe(true);
+  });
+
+  test("the baseline tables exist after migrate()", async () => {
+    await migrate(db);
+    for (const table of ["idempotency_requests", "outbox_events", "inbox_processed_events", "audit_logs"]) {
+      const { rows } = await pool.query<{ exists: boolean }>(`select to_regclass($1) is not null as exists`, [
+        `${schema}.${table}`,
+      ]);
+      expect(rows[0]?.exists, table).toBe(true);
+    }
+  });
+
+  test("the audit role can insert and read audit_logs but not update or delete them", async () => {
+    await migrate(db);
+    const table = `${schema}.audit_logs`;
+    const privilege = async (priv: string) => {
+      const { rows } = await pool.query<{ granted: boolean }>(`select has_table_privilege($1, $2, $3) as granted`, [
+        "moneytrap_audit",
+        table,
+        priv,
+      ]);
+      return rows[0]?.granted;
+    };
+    expect(await privilege("INSERT")).toBe(true);
+    expect(await privilege("SELECT")).toBe(true);
+    expect(await privilege("UPDATE")).toBe(false);
+    expect(await privilege("DELETE")).toBe(false);
   });
 });
