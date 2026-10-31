@@ -9,6 +9,10 @@ export type PrincipalResolver = (headers: Headers) => Promise<Principal | null>;
 
 export const anonymous: PrincipalResolver = async () => null;
 
+// Marks a guard hook with the route key it was built for. Coverage reads this mark from the installed hook, so a
+// route that never calls guard() (or calls it for a different key) is not counted as guarded.
+export const GUARD_KEY = Symbol("guard-key");
+
 // The route option that runs a route's guard before its handler. Spread it into the route options:
 //   .get("/api/sessions", handler, guard("GET /api/sessions", principal))
 // It reads the table entry for `key` and throws when there is none, so an undeclared route stops the server from
@@ -16,8 +20,8 @@ export const anonymous: PrincipalResolver = async () => null;
 export function guard(key: string, principal: PrincipalResolver = anonymous) {
   const declared: Guard | undefined = ROUTE_GUARDS[key];
   if (!declared) throw new Error(`route ${key} has no guard declaration`);
-  return {
-    beforeHandle: async ({
+  const beforeHandle = Object.assign(
+    async ({
       request,
       params,
       set,
@@ -30,7 +34,9 @@ export function guard(key: string, principal: PrincipalResolver = anonymous) {
       const decision = await decide(declared, needsCaller ? await principal(request.headers) : null, params);
       if (!decision.ok) return failure(set, request, decision.code);
     },
-  };
+    { [GUARD_KEY]: key },
+  );
+  return { beforeHandle };
 }
 
 function failure(set: { status?: number | string }, request: Request, code: string) {
