@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 import { createLogger, type Logger } from "../telemetry/logger";
+import { guard } from "./guards/enforce";
 
 // A dependency the service needs before it can take traffic. The composition root supplies these
 // (database, queue, ...); a check that throws or rejects marks the dependency unavailable.
@@ -13,8 +14,8 @@ type CheckState = "ok" | "unavailable";
 // connection string.
 export function healthRoutes(checks: ReadinessCheck[], logger: Logger = createLogger()) {
   return new Elysia({ name: "health" })
-    .get("/healthz", () => ({ status: "ok" }))
-    .get("/readyz", async ({ set }) => {
+    .get("/healthz", guard("GET /healthz"), () => ({ status: "ok" }))
+    .get("/readyz", guard("GET /readyz"), async ({ set }) => {
       const results = await Promise.all(
         checks.map(async ({ name, check }): Promise<[string, CheckState]> => {
           try {

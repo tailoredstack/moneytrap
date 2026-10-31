@@ -4,12 +4,10 @@ import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { NotifyDev } from "./adapters/notify-dev";
 import { createApp } from "./app";
-import { serveWebAsset } from "./assets";
 import { createAuth } from "./auth/config";
 import { notifierMailer } from "./auth/mailer";
 import { rateLimitPolicy } from "./auth/rate-limit";
-import { authRoutes } from "./http/auth";
-import { sessionRoutes } from "./http/sessions";
+import { apiRoutes } from "./http/routes";
 import { randomIds, systemClock } from "./system";
 
 // The only runtime inputs are environment variables and argv. Migrations are not run on boot; `--migrate` runs them
@@ -62,21 +60,9 @@ function serve(): void {
   });
 
   createApp({ clock: systemClock, ids: randomIds, readiness: [] })
-    .use(authRoutes(auth, { trustProxy: trustedProxies.length > 0 }))
-    .use(sessionRoutes(auth))
-    .get("/api/health", () => ({ status: "ok" }))
-    .get("/*", ({ request }) => {
-      const { pathname } = new URL(request.url);
-      // The API namespace never falls through to the shell, so a mistyped API path gets a 404.
-      if (pathname === "/api" || pathname.startsWith("/api/")) return notFound();
-      return serveWebAsset(pathname) ?? notFound();
-    })
+    .use(apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }))
     .listen({ hostname, port });
   console.log(`Listening on ${hostname}:${port}`);
-}
-
-function notFound(): Response {
-  return new Response("Not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
 if (process.argv.includes("--migrate")) {

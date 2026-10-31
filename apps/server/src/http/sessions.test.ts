@@ -61,3 +61,45 @@ describe("password change policy (TP-W2-022)", () => {
     expect(calls).toEqual([]);
   });
 });
+
+// CT-005: another user's session and a nonexistent ID must look the same to the caller (TP-W2-033, TP-W2-034).
+describe("session revoke not-found rule (CT-005)", () => {
+  const auth = {
+    api: {
+      getSession: async () => ({ session: { id: "current" }, user: { id: "user-1" } }),
+      listSessions: async () =>
+        new Response(
+          JSON.stringify([{ id: "own", token: "t-own", createdAt: "2026-10-01", expiresAt: "2026-11-01" }]),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      revokeSession: async () => new Response(null, { status: 200 }),
+    },
+  };
+
+  const revoke = (id: string) =>
+    new Elysia().use(sessionRoutes(auth as never)).handle(
+      new Request(`https://moneytrap.test/api/sessions/${id}`, {
+        method: "DELETE",
+        headers: { cookie: "better-auth.session_token=abc" },
+      }),
+    );
+
+  test("a session that belongs to another user returns the same response as a missing one", async () => {
+    const foreign = await revoke("foreign-session");
+    const missing = await revoke("does-not-exist");
+    expect(foreign.status).toBe(404);
+    expect(missing.status).toBe(404);
+    // correlation_id is per request by design, so it is the only field allowed to differ.
+    const withoutCorrelation = async (response: Response) => {
+      const body = (await response.json()) as { error: Record<string, unknown> };
+      const { correlation_id: _, ...error } = body.error;
+      return { error };
+    };
+    const foreignBody = await withoutCorrelation(foreign);
+    expect(foreignBody).toEqual(await withoutCorrelation(missing));
+    expect(foreignBody).toEqual({ error: { code: "RESOURCE_NOT_FOUND", message: "Request failed" } });
+  });
+});
