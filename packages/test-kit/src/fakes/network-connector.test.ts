@@ -35,6 +35,23 @@ describe("FakeNetworkConnector (WP-4.1)", () => {
     });
   });
 
+  test("an operation the profile marks unsupported fails even with no explicit failure set", async () => {
+    const connector = new FakeNetworkConnector({ capabilities: profile({ list_transactions: "not_authorized" }) });
+
+    expect(await connector.listTransactions({ from: new Date(0), to: new Date(1), cursor: null })).toEqual({
+      ok: false,
+      failure: { state: "not_authorized" },
+    });
+  });
+
+  test("validate connection still returns the profile when it marks an operation unsupported", async () => {
+    const connector = new FakeNetworkConnector({ capabilities: profile({ list_adjustments: "unsupported" }) });
+
+    const result = await connector.validateConnection();
+
+    expect(result.ok && result.value.capabilities.list_adjustments).toBe("unsupported");
+  });
+
   test("TP-W4-004 temporarily_unavailable carries a retry hint and never returns an empty page", async () => {
     const connector = new FakeNetworkConnector({
       failures: { discover_advertisers: { state: "temporarily_unavailable", retryAfterSeconds: 30 } },

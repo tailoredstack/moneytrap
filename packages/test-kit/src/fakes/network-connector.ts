@@ -98,11 +98,21 @@ export class FakeNetworkConnector implements NetworkConnector {
     }));
   }
 
+  // An operation the profile does not mark supported fails with that state, so the fake never returns an empty success
+  // for it. validate_connection is exempt: it is how the profile itself is read.
   private run<T>(operation: ConnectorOperation, value: () => T): ConnectorResult<T> {
     this.calls.push(operation);
-    const failure = this.failures[operation];
+    const failure = this.failures[operation] ?? this.failureFromProfile(operation);
     if (failure) return { ok: false, failure };
     return { ok: true, value: value() };
+  }
+
+  private failureFromProfile(operation: ConnectorOperation): ConnectorFailure | undefined {
+    if (operation === "validate_connection") return undefined;
+    const state = this.capabilities[operation];
+    if (state === "supported") return undefined;
+    if (state === "temporarily_unavailable") return { state, retryAfterSeconds: null };
+    return { state };
   }
 }
 
