@@ -11,15 +11,43 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 
 ## Work-package sequence
 
-1. Check the implementation plan, Linear issue state and dependencies, repository state, and existing threads. Select a work package only when its Linear status is Todo or Backlog and all dependencies are satisfied. Avoid duplicate work packages.
-2. Immediately move the selected Linear issue to In Progress before implementation so other workers do not select it. Start each work package in its own branch and worktree from updated `main`. When two independent eligible work packages can proceed in parallel, keep two implementation threads active in separate worktrees.
-3. Follow `CONTRIBUTING.md`. Implement the work package's definition of done and run the relevant checks locally.
-4. Create one pull request per work package targeting `main`. Do not stack pull requests. A parallel work package may be implemented in its own worktree, but its PR must wait until the preceding PR merges and its branch is updated from `main`.
-5. Request a read-only, full-diff delegated review using `gpt-6-sol` with medium reasoning. Post its findings as inline threads in one `gh api` review headed exactly:
+**1. Select the work package**
+- Check the implementation plan, the Linear status, dependencies, and existing threads.
+- Pick a package only when its Linear status is Todo or Backlog and its dependencies are satisfied.
+- Move the Linear issue to In Progress before starting, so no one else picks it up.
+- You can start multiple open tasks that are not blocked
 
-   `Pull Request Review by gpt-6-sol (medium reasoning) in behalf of @joseederangojr`
+**2. Start an isolated branch**
+- Branch from updated `main` as `wave-<n>/<WP-id>-<slug>`, one work package per branch.
+- Write the failing check first, then the implementation.
 
-6. Triage every finding in its thread. Reply with `fix`, `incorrect`, or `won't fix` and a reason. Fix valid findings, then resolve the threads. Repeat the full-diff delegated review on the new head until it passes cleanly and no review threads remain open.
-7. Stage only specific intended paths. Use Moneytrap Conventional Commits with the Linear issue ID in the subject. Use `Refs OZE-<id>` on interim commits and `Closes OZE-<id>` on the final commit. Do not add co-author or generated-by trailers.
-8. Once required checks pass and review threads are closed, merge with `gh pr merge --rebase`. Set the Linear issue to Done.
-9. Before settling, start the next eligible work package in a new thread, after checking existing threads. Keep the parallel implementation rule above in effect.
+**3. Implement and check locally**
+- Run `check:docs`, `typecheck`, `lint`, `boundaries`, and `bun test`.
+- Commit with a Conventional Commit subject that includes the Linear ID. Use `Refs OZE-<id>` on interim commits and `Closes OZE-<id>` on the completing commit.
+- No co-author or generated-by lines.
+
+**4. Open one PR to `main`**
+- One PR per work package. a dependent PR waits until its predecessor merges.
+- The body starts with the WP ID and `Closes OZE-<id>`.
+- Link the PR to the thread, and watch it while it waits on checks or reviews.
+
+**5. Run the delegated review loop**
+- Start a read-only, full-diff review with `gpt-6-sol` at low effort. If it hits its usage limit, fall back to haiku 5.5 at low effort, then to the other reviewers in your usage-limit order.
+- Run every reviewer with full-access permission, and keep it read-only in the brief.
+- The review posts inline threads under the exact header the workflow specifies.
+- Review comment template `docs/MONEYTRAP_REVIEW.md`
+
+**6. Triage every thread**
+- Reply to each thread with `fix`, `incorrect`, or `won't fix`, and give the reason and the commit.
+- Fix the valid findings, resolve each thread, and rerun the full-diff review on the new head.
+- Repeat until the review is clean and no threads are open.
+- If every thread is addressed then hide the main comment as outdated
+
+**7. Merge and close**
+- Merge only when checks pass and no threads are open, using rebase-merge.
+- Set the Linear issue to Done.
+
+**8. Start the next package**
+- Before the thread settles, check existing threads for duplicates.
+- Start the next eligible package in its own thread.
+- And loop the work package sequence
