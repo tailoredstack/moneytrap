@@ -285,7 +285,9 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       await verifiedUser();
       await requestReset();
       await requestReset();
-      const [older = "", newer = ""] = resetSent().map((message) => new URL(message.url).pathname.split("/").at(-1) ?? "");
+      const [older = "", newer = ""] = resetSent().map(
+        (message) => new URL(message.url).pathname.split("/").at(-1) ?? "",
+      );
 
       const redeemed = await redeem(newer);
       const sibling = await redeem(older, "yet another long passphrase");
