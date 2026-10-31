@@ -6,7 +6,8 @@ export const ledger: Migration = {
     await db.schema
       .createTable("accounts")
       .addColumn("id", "text", (column) => column.primaryKey())
-      .addColumn("organization_id", "text", (column) => column.notNull().references("organizations.id"))      .addColumn("currency", "text", (column) => column.notNull())
+      .addColumn("organization_id", "text", (column) => column.notNull().references("organizations.id"))
+      .addColumn("currency", "text", (column) => column.notNull())
       .addColumn("created_at", "timestamptz", (column) => column.notNull())
       .addUniqueConstraint("accounts_id_currency_uq", ["id", "currency"])
       .execute();
@@ -30,7 +31,10 @@ export const ledger: Migration = {
 
     await db.schema
       .alterTable("postings")
-      .addForeignKeyConstraint("postings_account_currency_fk", ["account_id", "currency"], "accounts", ["id", "currency"])
+      .addForeignKeyConstraint("postings_account_currency_fk", ["account_id", "currency"], "accounts", [
+        "id",
+        "currency",
+      ])
       .execute();
 
     await sql`
