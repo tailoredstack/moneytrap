@@ -44,6 +44,27 @@ describe("PayoutProviderSimulator (WP-7.4)", () => {
     expect(inspected.ok && inspected.value?.status).toBe("paid");
   });
 
+  test("TP-W7-021 a retry after a timeout that left a transfer creates no second transfer", async () => {
+    const provider = new PayoutProviderSimulator("timeout-then-exists");
+    await provider.initiateTransfer(request);
+
+    const retry = await provider.initiateTransfer(request);
+
+    expect(retry.ok && retry.value.transferId).toBe("tr_req_1");
+    expect(provider.takeCallbacks()).toHaveLength(2);
+  });
+
+  test("two stacked query timeouts both fire before a query succeeds", async () => {
+    const provider = new PayoutProviderSimulator("happy");
+    await provider.initiateTransfer(request);
+    provider.timeoutNextInspections(1);
+    provider.timeoutNextInspections(1);
+
+    expect((await provider.inspectTransfer(request.requestId)).ok).toBe(false);
+    expect((await provider.inspectTransfer(request.requestId)).ok).toBe(false);
+    expect((await provider.inspectTransfer(request.requestId)).ok).toBe(true);
+  });
+
   test("TP-W7-022 a retry with the same request ID creates the transfer once the provider has none", async () => {
     const provider = new PayoutProviderSimulator("timeout-then-absent");
 
