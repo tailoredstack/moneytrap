@@ -128,8 +128,10 @@ describeWithDatabase("program approval store (TP-W4-024, TP-W4-025)", () => {
     expect(outcome.record.networkApproval).toBeNull();
     expect(await count("publisher_program_approvals")).toBe(1);
     expect(await count("outbox_events")).toBe(1);
-    const audit = await sql<{ action: string }>`select action from audit_logs`.execute(db);
+    const audit = await sql<{ action: string; entity_id: string }>`select action, entity_id from audit_logs`.execute(db);
     expect(audit.rows.map((row) => row.action)).toEqual(["program_approval.requested"]);
+    // The entity is the property-program pair, so an entity query isolates this one request.
+    expect(audit.rows[0]?.entity_id).toBe(`${propertyId}|${programId}`);
   });
 
   test("a repeat request writes no second row, audit, or event", async () => {
