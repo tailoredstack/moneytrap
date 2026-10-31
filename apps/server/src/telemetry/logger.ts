@@ -7,7 +7,7 @@ const SENSITIVE_KEY = /token|secret|passw|authorization|cookie|api[-_]?key|crede
 // A bearer credential is masked wherever it appears, including mid-message. Userinfo in a URL
 // (scheme://user:secret@host) is a credential wherever it appears too.
 const BEARER = /bearer\s+[^\s,;"']+/gi;
-const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
+const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s@]+@/gi;
 
 function redactString(value: string): string {
   return value.replace(BEARER, REDACTED).replace(URL_USERINFO, `$1${REDACTED}@`);
@@ -20,7 +20,8 @@ export function redact(value: unknown, seen = new WeakSet<object>()): unknown {
   seen.add(value);
 
   if (Array.isArray(value)) return value.map((item) => redact(item, seen));
-  if (value instanceof Error) return { name: value.name, message: redact(value.message, seen) };
+  // Only name and message are emitted. A custom property or cause is dropped rather than walked, so an allowlist decides what leaves.
+  if (value instanceof Error) return { name: redact(value.name, seen), message: redact(value.message, seen) };
 
   const out: Record<string, unknown> = {};
   for (const [key, field] of Object.entries(value)) {

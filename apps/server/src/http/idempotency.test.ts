@@ -10,7 +10,7 @@ import { idempotency } from "./idempotency";
 function setup() {
   const store = new FakeIdempotencyStore();
   let calls = 0;
-  const app = createApp({ clock: new FakeClock(), ids: new FakeIdGenerator() })
+  const app = createApp({ clock: new FakeClock(), ids: new FakeIdGenerator(), readiness: [] })
     .use(idempotency({ store, scopeOf: () => "org_1" }))
     .post("/payments", { body: t.Object({ amount: t.String() }) }, ({ body }) => ({
       call: ++calls,

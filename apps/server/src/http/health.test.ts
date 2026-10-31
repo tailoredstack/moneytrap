@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { FakeClock, FakeIdGenerator } from "@moneytrap/test-kit";
 import { createApp } from "../app";
 
-const deps = () => ({ clock: new FakeClock(), ids: new FakeIdGenerator() });
+const deps = () => ({ clock: new FakeClock(), ids: new FakeIdGenerator(), readiness: [] });
 const get = (app: { handle: (r: Request) => Promise<Response> }, path: string) =>
   app.handle(new Request(`http://localhost${path}`));
 
