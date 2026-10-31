@@ -31,7 +31,7 @@ describe("reverse", () => {
       Posting.credit("revenue-eur", eur(300n)),
     ]);
 
-    const r = reverse(original, "j-2");
+    const r = reverse(original, "j-2", false);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
@@ -50,7 +50,7 @@ describe("reverse", () => {
     const original = record("j-1", [Posting.debit("cash", usd(1000n)), Posting.credit("revenue", usd(1000n))]);
     const before = snapshot(original);
 
-    const r = reverse(original, "j-2");
+    const r = reverse(original, "j-2", false);
     expect(r.ok).toBe(true);
     expect(snapshot(original)).toEqual(before);
     expect(original.reversalOf).toBeNull();
@@ -59,11 +59,21 @@ describe("reverse", () => {
 
   test("TP-W6-009 reversing a reversal is rejected", () => {
     const original = record("j-1", [Posting.debit("cash", usd(1000n)), Posting.credit("revenue", usd(1000n))]);
-    const first = reverse(original, "j-2");
+    const first = reverse(original, "j-2", false);
     expect(first.ok).toBe(true);
     if (!first.ok) return;
 
-    const second = reverse(first.value, "j-3");
+    const second = reverse(first.value, "j-3", false);
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.error.code).toBe("VALIDATION_FAILED");
+  });
+
+  test("a second reversal of the same original is rejected", () => {
+    const original = record("j-1", [Posting.debit("cash", usd(1000n)), Posting.credit("revenue", usd(1000n))]);
+    const first = reverse(original, "j-2", false);
+    expect(first.ok).toBe(true);
+
+    const second = reverse(original, "j-3", true);
     expect(second.ok).toBe(false);
     if (!second.ok) expect(second.error.code).toBe("VALIDATION_FAILED");
   });
