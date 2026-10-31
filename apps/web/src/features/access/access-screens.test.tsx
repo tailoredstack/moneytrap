@@ -56,3 +56,35 @@ describe("InvitationView (UI-014, TP-W2-030)", () => {
     expect(html).not.toContain(">Accept<");
   });
 });
+
+describe("MembersView invite form (UI-011)", () => {
+  test("the invite button opens an email and role form", () => {
+    const html = renderToStaticMarkup(
+      <MembersView state="ready" members={members} canInvite inviteOpen onInviteSubmit={() => {}} />,
+    );
+    expect(html).toContain('for="invite-email"');
+    expect(html).toContain('type="email"');
+    expect(html).toContain('for="invite-role"');
+    expect(html).toContain("Send invite");
+  });
+
+  test("no form is shown until the invite button opens it", () => {
+    const html = renderToStaticMarkup(<MembersView state="ready" members={members} canInvite />);
+    expect(html).not.toContain("Send invite");
+  });
+
+  test("an invite error is announced", () => {
+    const html = renderToStaticMarkup(
+      <MembersView state="ready" members={members} canInvite inviteOpen inviteError="Email is not valid" />,
+    );
+    expect(html).toContain("Email is not valid");
+  });
+});
+
+describe("InvitationView declined (UI-014)", () => {
+  test("a declined invitation says so and offers no accept", () => {
+    const html = renderToStaticMarkup(<InvitationView state="declined" orgName="Acme" memberRole="member" />);
+    expect(html).toContain("You declined this invitation.");
+    expect(html).not.toContain(">Accept<");
+  });
+});

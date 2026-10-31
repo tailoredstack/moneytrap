@@ -1,11 +1,12 @@
 // Identity calls go through the Better Auth client. Each action maps a client reply to a screen outcome, so the
 // screens never read Better Auth error codes directly and never learn more than the visible outcome shows.
 
+// `retryAfter` is the rate-limit wait in seconds. The fetch wrapper in api/retry-after-fetch.ts puts it in the body.
 export type AuthError = {
   status: number;
   code?: string | undefined;
   message?: string | undefined;
-  headers?: Headers | undefined;
+  retryAfter?: number | null | undefined;
 };
 type Reply<T = unknown> = { data?: T | null | undefined; error?: AuthError | null | undefined };
 
@@ -28,11 +29,8 @@ const ALREADY_REGISTERED = new Set(["USER_ALREADY_EXISTS", "USER_ALREADY_EXISTS_
 const ALREADY_MEMBER = "YOU_ARE_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION";
 const WRONG_CODE_MESSAGE = "That code is not valid.";
 
-export function retryAfterSeconds(headers?: Headers | undefined): number | null {
-  const value = headers?.get("retry-after");
-  if (!value) return null;
-  const seconds = Number(value);
-  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+export function retryAfterSeconds(error: AuthError): number | null {
+  return typeof error.retryAfter === "number" && error.retryAfter >= 0 ? error.retryAfter : null;
 }
 
 export type RegisterOutcome =
@@ -49,7 +47,7 @@ export async function registerAccount(
   const name = input.email.split("@")[0] ?? input.email;
   const { error } = await client.signUp.email({ email: input.email, password: input.password, name });
   if (!error) return { kind: "sent" };
-  if (error.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error.headers) };
+  if (error.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error) };
   if (error.code && ALREADY_REGISTERED.has(error.code)) return { kind: "sent" };
   if (error.status === 400 || error.status === 422) {
     return { kind: "invalid", message: error.message ?? "Check the email and password." };
@@ -69,7 +67,7 @@ export async function signIn(
 ): Promise<SignInOutcome> {
   const { data, error } = await client.signIn.email(input);
   if (error) {
-    if (error.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error.headers) };
+    if (error.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error) };
     return { kind: "failed" };
   }
   // The second-factor challenge arrives as a flag on an otherwise successful reply.
@@ -89,7 +87,7 @@ export type CodeOutcome =
 async function checkCode(reply: Promise<Reply>): Promise<CodeOutcome> {
   const { error } = await reply;
   if (!error) return { kind: "ok" };
-  if (error.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error.headers) };
+  if (error.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error) };
   // Without a pending sign-in, Better Auth cannot match the code to a challenge. The user has to sign in again.
   if (error.code === "INVALID_TWO_FACTOR_COOKIE") return { kind: "challenge-expired" };
   if (error.status === 400 || error.status === 401) return { kind: "invalid", message: WRONG_CODE_MESSAGE };
@@ -109,7 +107,7 @@ export type ResetRequestOutcome = { kind: "sent" } | { kind: "rate-limited"; ret
 // Every answer except a rate limit or a server fault reads "sent", so an unknown address looks the same as a known one.
 export async function requestPasswordReset(client: IdentityClient, email: string): Promise<ResetRequestOutcome> {
   const { error } = await client.requestPasswordReset({ email, redirectTo: "/reset-password" });
-  if (error?.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error.headers) };
+  if (error?.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error) };
   return { kind: "sent" };
 }
 
@@ -125,7 +123,7 @@ export async function resetPassword(
 ): Promise<ResetOutcome> {
   const { error } = await client.resetPassword(input);
   if (!error) return { kind: "ok" };
-  if (error.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error.headers) };
+  if (error.status === 429) return { kind: "rate-limited", retryAfterSeconds: retryAfterSeconds(error) };
   if (error.code === "INVALID_TOKEN") return { kind: "expired" };
   return { kind: "failed" };
 }

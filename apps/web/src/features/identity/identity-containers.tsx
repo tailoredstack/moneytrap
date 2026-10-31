@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { authClient } from "../../api/auth-client";
+import { canManageMembers, inviteMember, rejectInvitation } from "../access/access-actions";
 import { type InvitationState, InvitationView } from "../access/invitation-view";
 import { type Member, MembersView } from "../access/members-view";
 import { AccountSecurityView, type MfaSetup } from "./account-security-view";
@@ -65,7 +66,9 @@ export function LoginScreen({ returnTo }: { returnTo?: string | undefined }) {
         setView({ status: "submitting", email, retryAfterSeconds: null });
         const outcome = await signIn(authClient, { email, password });
         if (outcome.kind === "two-factor") {
-          await navigate({ href: `/step-up?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}` });
+          await navigate({
+            href: `/step-up?challenge=1&mode=totp&returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`,
+          });
           return;
         }
         if (outcome.kind === "ok") {
@@ -200,11 +203,23 @@ export function AccountSecurityScreen() {
 }
 
 export function MembersScreen() {
+  const queryClient = useQueryClient();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteError, setInviteError] = useState<string | undefined>(undefined);
+  const role = useQuery({
+    queryKey: ["identity", "active-member-role"],
+    queryFn: async () => {
+      const { data } = await authClient.organization.getActiveMember();
+      return data?.role ?? null;
+    },
+  });
+  // Better Auth lets any member list members, so the role check here decides what the screen may show.
+  const manager = canManageMembers(role.data);
   const membersQuery = useQuery({
     queryKey: ["identity", "members"],
+    enabled: role.isSuccess && manager,
     queryFn: async () => {
       const { data, error } = await authClient.organization.listMembers();
-      if (error?.status === 403) return { state: "denied" as const, members: [] as Member[] };
       if (error || !data) throw new Error("members unavailable");
       const members: Member[] = data.members.map((member) => ({
         id: member.id,
@@ -213,19 +228,33 @@ export function MembersScreen() {
         role: member.role === "owner" || member.role === "admin" ? member.role : "member",
         status: "active",
       }));
-      return { state: "ready" as const, members };
+      return members;
     },
   });
-  const role = useQuery({
-    queryKey: ["identity", "active-member-role"],
-    queryFn: async () => {
-      const { data } = await authClient.organization.getActiveMember();
-      return data?.role ?? "member";
-    },
-  });
-  if (!membersQuery.data) return <p role="status">Loading members…</p>;
-  const canInvite = role.data === "owner" || role.data === "admin";
-  return <MembersView state={membersQuery.data.state} members={membersQuery.data.members} canInvite={canInvite} />;
+  if (role.isPending) return <p role="status">Loading members…</p>;
+  if (!manager) return <MembersView state="denied" members={[]} canInvite={false} />;
+  if (membersQuery.isPending) return <p role="status">Loading members…</p>;
+  if (membersQuery.isError) return <MembersView state="denied" members={[]} canInvite={false} />;
+  return (
+    <MembersView
+      state="ready"
+      members={membersQuery.data}
+      canInvite
+      inviteOpen={inviteOpen}
+      inviteError={inviteError}
+      onInvite={() => setInviteOpen(true)}
+      onInviteSubmit={async (input) => {
+        const outcome = await inviteMember(authClient, input);
+        if (outcome.kind === "sent") {
+          setInviteOpen(false);
+          setInviteError(undefined);
+          await queryClient.invalidateQueries({ queryKey: ["identity", "members"] });
+          return;
+        }
+        setInviteError(outcome.kind === "invalid" ? outcome.message : "Something went wrong. Try again.");
+      }}
+    />
+  );
 }
 
 export function InvitationScreen({ invitationId }: { invitationId: string }) {
@@ -254,6 +283,10 @@ export function InvitationScreen({ invitationId }: { invitationId: string }) {
         if (outcome.kind === "ok") await navigate({ href: "/overview" });
         else if (outcome.kind === "already-member") setState("already-member");
         else if (outcome.kind === "expired") setState("expired");
+      }}
+      onDecline={async () => {
+        const outcome = await rejectInvitation(authClient, invitationId);
+        if (outcome.kind === "declined") setState("declined");
       }}
     />
   );

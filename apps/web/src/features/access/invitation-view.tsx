@@ -1,7 +1,7 @@
 import { Button } from "@moneytrap/ui";
 
 // UI-014. The invitation names the organization and role. Each state offers only the actions that still apply.
-export type InvitationState = "ready" | "already-member" | "expired";
+export type InvitationState = "ready" | "already-member" | "expired" | "declined";
 
 export function InvitationView({
   state,
@@ -22,6 +22,14 @@ export function InvitationView({
       <section className="max-w-sm space-y-2">
         <h1 className="text-xl font-semibold">Invitation</h1>
         <p role="status">This invitation has expired. Ask the organization to send a new one.</p>
+      </section>
+    );
+  }
+  if (state === "declined") {
+    return (
+      <section className="max-w-sm space-y-2">
+        <h1 className="text-xl font-semibold">Invitation</h1>
+        <p role="status">You declined this invitation.</p>
       </section>
     );
   }
