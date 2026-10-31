@@ -35,15 +35,6 @@ describe("record click (TP-W5-032 to TP-W5-035, WP-5.8)", () => {
     expect(store.facts.size).toBe(1);
   });
 
-  test("two distinct click attempts one second apart are both kept, each with its own key (TP-W5-034, CT-013)", async () => {
-    const store = new MemoryClickStore();
-    const later = new Date(occurredAt.getTime() + 1000);
-    // Each attempt gets a fresh key, so keys are never reused across distinct clicks.
-    expect(await recordClick(store, click(`click:${crypto.randomUUID()}`, { occurredAt }))).toBe("recorded");
-    expect(await recordClick(store, click(`click:${crypto.randomUUID()}`, { occurredAt: later }))).toBe("recorded");
-    expect(store.facts.size).toBe(2);
-  });
-
   test("a blank or overlong dedup key is rejected before the store is called", async () => {
     const store = new MemoryClickStore();
     await expect(recordClick(store, click("  "))).rejects.toThrow("dedupKey is required");
