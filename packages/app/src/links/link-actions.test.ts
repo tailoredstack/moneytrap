@@ -112,12 +112,13 @@ class MemoryLinks implements LinkStore {
 
   constructor(private readonly live: Live) {}
 
+  // Records are copied in and out, so a caller cannot change a stored row by mutating what it holds (as the fake does).
   seed(record: LinkRecord) {
-    this.rows.set(record.link.id, record);
+    this.rows.set(record.link.id, structuredClone(record));
   }
   async find(organizationId: Id<"organization">, id: Id<"link">) {
     const row = this.rows.get(id);
-    return row && row.organizationId === organizationId ? row : null;
+    return row && row.organizationId === organizationId ? structuredClone(row) : null;
   }
   async insert(write: {
     record: LinkRecord;
@@ -126,7 +127,7 @@ class MemoryLinks implements LinkStore {
     precondition: LinkWritePrecondition | null;
   }) {
     if (!this.holds(write.precondition)) return false;
-    this.rows.set(write.record.link.id, write.record);
+    this.rows.set(write.record.link.id, structuredClone(write.record));
     this.audits.push(write.audit);
     this.events.push(write.event);
     return true;
@@ -143,7 +144,7 @@ class MemoryLinks implements LinkStore {
     if (!stored || stored.organizationId !== write.organizationId) return false;
     if (stored.link.version !== write.expectedVersion) return false;
     if (!this.holds(write.precondition)) return false;
-    this.rows.set(write.record.link.id, write.record);
+    this.rows.set(write.record.link.id, structuredClone(write.record));
     this.audits.push(write.audit);
     this.events.push(write.event);
     return true;
@@ -436,6 +437,39 @@ describe("edit destination", () => {
     expect(await editLinkDestination(ctxFor(null), deps, { organizationId: orgId, linkId, destination })).toEqual({
       ok: false,
       code: "UNAUTHENTICATED",
+    });
+  });
+});
+
+describe("edit of a paused link", () => {
+  // A paused link serves no traffic, but its destination goes live on resume. The edit is gated anyway, so a deny
+  // decision cannot be stored into a row that a later resume would revive without a fresh check.
+  test("a deny decision refuses the edit and keeps the paused row", async () => {
+    const decision: EligibilityDecision = { decision: "deny", policyVersion: 1, reasons: ["geography"], checks: [] };
+    const { deps, links } = setup({ decision });
+    seededLink(links, "paused");
+    const result = await editLinkDestination(ctxFor(actorId), deps, {
+      organizationId: orgId,
+      linkId,
+      destination: "https://shop.example.com/other",
+    });
+    expect(result).toEqual({ ok: false, code: "PROGRAM_INELIGIBLE", reasons: ["geography"] });
+    expect(links.rows.get(linkId)?.link.destinationUrl).toBe(destination);
+  });
+});
+
+describe("audit metadata", () => {
+  test("an edit's audit row records the old and new destination", async () => {
+    const { deps, links } = setup();
+    seededLink(links, "active");
+    await editLinkDestination(ctxFor(actorId), deps, {
+      organizationId: orgId,
+      linkId,
+      destination: "https://shop.example.com/other",
+    });
+    expect(links.audits[0]?.metadata).toEqual({
+      fromDestinationUrl: destination,
+      toDestinationUrl: "https://shop.example.com/other",
     });
   });
 });
