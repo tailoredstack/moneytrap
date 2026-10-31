@@ -21,6 +21,6 @@ export interface ClickCountRow {
 export interface ClickReportStore {
   // Links in ascending ID order. A link with no clicks in the window is not returned.
   countByLink(query: ClickCountQuery): Promise<readonly ClickCountRow[]>;
-  // The most recent time a click of this organization's links was recorded, or null when it has none.
-  latestRecordedAt(organizationId: Id<"organization">): Promise<Date | null>;
+  // The most recent time a click of this organization's links was recorded at or after `since`, or null when there is none.
+  latestRecordedAt(organizationId: Id<"organization">, since: Date): Promise<Date | null>;
 }

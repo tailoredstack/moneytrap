@@ -90,6 +90,13 @@ describeWithDatabase("click report store (TP-W5-036, WP-5.9)", () => {
     expect(second.map((row) => row.linkId)).toEqual(["lnk_c"]);
   });
 
+  test("latestRecordedAt ignores clicks recorded before the lookback, and reads only the organization's links", async () => {
+    await seedLink("lnk_old", orgA);
+    await seedClick("c0", "lnk_old", new Date("2025-01-01T00:00:00.000Z"), new Date("2025-01-01T00:00:00.000Z"));
+    const store = createClickReportStore(db);
+    expect(await store.latestRecordedAt(orgA, new Date("2026-01-01T00:00:00.000Z"))).toBeNull();
+  });
+
   test("latestRecordedAt reads the newest recorded click of the organization's links, or null", async () => {
     await seedLink("lnk_a", orgA);
     await seedLink("lnk_foreign", orgB);
@@ -99,8 +106,9 @@ describeWithDatabase("click report store (TP-W5-036, WP-5.9)", () => {
     await seedClick("c3", "lnk_foreign", new Date("2026-10-31T00:00:00.000Z"), new Date("2026-10-31T00:00:00.000Z"));
 
     const store = createClickReportStore(db);
-    expect(await store.latestRecordedAt(orgA)).toEqual(newest);
-    expect(await store.latestRecordedAt(orgB)).toEqual(new Date("2026-10-31T00:00:00.000Z"));
-    expect(await store.latestRecordedAt("org_01crz3ndektsv4rrffq69g5fav" as Id<"organization">)).toBeNull();
+    const since = new Date("2026-01-01T00:00:00.000Z");
+    expect(await store.latestRecordedAt(orgA, since)).toEqual(newest);
+    expect(await store.latestRecordedAt(orgB, since)).toEqual(new Date("2026-10-31T00:00:00.000Z"));
+    expect(await store.latestRecordedAt("org_01crz3ndektsv4rrffq69g5fav" as Id<"organization">, since)).toBeNull();
   });
 });

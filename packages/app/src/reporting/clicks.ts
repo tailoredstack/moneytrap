@@ -1,4 +1,4 @@
-import type { Id } from "@moneytrap/domain";
+import { type Id, parseId } from "@moneytrap/domain";
 import type { ClickCountRow, ClickReportStore } from "../ports/click-report-store";
 import type { Clock } from "../ports/clock";
 
@@ -59,15 +59,20 @@ export async function listClickCounts(deps: ClickReportDeps, input: ClickReportI
   const data = fetched.slice(0, limit);
   const nextCursor = hasMore ? (data.at(-1)?.linkId ?? null) : null;
 
-  const latest = await deps.clicks.latestRecordedAt(input.organizationId);
+  // A freshness check only needs clicks from the widest window a report can ask for.
+  const since = new Date(asOf.getTime() - MAX_CLICK_WINDOW_MS);
+  const latest = await deps.clicks.latestRecordedAt(input.organizationId, since);
   const dataStale =
     latest !== null && asOf.getTime() - latest.getTime() > CLICK_DATA_STALE_AFTER_MS && to.getTime() > latest.getTime();
 
   return { ok: true, value: { data, nextCursor, asOf, dataStale } };
 }
 
+// Only ISO-8601 instants with a time part. Date.parse also reads loose forms such as "1" or "Nov 1 2026".
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+
 function parseInstant(value: unknown): Date | null {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string" || !ISO_INSTANT.test(value)) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -78,9 +83,8 @@ function parseLimit(value: unknown): number | null {
   return value;
 }
 
-// The link ID to resume after: null when no cursor was sent, undefined when the cursor is malformed.
+// The link ID to resume after: null when no cursor was sent, undefined when the cursor is not a link ID.
 function parseCursor(value: unknown): string | null | undefined {
   if (value === undefined) return null;
-  if (typeof value !== "string" || value.trim() === "" || value.length > 200) return undefined;
-  return value;
+  return parseId("link", value) ?? undefined;
 }
