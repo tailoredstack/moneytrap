@@ -7,8 +7,13 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@moneytrap/app": "workspace:*",
     "@moneytrap/contracts": "workspace:*",
+    "@moneytrap/domain": "workspace:*",
     "@sinclair/typebox": "^0.34.52",
-    "@moneytrap/domain": "workspace:*"
+    "elysia": "2.0.0-rc.1"
+  },
+  "devDependencies": {
+    "@moneytrap/test-kit": "workspace:*"
   }
 }
