@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { Pool } from "pg";
 import { authOptions } from "./config";
 import type { AuthMailer } from "./mailer";
-import { recordFailedSignIn } from "./rate-limit";
+import { AUTH_RATE_LIMIT_POLICY, recordFailedSignIn } from "./rate-limit";
+
+const LIMITS = { secret: "test-secret-at-least-32-characters-long", policy: AUTH_RATE_LIMIT_POLICY };
 
 // Config assertions only. No database is opened: the pool is never connected here.
 function setup() {
@@ -147,11 +149,27 @@ describe("auth rate limits (WP-2.14)", () => {
     for (let i = 0; i < 10; i++) await expect(before?.(ctx as never)).resolves.toBeUndefined();
 
     // Five recorded failures spend the budget, and the next login is refused without touching the database.
-    await recordFailedSignIn(counter, ctx.body);
-    await recordFailedSignIn(counter, ctx.body);
-    await recordFailedSignIn(counter, ctx.body);
-    await recordFailedSignIn(counter, ctx.body);
-    await recordFailedSignIn(counter, ctx.body);
+    await recordFailedSignIn(counter, ctx.body, LIMITS);
+    await recordFailedSignIn(counter, ctx.body, LIMITS);
+    await recordFailedSignIn(counter, ctx.body, LIMITS);
+    await recordFailedSignIn(counter, ctx.body, LIMITS);
+    await recordFailedSignIn(counter, ctx.body, LIMITS);
     await expect(before?.(ctx as never)).rejects.toMatchObject({ statusCode: 429 });
+  });
+
+  test("trusted proxy CIDRs reach Better Auth and default to none", () => {
+    const counter = { increment: async () => 1, count: async () => 0 };
+    const base = {
+      pool: new Pool({ connectionString: "postgres://unused.invalid/db" }),
+      secret: "test-secret-at-least-32-characters-long",
+      baseURL: "https://moneytrap.test",
+      mailer: { sendVerification: async () => {}, sendPasswordReset: async () => {} },
+      rateLimitCounter: counter,
+    };
+
+    expect(authOptions(base).advanced?.ipAddress?.trustedProxies).toEqual([]);
+    expect(authOptions({ ...base, trustedProxies: ["10.0.0.0/8"] }).advanced?.ipAddress?.trustedProxies).toEqual([
+      "10.0.0.0/8",
+    ]);
   });
 });

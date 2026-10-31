@@ -9,9 +9,12 @@ import { requireRecentSecondFactor } from "../http/guards/assurance";
 import { accessControl, roles } from "./access";
 import type { AuthMailer } from "./mailer";
 import {
+  AUTH_RATE_LIMIT_POLICY,
   ipRateLimitRules,
   ipRateLimitStorage,
   type RateLimitCounter,
+  type RateLimitPolicy,
+  type RateLimitSettings,
   recordFailedSignIn,
   refuseIfSpent,
 } from "./rate-limit";
@@ -41,6 +44,11 @@ export type AuthConfigDeps = {
   stepUpWindowSeconds?: number;
   // Redis-backed counter for login and recovery limits (WP-2.14). Both per-IP and per-identity limits use it.
   rateLimitCounter: RateLimitCounter;
+  // Policy values for the limits. Defaults to AUTH_RATE_LIMIT_POLICY; the server reads overrides from the environment.
+  rateLimitPolicy?: RateLimitPolicy;
+  // Proxies in front of the server, as CIDRs. Better Auth reads the client IP from the address past the last trusted
+  // hop. Empty means no proxy is trusted, so the IP comes from the socket peer (see authRoutes).
+  trustedProxies?: string[];
 };
 
 // Better Auth verifies email tokens statelessly and never records their use, so a second click on the same
@@ -183,7 +191,10 @@ export function authOptions({
   mailer,
   stepUpWindowSeconds: stepUpWindow = DEFAULT_STEP_UP_WINDOW_SECONDS,
   rateLimitCounter,
+  rateLimitPolicy: policy = AUTH_RATE_LIMIT_POLICY,
+  trustedProxies = [],
 }: AuthConfigDeps): BetterAuthOptions {
+  const limits: RateLimitSettings = { secret, policy };
   // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
   const db = new Kysely<any>({ dialect: new PostgresDialect({ pool }) });
   return {
@@ -196,16 +207,18 @@ export function authOptions({
     rateLimit: {
       enabled: true,
       customStorage: ipRateLimitStorage(rateLimitCounter),
-      customRules: ipRateLimitRules(),
+      customRules: ipRateLimitRules(policy),
     },
+    // Which hops are proxies decides the client IP that per-IP limits count (spec §4.4). Set it from deployment config.
+    advanced: { ipAddress: { trustedProxies } },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        await refuseIfSpent(rateLimitCounter, ctx.path, ctx.body ?? {});
+        await refuseIfSpent(rateLimitCounter, ctx.path, ctx.body ?? {}, limits);
         return claimVerificationLink(ctx, db);
       }),
       after: createAuthMiddleware(async (ctx) => {
         if (ctx.path === "/sign-in/email" && isFailedSignIn(ctx.context.returned)) {
-          await recordFailedSignIn(rateLimitCounter, ctx.body ?? {});
+          await recordFailedSignIn(rateLimitCounter, ctx.body ?? {}, limits);
         }
         await settleVerificationLink(ctx, db);
       }),
@@ -253,5 +266,20 @@ export function authOptions({
 }
 
 export function createAuth(deps: AuthConfigDeps) {
-  return betterAuth(authOptions(deps));
+  const auth = betterAuth(authOptions(deps));
+  // Better Auth turns errors from hooks into responses, but not errors thrown by its rate-limit storage. Convert those
+  // here, so a Redis outage reaches the client as the coded 503 and not as an unhandled exception.
+  const handler = auth.handler;
+  auth.handler = async (request: Request) => {
+    try {
+      return await handler(request);
+    } catch (error) {
+      if (!isAPIError(error)) throw error;
+      return Response.json(error.body ?? { message: error.message }, {
+        status: error.statusCode,
+        headers: error.headers,
+      });
+    }
+  };
+  return auth;
 }
