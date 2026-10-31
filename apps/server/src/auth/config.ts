@@ -293,10 +293,38 @@ function isFailedSignIn(returned: unknown): boolean {
   return isAPIError(returned) && returned.statusCode >= 400 && returned.statusCode !== 429;
 }
 
+// Every route that turns MFA off. They all share one step-up rule, so a route added here gets the same check.
+const MFA_DISABLE_PATHS = new Set(["/two-factor/disable"]);
+
+// Better Auth's changePassword with revokeOtherSessions deletes every session and creates a new one whose createdAt
+// is now. The step-up check reads createdAt as the second-factor time, so the rotated session would look fresh with
+// no second factor at all (SEC-W2-001). The before-hook keeps the caller's createdAt on the request, and the after-hook
+// gives it to the rotated session, so a password change never moves the second-factor time forward.
+const SECOND_FACTOR_AT = "secondFactorAt";
+
+// The before-hook hands the time to this request's context, as the reset-owner lookup does.
+async function rememberSecondFactorTime(ctx: AuthContext) {
+  if (ctx.path !== "/change-password") return;
+  const session = await getSessionFromCtx(ctx);
+  if (session) return { context: { [SECOND_FACTOR_AT]: session.session.createdAt } };
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+async function carrySecondFactorTime(ctx: AuthContext, db: Kysely<any>) {
+  if (ctx.path !== "/change-password") return;
+  const secondFactorAt = (ctx as unknown as Record<string, unknown>)[SECOND_FACTOR_AT];
+  const returned = ctx.context.returned;
+  // A password change without revokeOtherSessions returns no token, and its session is still the original one.
+  const token = isRecord(returned) ? returned.token : null;
+  if (!(secondFactorAt instanceof Date) || typeof token !== "string") return;
+  await sql`update "session" set "createdAt" = ${secondFactorAt} where "token" = ${token}`.execute(db);
+}
+
 // Better Auth's disable route only requires a session, not a fresh one, so the step-up check runs before it.
 // The session's creation time stands in for the second-factor time: an MFA user's session is only created
-// after the second factor passes. Fails closed: a missing session, or any API-key request, is refused. The API-key
-// plugin builds its session with the request time as createdAt, so an API key must not count as a second factor.
+// after the second factor passes, and a password change carries that time over (see above). Fails closed: a missing
+// session, or any API-key request, is refused. The API-key plugin builds its session with the request time as
+// createdAt, so an API key must not count as a second factor.
 const API_KEY_HEADER = "x-api-key";
 function requireStepUpToDisableMfa(stepUpWindow: number) {
   return createAuthMiddleware(async (ctx) => {
@@ -348,6 +376,8 @@ export function authOptions({
         await refuseForeignMember(ctx, db);
         const organizationBody = organizationBodyFor(ctx);
         if (organizationBody) return organizationBody;
+        const secondFactor = await rememberSecondFactorTime(ctx);
+        if (secondFactor) return secondFactor;
         return claimVerificationLink(ctx, db);
       }),
       after: createAuthMiddleware(async (ctx) => {
@@ -355,6 +385,7 @@ export function authOptions({
         if (ctx.path === "/sign-in/email" && isFailedSignIn(ctx.context.returned)) {
           await recordFailedSignIn(rateLimitCounter, ctx.body ?? {}, limits);
         }
+        await carrySecondFactorTime(ctx, db);
         await settleVerificationLink(ctx, db);
       }),
     },
@@ -398,7 +429,7 @@ export function authOptions({
         hooks: {
           before: [
             {
-              matcher: (ctx) => (ctx.path ?? "").replace(/\/+$/, "") === "/two-factor/disable",
+              matcher: (ctx) => MFA_DISABLE_PATHS.has((ctx.path ?? "").replace(/\/+$/, "")),
               handler: requireStepUpToDisableMfa(stepUpWindow),
             },
           ],
