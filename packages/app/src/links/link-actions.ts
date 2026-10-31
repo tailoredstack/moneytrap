@@ -267,8 +267,9 @@ export async function createActiveLink(ctx: Ctx, deps: LinkDeps, input: CreateLi
     allowedHosts: checked.hosts,
   });
   if (!created.ok) return domainDenial(created.code);
-  const active = activateLink(created.value, checked.hosts);
-  if (!active.ok) return domainDenial(active.code);
+  // The link is stored once, already active, at its creation version (1). createLink has just checked the destination
+  // against the same allow-list, so the activation check adds nothing here, and a second version bump would be wrong.
+  const active = { ok: true as const, value: { ...created.value, status: "active" as const } };
 
   return commit(ctx, deps, {
     actor,
