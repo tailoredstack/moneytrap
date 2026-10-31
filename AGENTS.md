@@ -30,7 +30,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Run `bun install` once per worktree before the checks.
 - Run `check:docs`, `typecheck`, `lint`, `boundaries`, and `bun test`.
 - If CI fails, pull the failing job's logs. Re-run failures that look transient (timeout, runner died, network). Fix real failures before triage.
-- If a job fails in seconds with no steps run and no runner name, it never started. That is a GitHub-side failure. Re-run it once with `gh run rerun <run-id> --failed`. If it fails again, compare with a passing branch before changing code.
+- If a job fails in seconds with no steps run and no runner name, it never started. That is a GitHub-side failure. Re-run it once with `gh run rerun <run-id> --failed`. If it fails again, compare with a passing branch before changing code. If a throwaway branch from `main` fails the same way, the cause is GitHub-side (runner availability or account limits). Do not change code. Re-run later and tell the user.
 - Commit with a Conventional Commit subject that includes the Linear ID. Use `Refs OZE-<id>` on interim commits and `Closes OZE-<id>` on the completing commit.
 - No co-author or generated-by trailers in commit messages or PR bodies. Run `git log -1 --format=%B` before pushing and remove any trailer a tool added.
 
