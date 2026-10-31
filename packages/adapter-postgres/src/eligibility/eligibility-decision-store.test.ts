@@ -170,6 +170,42 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     expect(rows.rows.map((row) => row.decision_id)).toEqual(["eld_early", "eld_late"]);
   });
 
+  test("an evaluation cannot name a decision of another property (composite key)", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const decision = (await store.record(writeFor(allowed))).decision;
+
+    await expect(
+      sql`insert into eligibility_evaluations (organization_id, property_id, program_id, decision_id, evaluated_at)
+        values (${orgId}, 'prp_other', ${programId}, ${decision.id}, ${now})`.execute(db),
+    ).rejects.toThrow();
+  });
+
+  test("the backfill breaks an evaluated_at tie by policy version, then by id, and down removes the table", async () => {
+    const insertDecision = (id: string, policyVersion: number) =>
+      sql`insert into eligibility_decisions (id, organization_id, property_id, program_id, policy_version, decision,
+          reasons, checks, inputs, input_hash, evaluated_at)
+        values (${id}, ${orgId}, ${propertyId}, ${programId}, ${policyVersion}, 'allow', '[]'::jsonb, '[]'::jsonb,
+          '{}'::jsonb, ${`hash-${id}`}, ${now})`.execute(db);
+    // Same evaluated_at for all three: the policy version orders the two version-1 rows by id, then version 2.
+    await insertDecision("eld_v2", 2);
+    await insertDecision("eld_b", 1);
+    await insertDecision("eld_a", 1);
+    await sql`drop table eligibility_evaluations`.execute(db);
+    await sql`alter table eligibility_decisions drop constraint eligibility_decisions_scope_uq`.execute(db);
+
+    await eligibilityEvaluations.up(db);
+    const ordered = await sql<{
+      decision_id: string;
+    }>`select decision_id from eligibility_evaluations order by seq`.execute(db);
+    expect(ordered.rows.map((row) => row.decision_id)).toEqual(["eld_a", "eld_b", "eld_v2"]);
+
+    // If down were missing, the table would still exist and the check below would fail.
+    await eligibilityEvaluations.down?.(db);
+    const table = await sql<{ n: number }>`select count(*)::int as n from information_schema.tables
+      where table_schema = current_schema() and table_name = 'eligibility_evaluations'`.execute(db);
+    expect(table.rows[0]?.n).toBe(0);
+  });
+
   test("the same inputs twice give an identical decision and no duplicate row (TP-W4-023)", async () => {
     const store = createEligibilityDecisionStore(db);
     const first = await store.record(writeFor(allowed));
