@@ -22,7 +22,7 @@ function draftLink(): Link {
 }
 
 function activeLink(): Link {
-  const result = activateLink(draftLink());
+  const result = activateLink(draftLink(), allowed);
   if (!result.ok) throw new Error("fixture: activate failed");
   return result.value;
 }
@@ -68,22 +68,30 @@ describe("Link aggregate", () => {
   });
 
   test("TP-W5-001 draft → active is allowed and bumps the version", () => {
-    const result = activateLink(draftLink());
+    const result = activateLink(draftLink(), allowed);
     expect(result.ok && result.value.status).toBe("active");
     expect(result.ok && result.value.version).toBe(2);
+  });
+
+  test("a host removed from the allow-list after drafting blocks activation, and the draft is untouched", () => {
+    const link = draftLink();
+    expect(activateLink(link, [])).toEqual({ ok: false, code: "VALIDATION_FAILED" });
+    expect(link.status).toBe("draft");
+    expect(link.version).toBe(1);
   });
 
   test("TP-W5-010 pause then resume changes state and bumps the version each time", () => {
     const paused = pauseLink(activeLink());
     expect(paused.ok && paused.value).toMatchObject({ status: "paused", version: 3 });
-    const resumed = activateLink(paused.ok ? paused.value : activeLink());
+    const resumed = activateLink(paused.ok ? paused.value : activeLink(), allowed);
     expect(resumed.ok && resumed.value).toMatchObject({ status: "active", version: 4 });
   });
 
   test("TP-W5-002 revoked → active is rejected", () => {
     const revoked = revokeLink(activeLink());
     if (!revoked.ok) throw new Error("fixture: revoke failed");
-    expect(activateLink(revoked.value)).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(activateLink(revoked.value, allowed)).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(activateLink(revoked.value, [])).toEqual({ ok: false, code: "STATE_CONFLICT" });
     expect(pauseLink(revoked.value)).toEqual({ ok: false, code: "STATE_CONFLICT" });
   });
 

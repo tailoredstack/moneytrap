@@ -48,8 +48,14 @@ export function createLink(input: {
   };
 }
 
-export function activateLink(link: Link): LinkTransition {
-  return move(link, ["draft", "paused"], "active");
+// Activation re-checks the stored destination, so a host removed from the allow-list after drafting cannot go live.
+// The state is checked first, so a revoked link reports STATE_CONFLICT whatever its destination.
+export function activateLink(link: Link, allowedHosts: readonly string[]): LinkTransition {
+  const next = move(link, ["draft", "paused"], "active");
+  if (!next.ok) return next;
+  const checked = validateDestination(link.destinationUrl, allowedHosts);
+  if (!checked.ok) return { ok: false, code: checked.code };
+  return next;
 }
 
 export function pauseLink(link: Link): LinkTransition {
