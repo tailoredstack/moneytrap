@@ -37,15 +37,15 @@ export interface IncomingRevision<T> {
   payload: T;
 }
 
-// create: the source record is new. unchanged: the same revision and content, so no row is written (TP-W4-008).
-// revise: the network reported a new revision or different content, so a new revision is kept beside the old one.
+// create: the source record is new. unchanged: the same content, so no row is written (TP-W4-008). The upstream
+// revision label alone does not make a new revision, because the content is what the platform acts on.
+// revise: the content changed, so a new revision is kept beside the old one and records the label it arrived with.
 export type RevisionDecision = { kind: "create" } | { kind: "unchanged" } | { kind: "revise" };
 
 export function decideRevision<T>(latest: LatestRevision<T> | null, incoming: IncomingRevision<T>): RevisionDecision {
   if (latest === null) return { kind: "create" };
-  const sameRevision = latest.sourceRevision === incoming.sourceRevision;
   const sameContent = canonicalJson(latest.payload) === canonicalJson(incoming.payload);
-  return sameRevision && sameContent ? { kind: "unchanged" } : { kind: "revise" };
+  return sameContent ? { kind: "unchanged" } : { kind: "revise" };
 }
 
 // Serialises a payload with sorted keys and sorted list fields, so two payloads that differ only in key order or in the
