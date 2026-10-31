@@ -38,6 +38,16 @@ describe("keysetPage", () => {
     expect(second.items.map((r) => r.id)).toEqual(["c", "d"]);
   });
 
+  test("orders by code units, matching a SQL ORDER BY under the C collation", () => {
+    const mixed: Row[] = [
+      { id: "x", createdAt: "b" },
+      { id: "y", createdAt: "B" },
+      { id: "z", createdAt: "a" },
+    ];
+    const page = keysetPage(mixed, { limit: 10, sortKey: byCreatedAt });
+    expect(page.items.map((r) => r.id)).toEqual(["y", "z", "x"]);
+  });
+
   test("does not mutate the input array", () => {
     const copy = [...rows];
     keysetPage(rows, { limit: 2, sortKey: byCreatedAt });
