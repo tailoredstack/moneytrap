@@ -125,6 +125,38 @@ describe("PayoutProviderSimulator (WP-7.4)", () => {
     expect(forged).toEqual({ ok: false, failure: { state: "rejected", reason: "signature" } });
   });
 
+  test("a signed callback for a transfer this provider never created is refused as unknown-transfer", async () => {
+    const provider = new PayoutProviderSimulator("happy");
+    const headers = { "x-sim-signature": "sim-valid" };
+    const body = JSON.stringify({
+      eventId: "evt_1",
+      requestId: "req_other",
+      transferId: "tr_req_other",
+      status: "paid",
+      sequence: 2,
+      occurredAt: "2026-01-01T00:00:02.000Z",
+    });
+
+    expect(await provider.receiveStatusCallback({ headers, body })).toEqual({
+      ok: false,
+      failure: { state: "rejected", reason: "unknown-transfer" },
+    });
+  });
+
+  test("a callback with an empty event ID is refused as malformed, so dedupe cannot merge unrelated events", async () => {
+    const provider = new PayoutProviderSimulator("happy");
+    await provider.initiateTransfer(request);
+    const [callback] = provider.takeCallbacks();
+    const event = JSON.parse(callback?.body ?? "{}");
+
+    const result = await provider.receiveStatusCallback({
+      headers: callback?.headers ?? {},
+      body: JSON.stringify({ ...event, eventId: "" }),
+    });
+
+    expect(result).toEqual({ ok: false, failure: { state: "rejected", reason: "malformed" } });
+  });
+
   test("a callback with an unparseable time or a sequence below 1 is refused as malformed", async () => {
     const provider = new PayoutProviderSimulator("happy");
     const headers = { "x-sim-signature": "sim-valid" };
