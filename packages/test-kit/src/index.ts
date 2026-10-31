@@ -1,6 +1,9 @@
 export { FakeClock } from "./clock";
+export { FakeDnsResolver } from "./fakes/dns-resolver";
 export { FakeIdGenerator } from "./fakes/id-generator";
 export { FakeIdempotencyStore } from "./fakes/idempotency-store";
 export { FakeNotifier } from "./fakes/notifier";
+export { FakePropertyStore } from "./fakes/property-store";
+export { FakeVerificationTokens } from "./fakes/verification-tokens";
 export { fixtureCtx } from "./fixtures/ctx";
 export { fixtureId } from "./fixtures/ids";
