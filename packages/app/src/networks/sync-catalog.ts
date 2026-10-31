@@ -55,7 +55,7 @@ export async function syncCatalog(deps: SyncDeps, input: { networkId: string }):
   const { networkId } = input;
 
   // Credentials are checked first. A disabled credential stops the sync before any catalog write (TP-W4-002, CT-009).
-  const connection = await connector.validateConnection();
+  const connection = await guarded(() => connector.validateConnection());
   if (!connection.ok) return { ok: false, failure: typedFailure(connection.failure) };
 
   const advertisers = emptyTally();
@@ -161,6 +161,16 @@ function quarantineId(networkId: string, scope: SyncScope, reason: QuarantineRea
   return `qtn_${digest.slice(0, 40)}`;
 }
 
+// A connector that throws instead of returning a ConnectorFailure is an adapter bug. The thrown error is discarded, so
+// its message cannot reach the caller. The sync reports a retryable failure, which is bounded by the worker's attempts.
+async function guarded<T>(call: () => Promise<ConnectorResult<T>>): Promise<ConnectorResult<T>> {
+  try {
+    return await call();
+  } catch {
+    return { ok: false, failure: { state: "temporarily_unavailable", retryAfterSeconds: null } };
+  }
+}
+
 // Rebuilds the failure from its typed fields only. An adapter that attaches an upstream message or body to the failure
 // cannot pass that text through the sync result, log line, or error (TP-W4-007, CT-009).
 function typedFailure(failure: ConnectorFailure): ConnectorFailure {
@@ -192,7 +202,7 @@ async function drain<T>(args: {
   const loaded: SyncCursor = await store.loadCursor(networkId, scope);
   let cursor = loaded.cursor;
   for (;;) {
-    const page = await fetchPage(cursor);
+    const page = await guarded(() => fetchPage(cursor));
     if (!page.ok) return { ok: false, failure: typedFailure(page.failure) };
     const observedAt = clock.now();
     for (const item of page.value.items) await handle(item, observedAt);
