@@ -69,6 +69,7 @@ describeWithStores("auth rate limiting against Postgres and Redis (TP-W2-014, TP
   const mailer: AuthMailer = {
     async sendVerification() {},
     async sendPasswordReset() {},
+    async sendInvitation() {},
   };
 
   function authWith(policy: RateLimitPolicy, shared: RateLimitCounter = counter, trustedProxies: string[] = []) {
