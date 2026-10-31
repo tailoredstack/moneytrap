@@ -49,7 +49,7 @@ export function evaluateEligibility(input: EligibilityInput): EligibilityDecisio
     { reason: "publisher_not_approved", passed: input.publisher.status === "approved" },
     { reason: "property_not_approved", passed: input.property.status === "approved" },
     approvalCheck(input.program.approval),
-    { reason: "contract", passed: input.contract.active },
+    { reason: "contract", passed: input.contract.active === true },
     ...dimensionCheck("geography", input.geography, input.program.countries, input.contract.countries),
     ...dimensionCheck("channel", input.channel, input.program.channels, input.contract.channels),
     // Fail closed: only an explicit `required: false` skips the gate, so a missing or malformed flag needs consent.
@@ -87,6 +87,7 @@ function dimensionCheck(
 }
 
 // Country codes and channel names are compared without case or surrounding space.
-function normalise(value: string): string {
-  return value.trim().toLowerCase();
+// A non-string value normalises to blank, so a malformed scalar denies as unknown instead of throwing.
+function normalise(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
