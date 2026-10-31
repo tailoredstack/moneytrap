@@ -15,6 +15,7 @@ export const PERMISSIONS = [
   "members:remove",
   "publisher:submit",
   "publisher:status",
+  "publisher:review",
   "properties:read",
   "properties:write",
   "links:read",

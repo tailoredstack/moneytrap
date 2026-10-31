@@ -6,6 +6,7 @@ export const ID_PREFIXES = {
   kyb: "kyb",
   property: "prp",
   link: "lnk",
+  audit: "aud",
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;
