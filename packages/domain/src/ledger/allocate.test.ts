@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Money } from "../money/money";
-import { createShareRule } from "./share-rule";
 import { allocate } from "./allocate";
+import { createShareRule } from "./share-rule";
 
 describe("allocate largest remainder", () => {
   test("70/30 on 0.01 USD sums exactly", () => {
