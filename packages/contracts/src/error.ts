@@ -22,7 +22,7 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 export const ErrorEnvelopeSchema = Type.Object(
   {
     error: Type.Object({
-      code: Type.Union(ERROR_CODES.map((code) => Type.Literal(code))),
+      code: Type.Union([...ERROR_CODES.map((code) => Type.Literal(code)), Type.Literal("INTERNAL")]),
       message: Type.String({ minLength: 1 }),
       correlation_id: Type.String({ minLength: 1 }),
     }),

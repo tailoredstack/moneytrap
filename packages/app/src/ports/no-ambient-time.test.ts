@@ -14,7 +14,7 @@ function sources(dir: string): string[] {
   });
 }
 
-test("TP-W1-014 domain and app code read no ambient time or randomness", () => {
+test("TP-W1-008 domain and app code read no ambient time or randomness", () => {
   const offenders = roots.flatMap((root) => sources(root).filter((file) => forbidden.test(readFileSync(file, "utf8"))));
   expect(offenders).toEqual([]);
 });
