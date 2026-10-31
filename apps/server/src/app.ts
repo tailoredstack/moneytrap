@@ -5,8 +5,9 @@ import { healthRoutes, type ReadinessCheck } from "./http/health";
 import { requestId } from "./http/request-id";
 
 // Ports the HTTP layer hands to route plugins. The composition root builds them once and passes them in.
-// readiness lists the dependencies /readyz probes; it is empty when the composition root omits it.
-export type AppDeps = { clock: Clock; ids: IdGenerator; readiness?: ReadinessCheck[] };
+// readiness lists the dependencies /readyz probes. It is required, so a composition root that forgets its
+// dependencies cannot report ready; a service with none passes an empty list on purpose.
+export type AppDeps = { clock: Clock; ids: IdGenerator; readiness: ReadinessCheck[] };
 
 export function createApp(deps: AppDeps) {
   return new Elysia()

@@ -26,6 +26,17 @@ describe("redact", () => {
     });
   });
 
+  test("masks URL userinfo even when the password contains a slash", () => {
+    expect(redact({ url: "https://user:pa/ss@host/path" })).toEqual({ url: `https://${REDACTED}@host/path` });
+  });
+
+  test("redacts an Error name and message, and drops custom properties", () => {
+    const error = Object.assign(new Error("failed for Bearer abc"), { token: "t" });
+    error.name = "Bearer xyz";
+
+    expect(redact({ error })).toEqual({ error: { name: REDACTED, message: `failed for ${REDACTED}` } });
+  });
+
   test("masks credentials embedded in URLs under any key", () => {
     const out = redact({ message: "connect redis://user:hunter2@cache:6379 failed", url: "https://u:p@host/x" });
 

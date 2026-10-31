@@ -11,7 +11,7 @@ type CheckState = "ok" | "unavailable";
 // the orchestrator restart healthy pods. /readyz reports whether every check passes and returns 503
 // when one fails. The response names the failing check but never its error, which can carry a
 // connection string.
-export function healthRoutes(checks: ReadinessCheck[] = [], logger: Logger = createLogger()) {
+export function healthRoutes(checks: ReadinessCheck[], logger: Logger = createLogger()) {
   return new Elysia({ name: "health" })
     .get("/healthz", () => ({ status: "ok" }))
     .get("/readyz", async ({ set }) => {

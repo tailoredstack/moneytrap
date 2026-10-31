@@ -5,7 +5,7 @@ import { Value } from "@sinclair/typebox/value";
 import { t } from "elysia";
 import { createApp } from "./app";
 
-const deps = () => ({ clock: new FakeClock(), ids: new FakeIdGenerator() });
+const deps = () => ({ clock: new FakeClock(), ids: new FakeIdGenerator(), readiness: [] });
 
 describe("createApp", () => {
   test("returns an app that serves requests through app.handle()", async () => {
