@@ -1,4 +1,5 @@
 import { migrate } from "@moneytrap/adapter-postgres";
+import { createRedisConnection, createRedisRateLimitCounter } from "@moneytrap/adapter-redis";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { NotifyDev } from "./adapters/notify-dev";
@@ -44,6 +45,8 @@ function serve(): void {
     pool: new Pool({ connectionString: requiredEnv("DATABASE_URL") }),
     secret: requiredEnv("BETTER_AUTH_SECRET"),
     baseURL: requiredEnv("BASE_URL"),
+    // Login and recovery limits are shared across instances, so their counters live in Redis (WP-2.14).
+    rateLimitCounter: createRedisRateLimitCounter(createRedisConnection(requiredEnv("REDIS_URL"))),
     // Dev sink: messages stay in memory until the production Notifier adapter lands. Verification and
     // reset links are not delivered outside this process yet.
     mailer: notifierMailer(new NotifyDev()),

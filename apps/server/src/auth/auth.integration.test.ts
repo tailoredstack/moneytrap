@@ -60,6 +60,14 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       secret: "test-secret-at-least-32-characters-long",
       baseURL: "https://moneytrap.test",
       mailer,
+      rateLimitCounter: {
+        async increment() {
+          return 1;
+        },
+        async count() {
+          return 0;
+        },
+      },
     });
   });
 
@@ -215,6 +223,14 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       secret: "test-secret-at-least-32-characters-long",
       baseURL: "https://moneytrap.test",
       mailer: notifierMailer(notifier),
+      rateLimitCounter: {
+        async increment() {
+          return 1;
+        },
+        async count() {
+          return 0;
+        },
+      },
     });
 
     await signUp(VALID_PASSWORD);
