@@ -3,7 +3,9 @@ import { type Id, parseId } from "../ids/ids";
 import {
   approveProperty,
   createWebsiteProperty,
+  isMonetizable,
   markPropertyVerified,
+  monetizationDenial,
   rejectProperty,
   requestPropertyVerification,
   submitPropertyForReview,
@@ -144,5 +146,30 @@ describe("Property aggregate", () => {
     const illegal = approveProperty(draft);
     expect(illegal.ok).toBe(false);
     expect(draft).toEqual(before);
+  });
+});
+
+// CT-006: the verified-vs-approved distinction is confirmed here for every action that monetizes a property.
+describe("monetization is limited to approved properties (CT-006)", () => {
+  test("TP-W3-015 a verified property is not monetizable and the denial reason is not approved", () => {
+    expect(isMonetizable(verifiedProperty())).toBe(false);
+    expect(monetizationDenial(verifiedProperty())).toBe("not approved");
+  });
+
+  test("a property in review is not monetizable until a reviewer approves it", () => {
+    expect(isMonetizable(reviewPendingProperty())).toBe(false);
+    expect(monetizationDenial(reviewPendingProperty())).toBe("not approved");
+  });
+
+  test("TP-W3-016 an approved property is monetizable and has no denial", () => {
+    expect(isMonetizable(approvedProperty())).toBe(true);
+    expect(monetizationDenial(approvedProperty())).toBeNull();
+  });
+
+  test("a rejected property is not monetizable", () => {
+    const rejected = rejectProperty(reviewPendingProperty(), "Site is parked");
+    if (!rejected.ok) throw new Error("fixture: reject failed");
+    expect(isMonetizable(rejected.value)).toBe(false);
+    expect(monetizationDenial(rejected.value)).toBe("not approved");
   });
 });
