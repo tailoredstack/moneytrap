@@ -232,9 +232,10 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
     );
     const store = createLinkStore(db);
     const idn = { ...allowed, host: "xn--bcher-kva.de" };
+    const punycode = { ...record(), link: { ...record().link, destinationUrl: "https://xn--bcher-kva.de/spring" } };
 
     expect(
-      await store.insert({ record: record(), audit: audit("aud_1"), event: event("evt_1", 1), precondition: idn }),
+      await store.insert({ record: punycode, audit: audit("aud_1"), event: event("evt_1", 1), precondition: idn }),
     ).toBe(true);
   });
 
@@ -261,5 +262,18 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
     } finally {
       holder.release();
     }
+  });
+
+  test("a precondition that names another property or host than the record writes nothing", async () => {
+    const store = createLinkStore(db);
+    expect(
+      await store.insert({
+        record: record(),
+        audit: audit("aud_1"),
+        event: event("evt_1", 1),
+        precondition: { ...allowed, host: "other.example.com" },
+      }),
+    ).toBe(false);
+    expect(await linkRows()).toEqual([]);
   });
 });
