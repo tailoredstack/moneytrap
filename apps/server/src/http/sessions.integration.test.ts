@@ -45,6 +45,7 @@ describeWithDatabase("Password change revokes other sessions (TP-W2-022)", () =>
       async sendPasswordReset(to, url) {
         sent.push({ kind: "reset", to, url });
       },
+      async sendInvitation() {},
     };
     originalFetch = globalThis.fetch;
     // Have I Been Pwned answers the k-anonymity range query. Only the breached password's suffix is returned.
