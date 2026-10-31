@@ -10,7 +10,8 @@ module.exports = {
       name: "domain-no-core-imports",
       severity: "error",
       from: { path: "^packages/domain/" },
-      to: { dependencyTypes: ["core"] },
+      // The test runner is the one core-looking import domain tests need; it never ships at runtime.
+      to: { dependencyTypes: ["core"], pathNot: "^bun:test$" },
     },
     {
       name: "domain-no-framework-imports",
