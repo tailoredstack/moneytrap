@@ -54,11 +54,12 @@ export interface RecordedDecision {
 // policy_unavailable: the decision was made under a policy version this build does not carry.
 export type ReplayOutcome = "reproduced" | "mismatch" | "policy_unavailable";
 
+// Reads take the caller's organization, so a decision is only visible through its own tenant scope.
 export interface EligibilityDecisionStore {
   record(write: EligibilityDecisionWrite): Promise<RecordedDecision>;
-  find(id: string): Promise<StoredEligibilityDecision | null>;
-  listForPair(propertyId: string, programId: string): Promise<StoredEligibilityDecision[]>;
-  replay(id: string): Promise<ReplayOutcome | null>;
+  find(organizationId: string, id: string): Promise<StoredEligibilityDecision | null>;
+  listForPair(organizationId: string, propertyId: string, programId: string): Promise<StoredEligibilityDecision[]>;
+  replay(organizationId: string, id: string): Promise<ReplayOutcome | null>;
 }
 
 interface DecisionRow {
@@ -118,8 +119,22 @@ function sortKeys(value: unknown): unknown {
   return value;
 }
 
+// The policy tests list fields with `some`, so their order never changes a decision. The hash sorts them, so the same set
+// in another order is the same evaluation. The stored inputs keep the order they arrived in.
 function hashEvaluation(policyVersion: number, inputs: EligibilityInput): string {
-  return createHash("sha256").update(canonicalJson({ policyVersion, inputs })).digest("hex");
+  const set = (values: unknown) => (Array.isArray(values) ? [...values].sort() : values);
+  const keyed = {
+    ...inputs,
+    program: { ...inputs.program, countries: set(inputs.program?.countries), channels: set(inputs.program?.channels) },
+    contract: {
+      ...inputs.contract,
+      countries: set(inputs.contract?.countries),
+      channels: set(inputs.contract?.channels),
+    },
+  };
+  return createHash("sha256")
+    .update(canonicalJson({ policyVersion, inputs: keyed }))
+    .digest("hex");
 }
 
 async function writeAudit(
@@ -162,6 +177,11 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
       const inputHash = hashEvaluation(evaluation.policyVersion, inputs);
 
       return withTx(db, async (tx) => {
+        // The property must belong to the organization the decision is written for. Foreign keys check only existence.
+        const owned = await sql`select 1 from properties where id = ${write.propertyId}
+          and organization_id = ${write.organizationId}`.execute(tx);
+        if (owned.rows.length === 0) throw new Error("eligibility: property is not in the organization");
+
         const inserted = await sql<DecisionRow>`insert into eligibility_decisions
           (id, organization_id, property_id, program_id, policy_version, decision, reasons, checks, inputs, input_hash,
             evaluated_at)
@@ -190,22 +210,22 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
       });
     },
 
-    async find(id) {
-      return selectOne(db, sql`id = ${id}`);
+    async find(organizationId, id) {
+      return selectOne(db, sql`organization_id = ${organizationId} and id = ${id}`);
     },
 
-    async listForPair(propertyId, programId) {
+    async listForPair(organizationId, propertyId, programId) {
       const result =
         await sql<DecisionRow>`select id, property_id, program_id, policy_version, decision, reasons, checks,
           inputs, input_hash, evaluated_at
         from eligibility_decisions
-        where property_id = ${propertyId} and program_id = ${programId}
+        where organization_id = ${organizationId} and property_id = ${propertyId} and program_id = ${programId}
         order by evaluated_at, policy_version, id`.execute(db);
       return result.rows.map(toDecision);
     },
 
-    async replay(id) {
-      const stored = await selectOne(db, sql`id = ${id}`);
+    async replay(organizationId, id) {
+      const stored = await selectOne(db, sql`organization_id = ${organizationId} and id = ${id}`);
       if (!stored) return null;
       if (stored.policyVersion !== ELIGIBILITY_POLICY_VERSION) return "policy_unavailable";
 
