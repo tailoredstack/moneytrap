@@ -134,6 +134,16 @@ describe("evaluateEligibility fails closed on malformed input", () => {
     expect(result.decision === "deny" && result.reasons).toEqual(["geography"]);
   });
 
+  test("a null or missing top-level section denies instead of throwing", () => {
+    const sections = ["publisher", "property", "program", "contract", "consent"] as const;
+    for (const section of sections) {
+      for (const missing of [null, undefined]) {
+        const result = evaluateEligibility({ ...input(), [section]: missing } as unknown as EligibilityInput);
+        expect(result.decision).toBe("deny");
+      }
+    }
+  });
+
   test("a truthy but non-boolean contract flag does not count as active", () => {
     for (const active of [1, "true", {}]) {
       const result = evaluateEligibility(

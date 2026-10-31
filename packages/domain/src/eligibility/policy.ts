@@ -45,15 +45,16 @@ export type EligibilityDecision =
 
 // Every rule is evaluated, so a denial reports all the reasons at once. The checks list is the evidence for either outcome.
 export function evaluateEligibility(input: EligibilityInput): EligibilityDecision {
+  // Each section is read with optional chaining, so a missing section from a malformed payload denies instead of throwing.
   const checks: RuleCheck[] = [
-    { reason: "publisher_not_approved", passed: input.publisher.status === "approved" },
-    { reason: "property_not_approved", passed: input.property.status === "approved" },
-    approvalCheck(input.program.approval),
-    { reason: "contract", passed: input.contract.active === true },
-    ...dimensionCheck("geography", input.geography, input.program.countries, input.contract.countries),
-    ...dimensionCheck("channel", input.channel, input.program.channels, input.contract.channels),
+    { reason: "publisher_not_approved", passed: input.publisher?.status === "approved" },
+    { reason: "property_not_approved", passed: input.property?.status === "approved" },
+    approvalCheck(input.program?.approval),
+    { reason: "contract", passed: input.contract?.active === true },
+    ...dimensionCheck("geography", input.geography, input.program?.countries, input.contract?.countries),
+    ...dimensionCheck("channel", input.channel, input.program?.channels, input.contract?.channels),
     // Fail closed: only an explicit `required: false` skips the gate, so a missing or malformed flag needs consent.
-    { reason: "consent", passed: input.consent.required === false || input.consent.granted === true },
+    { reason: "consent", passed: input.consent?.required === false || input.consent?.granted === true },
   ];
 
   const reasons = [...new Set(checks.filter((check) => !check.passed).map((check) => check.reason))];
@@ -65,8 +66,8 @@ export function evaluateEligibility(input: EligibilityInput): EligibilityDecisio
 }
 
 // Only an explicit `approved` passes. A missing value is unknown; `pending` and `rejected` are a known "not approved".
-function approvalCheck(approval: ProgramFactPayload["approval"]): RuleCheck {
-  if (approval === null) return { reason: "unknown", passed: false };
+function approvalCheck(approval: ProgramFactPayload["approval"] | undefined): RuleCheck {
+  if (approval === null || approval === undefined) return { reason: "unknown", passed: false };
   return { reason: "program_not_approved", passed: approval === "approved" };
 }
 
@@ -74,8 +75,8 @@ function approvalCheck(approval: ProgramFactPayload["approval"]): RuleCheck {
 function dimensionCheck(
   reason: "geography" | "channel",
   value: string,
-  programValues: readonly string[],
-  contractValues: readonly string[],
+  programValues: readonly string[] | undefined,
+  contractValues: readonly string[] | undefined,
 ): RuleCheck[] {
   const normalised = normalise(value);
   if (normalised === "") return [{ reason: "unknown", passed: false }];
