@@ -1,3 +1,4 @@
+export { createOrganizationStore } from "./access/organization-store";
 export { migrate } from "./migrate";
 export { migrationProvider } from "./migrations";
 export { consumeOnce } from "./outbox/inbox";

@@ -63,6 +63,8 @@
       "name": "@moneytrap/adapter-postgres",
       "version": "0.0.0",
       "dependencies": {
+        "@moneytrap/app": "workspace:*",
+        "@moneytrap/domain": "workspace:*",
         "kysely": "0.29.7",
         "pg": "8.16.3",
       },
