@@ -1,0 +1,211 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { EligibilityInput } from "@moneytrap/domain";
+import { Kysely, PostgresDialect, sql } from "kysely";
+import { Pool } from "pg";
+import { createSourceFactStore } from "../catalog/source-fact-store";
+import { migrate } from "../migrate";
+import { createEligibilityDecisionStore } from "./eligibility-decision-store";
+
+const databaseUrl = process.env.TEST_DATABASE_URL;
+const describeWithDatabase = databaseUrl ? describe : describe.skip;
+
+const now = new Date("2026-11-01T10:00:00.000Z");
+const userId = "usr_elig_one";
+const orgId = "org_elig_one";
+const propertyId = "prp_elig_one";
+const networkId = "net_elig_one";
+
+const allowed: EligibilityInput = {
+  publisher: { status: "approved" },
+  property: { status: "approved" },
+  program: { approval: "approved", countries: ["GB", "IE"], channels: ["web"] },
+  geography: "GB",
+  channel: "web",
+  contract: { active: true, countries: ["GB", "IE"], channels: ["web"] },
+  consent: { required: false, granted: false },
+};
+
+const denied: EligibilityInput = { ...allowed, geography: "FR" };
+
+describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => {
+  let pool: Pool;
+  let db: Kysely<unknown>;
+  let schema: string;
+  let programId: string;
+
+  beforeEach(async () => {
+    // A private schema per test keeps the shared test database untouched.
+    schema = `elig_store_${crypto.randomUUID().replaceAll("-", "")}`;
+    const setup = new Pool({ connectionString: databaseUrl });
+    await setup.query(`create schema "${schema}"`);
+    await setup.end();
+
+    pool = new Pool({ connectionString: databaseUrl, options: `-c search_path=${schema}` });
+    db = new Kysely<unknown>({ dialect: new PostgresDialect({ pool }) });
+    await migrate(db);
+
+    await sql`insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
+      values (${userId}, 'Owner', 'owner@example.com', true, ${now}, ${now})`.execute(db);
+    await sql`insert into organizations (id, name, country, base_currency, status, created_by, created_at, updated_at)
+      values (${orgId}, 'Org', 'GB', 'GBP', 'active', ${userId}, ${now}, ${now})`.execute(db);
+    await sql`insert into properties (id, organization_id, publisher_id, type, canonical_identifier, normalized_identifier,
+        status, version, created_at, updated_at)
+      values (${propertyId}, ${orgId}, 'pub_elig_one', 'website', 'example.com', 'example.com', 'approved', 1, ${now}, ${now})`.execute(
+      db,
+    );
+    await sql`insert into networks (id, code, name, created_at, updated_at)
+      values (${networkId}, ${networkId}, ${networkId}, now(), now())`.execute(db);
+
+    // The program is a source fact (WP-4.5), created through the same store the catalog sync uses.
+    const facts = createSourceFactStore(db);
+    const advertiser = await facts.upsertNetworkAdvertiser({
+      id: "nad_elig_one",
+      networkId,
+      sourceId: "adv-1",
+      sourceRevision: "r1",
+      payload: { name: "Acme" },
+      observedAt: now,
+    });
+    const program = await facts.upsertProgram({
+      id: "prg_elig_one",
+      networkAdvertiserId: advertiser?.id ?? "",
+      sourceId: "prg-1",
+      sourceRevision: "r1",
+      payload: {
+        name: "Acme Summer",
+        terms: "30 day",
+        eligibility: "all",
+        countries: ["GB"],
+        channels: ["web"],
+        approval: "approved",
+      },
+      observedAt: now,
+    });
+    programId = program?.id ?? "";
+  });
+
+  afterEach(async () => {
+    await db.destroy();
+    const cleanup = new Pool({ connectionString: databaseUrl });
+    await cleanup.query(`drop schema if exists "${schema}" cascade`);
+    await cleanup.end();
+  });
+
+  let sequence = 0;
+  function writeFor(input: EligibilityInput) {
+    sequence += 1;
+    return {
+      id: `eld_${sequence}`,
+      auditId: `aud_elig_${sequence}`,
+      organizationId: orgId,
+      propertyId,
+      programId,
+      input,
+      actor: { type: "user", id: userId },
+      occurredAt: now,
+    };
+  }
+
+  async function countRows(table: "eligibility_decisions" | "audit_logs"): Promise<number> {
+    const result = await sql<{ n: string }>`select count(*)::text as n from ${sql.table(table)}`.execute(db);
+    return Number(result.rows[0]?.n ?? 0);
+  }
+
+  test("a decision is stored with its policy version, reasons, checks, and inputs", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const result = await store.record(writeFor(denied));
+
+    expect(result.outcome).toBe("recorded");
+    expect(result.decision.decision).toBe("deny");
+    expect(result.decision.policyVersion).toBe(1);
+    expect(result.decision.reasons).toEqual(["geography"]);
+    expect(result.decision.inputs).toEqual(denied);
+    expect(result.decision.checks.find((check) => check.reason === "geography")?.passed).toBe(false);
+
+    const stored = await store.find(result.decision.id);
+    expect(stored?.reasons).toEqual(["geography"]);
+    expect(stored?.inputs).toEqual(denied);
+  });
+
+  test("the same inputs twice give an identical decision and no duplicate row (TP-W4-023)", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const first = await store.record(writeFor(allowed));
+    const second = await store.record(writeFor(allowed));
+
+    expect(first.outcome).toBe("recorded");
+    expect(second.outcome).toBe("existing");
+    expect(second.decision.id).toBe(first.decision.id);
+    expect(second.decision.checks).toEqual(first.decision.checks);
+    expect(await countRows("eligibility_decisions")).toBe(1);
+    expect(await countRows("audit_logs")).toBe(1);
+  });
+
+  test("a decision under an earlier policy version is kept when a new one is recorded (TP-W4-022)", async () => {
+    // Version 0 stands in for an earlier policy: the row is written directly, as an earlier build would have.
+    await sql`insert into eligibility_decisions (id, organization_id, property_id, program_id, policy_version, decision,
+        reasons, checks, inputs, input_hash, evaluated_at)
+      values ('eld_old', ${orgId}, ${propertyId}, ${programId}, 0, 'allow', '[]'::jsonb, '[]'::jsonb,
+        ${JSON.stringify(allowed)}::jsonb, 'hash-v0', ${now})`.execute(db);
+
+    const store = createEligibilityDecisionStore(db);
+    const result = await store.record(writeFor(allowed));
+
+    expect(result.outcome).toBe("recorded");
+    const history = await store.listForPair(propertyId, programId);
+    expect(history.map((decision) => decision.policyVersion)).toEqual([0, 1]);
+    expect(history[0]?.id).toBe("eld_old");
+  });
+
+  test("a stored decision reproduces from its stored inputs", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const { decision } = await store.record(writeFor(denied));
+
+    expect(await store.replay(decision.id)).toBe("reproduced");
+  });
+
+  test("a decision under a policy version this build lacks cannot be replayed", async () => {
+    await sql`insert into eligibility_decisions (id, organization_id, property_id, program_id, policy_version, decision,
+        reasons, checks, inputs, input_hash, evaluated_at)
+      values ('eld_old', ${orgId}, ${propertyId}, ${programId}, 0, 'allow', '[]'::jsonb, '[]'::jsonb,
+        ${JSON.stringify(allowed)}::jsonb, 'hash-v0', ${now})`.execute(db);
+
+    const store = createEligibilityDecisionStore(db);
+    expect(await store.replay("eld_old")).toBe("policy_unavailable");
+    expect(await store.replay("eld_missing")).toBeNull();
+  });
+
+  test("the decision and its audit row commit together (no partial write)", async () => {
+    // Pre-insert an audit row with the ID the next write will use. The audit insert then fails on its primary key, and
+    // the decision insert, which ran first in the same transaction, must roll back with it.
+    await sql`insert into audit_logs (id, organization_id, actor_type, actor_id, action, entity_type, entity_id, metadata, occurred_at)
+      values ('aud_clash', ${orgId}, 'user', ${userId}, 'other', 'other', 'other', '{}'::jsonb, ${now})`.execute(db);
+
+    const store = createEligibilityDecisionStore(db);
+    const write = { ...writeFor(allowed), auditId: "aud_clash" };
+    await expect(store.record(write)).rejects.toThrow();
+
+    expect(await countRows("eligibility_decisions")).toBe(0);
+    expect(await countRows("audit_logs")).toBe(1);
+  });
+
+  test("a recorded decision writes one audit row that points at it", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const { decision } = await store.record(writeFor(denied));
+
+    const audit = await sql<{
+      action: string;
+      entity_type: string;
+      entity_id: string;
+      metadata: { reasons: string[] };
+    }>`
+      select action, entity_type, entity_id, metadata from audit_logs`.execute(db);
+    expect(audit.rows).toEqual([
+      {
+        action: "eligibility_decided",
+        entity_type: "eligibility_decision",
+        entity_id: decision.id,
+        metadata: expect.objectContaining({ decision: "deny", reasons: ["geography"], policyVersion: 1 }),
+      },
+    ]);
+  });
+});
