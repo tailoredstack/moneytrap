@@ -4,8 +4,8 @@ Work package: WP-X.1 (OZE-3216). Scope: identity and access code merged to main 
 property code merged in Wave 3, reviewed for authorization, state-transition, and data-exposure defects.
 Reviewed at origin/main `6006e38`.
 
-Gate: `docs/implementation/WAVES.md` requires no open high-severity findings at the end of W2. **One high finding is
-open (SEC-W2-001), so the gate is not met.** OZE-3216 stays In Progress until it is fixed or accepted.
+Gate: `docs/implementation/WAVES.md` requires no open high-severity findings at the end of W2. The gate is met: the one
+high finding (SEC-W2-001) was fixed in `704daa7` (OZE-3233), and no high finding remains open.
 
 ## Method
 
@@ -21,7 +21,7 @@ open (SEC-W2-001), so the gate is not met.** OZE-3216 stays In Progress until it
 
 | ID | Severity | Location | Status |
 | --- | --- | --- | --- |
-| SEC-W2-001 | High | `apps/server/src/auth/config.ts:301` | Open (OZE-3233) |
+| SEC-W2-001 | High | `apps/server/src/auth/config.ts:301` | Fixed in `704daa7` (OZE-3233) |
 | SEC-W2-002 | Medium | `apps/server/src/auth/rate-limit.ts:102` | Deferred |
 | SEC-W3-001 | Medium | `packages/app/src/publisher/submit-kyb.ts:15` | Deferred (latent) |
 | SEC-W3-002 | Medium | `packages/app/src/properties/suspend.ts:72` | Deferred (latent) |
@@ -36,6 +36,10 @@ No high findings other than SEC-W2-001 were found.
 
 ### SEC-W2-001 (High): MFA can be disabled after a password change, without a second factor
 
+**Status: Fixed** in `704daa7` (PR #83, OZE-3233). The before-hook keeps the caller's second-factor time, and the
+after-hook writes it onto the rotated session. Two integration tests in `auth.integration.test.ts` cover it and ran in
+CI's Postgres job.
+
 - **Location:** `apps/server/src/auth/config.ts:301` (`requireStepUpToDisableMfa`).
 - **Impact:** The step-up reads the session's `createdAt` as the time of the second factor. Better Auth's
   `changePassword` with `revokeOtherSessions: true` calls `createSession` again, so the caller's `createdAt` resets to
@@ -45,8 +49,7 @@ No high findings other than SEC-W2-001 were found.
 - **Fix:** Record the second-factor time explicitly on verification, not as the session's creation time. Or carry the
   pre-change `createdAt` onto the rotated session. Add a failing test first: disable MFA after a password change that
   used an old second factor, expecting `STEP_UP_REQUIRED`.
-- **Tracking:** OZE-3233. The fix touches the password and step-up paths in `config.ts` and needs a Postgres
-  integration test, so it is not a single-file change and is not made in this package.
+- **Tracking:** OZE-3233, closed by `704daa7`.
 
 ### SEC-W2-002 (Medium): per-identity sign-in limit is check-then-act
 
