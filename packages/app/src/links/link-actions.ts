@@ -134,6 +134,8 @@ async function commit(
     action: LinkAction;
     expectedVersion: number | null;
     precondition: LinkWritePrecondition | null;
+    // What changed, so the audit row can show it: the old and new destination, or the old and new status.
+    metadata: Record<string, unknown>;
   },
 ): Promise<LinkResult> {
   const { link } = input.record;
@@ -144,7 +146,7 @@ async function commit(
     action: input.action,
     entityType: "link",
     entityId: link.id,
-    metadata: {},
+    metadata: input.metadata,
     occurredAt: ctx.clock.now(),
   };
   const event: LinkEvent = {
@@ -253,6 +255,7 @@ export async function createActiveLink(ctx: Ctx, deps: LinkDeps, input: CreateLi
     action: "create",
     expectedVersion: null,
     precondition: { propertyId, programId, host: hostOf(active.value.destinationUrl) },
+    metadata: { destinationUrl: active.value.destinationUrl },
   });
 }
 
@@ -300,6 +303,7 @@ export async function editLinkDestination(
       programId: record.programId,
       host: hostOf(changed.value.destinationUrl),
     },
+    metadata: { fromDestinationUrl: record.link.destinationUrl, toDestinationUrl: changed.value.destinationUrl },
   });
 }
 
@@ -343,6 +347,7 @@ export async function resumeLinkAction(
       programId: record.programId,
       host: hostOf(resumed.value.destinationUrl),
     },
+    metadata: { fromStatus: record.link.status, toStatus: resumed.value.status },
   });
 }
 
@@ -378,5 +383,6 @@ async function transition(
     action,
     expectedVersion: record.link.version,
     precondition: null,
+    metadata: { fromStatus: record.link.status, toStatus: next.value.status },
   });
 }
