@@ -44,6 +44,24 @@ describe("guard decisions (Blueprint §3.1, TP-W2-036)", () => {
   });
 });
 
+// TP-W3-007: review decisions sit behind publisher:review. A principal without it is refused, and the action never runs.
+describe("publisher review guard (TP-W3-007)", () => {
+  const reviewPublisher: Guard = { access: "permission", permission: "publisher:review", scope: resolve };
+
+  test("a principal without publisher:review gets FORBIDDEN and the decision action is not called", async () => {
+    let actionCalls = 0;
+    const decision = await decide(reviewPublisher, viewerOfA, { id: "res_a" });
+    if (decision.ok) actionCalls += 1;
+
+    expect(decision).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(actionCalls).toBe(0);
+  });
+
+  test("an admin of the publisher's organization may reach the decision action", async () => {
+    expect(await decide(reviewPublisher, adminOfA, { id: "res_a" })).toEqual({ ok: true });
+  });
+});
+
 describe("not-found rule (CT-005, TP-W2-033, TP-W2-034)", () => {
   test("a foreign resource returns RESOURCE_NOT_FOUND even when the role would allow the action", async () => {
     // adminOfA could write catalog in org A, but res_b belongs to org B: the answer must not reveal it exists.

@@ -23,6 +23,7 @@ const MATRIX: ReadonlyArray<{ permission: Permission; apis: string; roles: reado
   { permission: "members:remove", apis: "API-021 (session:owner)", roles: ADMIN },
   { permission: "publisher:submit", apis: "API-022 (session:owner)", roles: ADMIN },
   { permission: "publisher:status", apis: "API-023 (session:member)", roles: ALL },
+  { permission: "publisher:review", apis: "API-069, API-070 (admin:reviewer)", roles: ADMIN },
   { permission: "properties:read", apis: "API-025, API-026 (properties:read)", roles: ALL },
   { permission: "properties:write", apis: "API-024, API-027–031 (properties:write)", roles: WRITERS },
   { permission: "links:read", apis: "API-037, API-038, API-042 (links:read)", roles: ALL },
