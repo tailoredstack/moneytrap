@@ -121,28 +121,46 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
     expect(second.status).toBeGreaterThanOrEqual(400);
   });
 
-  test("TP-W2-010: an equivalent base64url spelling of a used token is rejected too", async () => {
+  test("TP-W2-010: a non-canonical spelling of a token is refused and does not consume it", async () => {
     await signUp(VALID_PASSWORD);
     const token = tokenFromSentEmail();
-    await verifyLink(token);
     const [header, payload, signature] = token.split(".");
 
-    const respelled = await verifyLink(`${header}.${payload}.${signature}=`);
+    const paddedSignature = await verifyLink(`${header}.${payload}.${signature}=`);
+    const trailingSpace = await verifyLink(`${header}.${payload}.${signature} `);
 
-    expect(respelled.status).toBeGreaterThanOrEqual(400);
+    expect(paddedSignature.status).toBeGreaterThanOrEqual(400);
+    expect(trailingSpace.status).toBeGreaterThanOrEqual(400);
+    expect((await verifyLink(token)).status).toBe(200);
   });
 
-  test("a rejected verification request does not consume a valid link", async () => {
+  test("a verification request with an untrusted callbackURL is refused and does not consume the link", async () => {
     await signUp(VALID_PASSWORD);
     const token = tokenFromSentEmail();
-    const [header, payload, signature] = token.split(".");
-    const tampered = `${header}.${payload}.${signature?.slice(0, -2)}${signature?.endsWith("AA") ? "BB" : "AA"}`;
-    const rejected = await verifyLink(tampered);
-    expect(rejected.status).toBeGreaterThanOrEqual(400);
 
-    const retry = await verifyLink(token);
+    const untrusted = await auth.handler(
+      new Request(
+        `https://moneytrap.test/api/auth/verify-email?token=${encodeURIComponent(token)}&callbackURL=${encodeURIComponent("https://evil.example")}`,
+      ),
+    );
 
-    expect(retry.status).toBe(200);
+    expect(untrusted.status).toBeGreaterThanOrEqual(400);
+    expect(untrusted.headers.get("location")).toBeNull();
+    const { rows } = await sql<{ emailVerified: boolean }>`select "emailVerified" from "user"`.execute(db);
+    expect(rows).toEqual([{ emailVerified: false }]);
+    expect((await verifyLink(token)).status).toBe(200);
+  });
+
+  test("a used claim is retained for at least as long as the token can still be valid", async () => {
+    await signUp(VALID_PASSWORD);
+    await verifyLink(tokenFromSentEmail());
+
+    const { rows } = await sql<{ remainingMs: number }>`
+      select (extract(epoch from ("expiresAt" - now())) * 1000)::float8 as "remainingMs"
+      from "verification" where "value" = 'used'`.execute(db);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.remainingMs).toBeGreaterThan(60 * 60 * 1000);
   });
 
   test("an expired verification token is rejected and leaves the user unverified", async () => {

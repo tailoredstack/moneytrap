@@ -20,39 +20,46 @@ export type AuthConfigDeps = {
 
 // Better Auth verifies email tokens statelessly and never records their use, so a second click on the same
 // link would succeed. Two hooks on /verify-email track each token in the verification table:
-// - before: claims the token as "pending" under an advisory lock. Any existing claim rejects the request.
+// - before: refuses a callbackURL we do not trust (Better Auth skips its origin check on GET), refuses a token
+//   that is not canonical base64url JWT form, and claims the token as "pending". An existing claim rejects it.
 // - after: a failed request deletes its pending claim, so the link stays usable. A successful one marks the
-//   claim "used", which is permanent. A request that crashes before the after-hook runs leaves its pending
-//   claim, which expires after PENDING_LEASE_MS.
-const PENDING_LEASE_MS = 60 * 1000;
-const BASE64URL_SEGMENT = /^[A-Za-z0-9_-]*={0,2}$/;
+//   claim "used". Claims outlive the one-hour token, so Better Auth's expiry cleanup cannot release a token.
+// A pending claim never expires within a day, so a second request cannot take it over. If a request crashes
+// before the after-hook runs, the link stays blocked and the user needs a new verification email.
+const CLAIM_RETENTION_MS = 24 * 60 * 60 * 1000;
 
-// jose accepts equivalent base64url spellings of a JWT (for example a trailing "="), so the claim key comes
-// from the decoded segments, not the raw string. Returns null when the value is not a three-part JWT.
-function verificationClaimId(token: string): string | null {
+// Only the exact canonical base64url spelling counts. Any other spelling is refused before a claim is made,
+// so no alternate spelling of a claimed token can verify again.
+function canonicalClaimId(token: string): string | null {
   const segments = token.split(".");
-  if (segments.length !== 3 || !segments.every((segment) => BASE64URL_SEGMENT.test(segment))) return null;
-  const canonical = segments.map((segment) =>
-    Buffer.from(segment.replace(/=+$/, ""), "base64url").toString("base64url"),
-  );
-  return `verify-email-used:${createHash("sha256").update(canonical.join(".")).digest("hex")}`;
+  if (segments.length !== 3) return null;
+  for (const segment of segments) {
+    if (!/^[A-Za-z0-9_-]+$/.test(segment)) return null;
+    if (Buffer.from(segment, "base64url").toString("base64url") !== segment) return null;
+  }
+  return `verify-email-used:${createHash("sha256").update(token).digest("hex")}`;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
 function claimVerificationLink(db: Kysely<any>) {
   return createAuthMiddleware(async (ctx) => {
+    if (ctx.path !== "/verify-email") return;
+
+    const callbackURL = ctx.query?.callbackURL;
+    if (callbackURL && !ctx.context.isTrustedOrigin(callbackURL, { allowRelativePaths: true })) {
+      throw new APIError("FORBIDDEN", { code: "INVALID_CALLBACK_URL", message: "Invalid callbackURL" });
+    }
+
     const token = ctx.query?.token;
-    const identifier = ctx.path === "/verify-email" && typeof token === "string" ? verificationClaimId(token) : null;
-    if (!identifier) return;
+    if (typeof token !== "string") return;
+    const identifier = canonicalClaimId(token);
+    if (!identifier) throw new APIError("BAD_REQUEST", { code: "INVALID_TOKEN", message: "Invalid token" });
 
     const claimed = await db.transaction().execute(async (trx) => {
       await sql`select pg_advisory_xact_lock(hashtext(${identifier}))`.execute(trx);
-      await sql`delete from "verification" where "identifier" = ${identifier} and "value" = 'pending' and "expiresAt" < now()`.execute(
-        trx,
-      );
       const result = await sql`
         insert into "verification" ("id", "identifier", "value", "expiresAt")
-        select ${crypto.randomUUID()}, ${identifier}, 'pending', ${new Date(Date.now() + PENDING_LEASE_MS)}
+        select ${crypto.randomUUID()}, ${identifier}, 'pending', ${new Date(Date.now() + CLAIM_RETENTION_MS)}
         where not exists (select 1 from "verification" where "identifier" = ${identifier})
         returning "id"`.execute(trx);
       return result.rows.length === 1;
@@ -66,8 +73,9 @@ function claimVerificationLink(db: Kysely<any>) {
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
 function settleVerificationLink(db: Kysely<any>) {
   return createAuthMiddleware(async (ctx) => {
+    if (ctx.path !== "/verify-email") return;
     const token = ctx.query?.token;
-    const identifier = ctx.path === "/verify-email" && typeof token === "string" ? verificationClaimId(token) : null;
+    const identifier = typeof token === "string" ? canonicalClaimId(token) : null;
     if (!identifier) return;
 
     const returned = ctx.context.returned;
