@@ -164,6 +164,25 @@ describe("PayoutProviderSimulator (WP-7.4)", () => {
     });
   });
 
+  test("a signed callback whose status or sequence the transfer never produced is refused as event-mismatch", async () => {
+    const provider = new PayoutProviderSimulator("happy");
+    await provider.initiateTransfer(request);
+    const headers = { "x-sim-signature": "sim-valid" };
+    const base = { eventId: "evt_x", requestId: "req_1", transferId: "tr_req_1" };
+
+    const failed = await provider.receiveStatusCallback({
+      headers,
+      body: JSON.stringify({ ...base, status: "failed", sequence: 2, occurredAt: "2026-01-01T00:00:02.000Z" }),
+    });
+    const beyondTimeline = await provider.receiveStatusCallback({
+      headers,
+      body: JSON.stringify({ ...base, status: "paid", sequence: 99, occurredAt: "2026-01-01T00:01:39.000Z" }),
+    });
+
+    expect(failed).toEqual({ ok: false, failure: { state: "rejected", reason: "event-mismatch" } });
+    expect(beyondTimeline).toEqual({ ok: false, failure: { state: "rejected", reason: "event-mismatch" } });
+  });
+
   test("a callback with an empty event ID is refused as malformed, so dedupe cannot merge unrelated events", async () => {
     const provider = new PayoutProviderSimulator("happy");
     await provider.initiateTransfer(request);
