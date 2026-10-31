@@ -2,6 +2,7 @@ import type { Migration, MigrationProvider } from "kysely/migration";
 import { platform } from "./0001_platform";
 import { platformAuditGuard } from "./0001_platform_audit_guard";
 import { betterAuth } from "./0002_better_auth";
+import { identity } from "./0003_identity";
 import { organization } from "./0003_organization";
 
 // Every migration is imported here statically so the compiled binary carries the set and
@@ -10,6 +11,7 @@ const migrations: Record<string, Migration> = {
   "0001_platform": platform,
   "0001_platform_audit_guard": platformAuditGuard,
   "0002_better_auth": betterAuth,
+  "0003_identity": identity,
   "0003_organization": organization,
 };
 
