@@ -250,6 +250,9 @@ export interface CreateLinkInput {
   propertyId: string;
   programId: string;
   destination: string;
+  // A caller that must not create a second link for the same request (bulk rows, WP-5.3) names the ID. The store then
+  // refuses a repeat, because the ID is the primary key. Otherwise the next generated ID is used.
+  linkId?: Id<"link">;
 }
 
 // Creates and activates a link for an approved property (UC11, API-036). The link is stored once, already active, so no
@@ -264,7 +267,7 @@ export async function createActiveLink(ctx: Ctx, deps: LinkDeps, input: CreateLi
   const checked = await gate(deps, input.organizationId, propertyId, programId);
   if (!checked.ok) return checked;
 
-  const id = ctx.ids.next("link");
+  const id = input.linkId ?? ctx.ids.next("link");
   const created = createLink({
     id,
     publisherId: checked.publisherId,
