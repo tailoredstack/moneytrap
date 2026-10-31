@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { type SyncCatalogResult, syncCatalog } from "@moneytrap/app/src/networks/sync-catalog";
-import { type EligibilityInput, evaluateEligibility, type ProgramFactPayload } from "@moneytrap/domain";
+import {
+  DENY_REASONS,
+  type DenyReason,
+  type EligibilityInput,
+  evaluateEligibility,
+  type ProgramFactPayload,
+} from "@moneytrap/domain";
 import {
   FakeCatalogSyncStore,
   FakeClock,
@@ -105,10 +111,35 @@ function expectedAllow(program: ProgramFactPayload, c: SweepCase): boolean {
   );
 }
 
+// The deny reasons the rules produce for a case, in the policy's own order. A blank geography or channel is unknown, and
+// a value outside a list is that list's reason.
+function expectedReasons(program: ProgramFactPayload, c: SweepCase): DenyReason[] {
+  const reasons = new Set<DenyReason>();
+  if (c.publisher !== "approved") reasons.add("publisher_not_approved");
+  if (c.property !== "approved") reasons.add("property_not_approved");
+  if (c.approval === null) reasons.add("unknown");
+  else if (c.approval !== "approved") reasons.add("program_not_approved");
+  if (!c.contractActive) reasons.add("contract");
+  const dimension = (
+    reason: "geography" | "channel",
+    value: string,
+    programValues: readonly string[],
+    contractValues: readonly string[],
+  ) => {
+    if (value === "") reasons.add("unknown");
+    else if (!programValues.includes(value) || !contractValues.includes(value)) reasons.add(reason);
+  };
+  dimension("geography", c.geography, program.countries, c.contractCountries);
+  dimension("channel", c.channel, program.channels, c.contractChannels);
+  if (c.consent.required && !c.consent.granted) reasons.add("consent");
+  return DENY_REASONS.filter((reason) => reasons.has(reason));
+}
+
 function assertSweepCase(program: ProgramFactPayload, c: SweepCase): void {
   const decision = evaluateEligibility(sweepInput(program, c));
+  // An allow has no reasons, so comparing reasons also compares allow with the rules. A wrong rule shows as a wrong list.
+  expect(decision.decision === "allow" ? [] : decision.reasons).toEqual(expectedReasons(program, c));
   expect(decision.decision === "allow").toBe(expectedAllow(program, c));
-  if (decision.decision === "deny") expect(decision.reasons.length).toBeGreaterThan(0);
 }
 
 // A seeded generator (mulberry32): the same seed gives the same sequence on every run.
@@ -242,8 +273,10 @@ describe("[M3] network conformance", () => {
       const { store, run } = harness();
       await run(new RecordedNetworkSimulator("clean-catalog"));
       const base = eligibilityFor(syncedProgram(store, "prg-1"), "US", "website");
+      // The base input carries consent that is not required and not granted, so no override is needed.
+      expect(base.consent).toEqual({ required: false, granted: false });
 
-      const decision = evaluateEligibility({ ...base, consent: { required: false, granted: false } });
+      const decision = evaluateEligibility(base);
 
       expect(decision.decision).toBe("allow");
     });
@@ -357,7 +390,9 @@ describe("[M3] network conformance", () => {
       expect(revisionsOf(store, "prg-1")).toHaveLength(0);
     });
 
-    test("TP-W4-010 a repeat sync over the same malformed record holds it once, so no second alert is queued", async () => {
+    // The alert itself is an outbox event committed with the held record. The conformance fake does not model the outbox,
+    // so this case asserts the held record is written once. The adapter test asserts the one outbox alert.
+    test("TP-W4-010 a repeat sync over the same malformed record writes its held record once", async () => {
       const { store, run } = harness();
       await run(new RecordedNetworkSimulator("malformed-records"));
       await run(new RecordedNetworkSimulator("malformed-records"));
