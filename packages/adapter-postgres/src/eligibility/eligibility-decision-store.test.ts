@@ -255,6 +255,22 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     expect(result.decision.sourceRevision).toBe("r2");
   });
 
+  test("the database rejects a mixed revision pair and a source revision that is not the revision's own", async () => {
+    // Writes the row directly, so only the schema is under test. The store never builds either shape.
+    const insertWith = (id: string, seq: number | null, sourceRevision: string | null) =>
+      sql`insert into eligibility_decisions (id, organization_id, property_id, program_id, policy_version, decision,
+          reasons, checks, inputs, input_hash, evaluated_at, program_revision_seq, source_revision)
+        values (${id}, ${orgId}, ${propertyId}, ${programId}, 1, 'deny', '["unknown"]'::jsonb, '[]'::jsonb,
+          ${JSON.stringify(allowed)}::jsonb, ${`hash-${id}`}, ${now}, ${seq}, ${sourceRevision})`.execute(db);
+
+    await expect(insertWith("eld_mixed_a", 1, null)).rejects.toThrow();
+    await expect(insertWith("eld_mixed_b", null, "r1")).rejects.toThrow();
+    // Revision 1 of this program has source revision r1. Pairing it with any other source revision is refused.
+    await expect(insertWith("eld_wrong_source", 1, "r9")).rejects.toThrow();
+    await insertWith("eld_ok", 1, "r1");
+    expect(await countRows("eligibility_decisions")).toBe(1);
+  });
+
   test("a program with no stored source revision is denied as unknown, not allowed", async () => {
     // A program row exists but has never had a revision, so there are no facts to decide on.
     await sql`insert into programs (id, network_advertiser_id, external_id, current_revision_seq, created_at, updated_at)
