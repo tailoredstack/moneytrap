@@ -52,6 +52,27 @@ export function pageQueue(items: QueueItem[], requestedPage: number): QueuePage 
   };
 }
 
+// Every item in the queue is pending review, so the filter narrows by type and by name instead of by status.
+export interface QueueFilter {
+  type: "all" | QueueItem["type"];
+  search: string;
+}
+
+export const NO_QUEUE_FILTER: QueueFilter = { type: "all", search: "" };
+
+export function isFiltered(filter: QueueFilter): boolean {
+  return filter.type !== "all" || filter.search.trim() !== "";
+}
+
+// Applied before paging, so the count and the page range describe the filtered list.
+export function filterQueue(items: QueueItem[], filter: QueueFilter): QueueItem[] {
+  const term = filter.search.trim().toLowerCase();
+  return items.filter((item) => {
+    if (filter.type !== "all" && item.type !== filter.type) return false;
+    return term === "" || item.label.toLowerCase().includes(term);
+  });
+}
+
 // Hours under a day, then days. The queue is a triage list, so the exact minute does not matter.
 export function formatWaiting(waitingSince: string, now: Date): string {
   const hours = Math.floor((now.getTime() - Date.parse(waitingSince)) / 3_600_000);

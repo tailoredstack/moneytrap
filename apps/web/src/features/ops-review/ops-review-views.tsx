@@ -16,6 +16,8 @@ import {
   type DecisionErrors,
   type EvidenceItem,
   formatWaiting,
+  isFiltered,
+  type QueueFilter,
   type QueueItem,
   type QueuePage,
   visibleEvidence,
@@ -23,14 +25,19 @@ import {
 
 const typeLabel: Record<QueueItem["type"], string> = { property: "Property", kyb: "KYB" };
 
-// UI-017, UI-023. The count always shows the whole queue, not just the page (TP-W3-023).
+// UI-017, UI-023. The count always shows the filtered queue (TP-W3-023). The parent resets the page to 1 when the
+// filter changes.
 export function QueueView({
   page,
+  filter,
+  onFilterChange,
   onPageChange,
   onReview,
   now = new Date(),
 }: {
   page: QueuePage;
+  filter: QueueFilter;
+  onFilterChange: (filter: QueueFilter) => void;
   onPageChange: (page: number) => void;
   onReview: (id: string) => void;
   now?: Date;
@@ -38,7 +45,35 @@ export function QueueView({
   return (
     <section className="space-y-4">
       <h1 className="text-xl font-semibold">Review queue</h1>
-      {page.total === 0 ? <p className="text-sm">Nothing is waiting for review.</p> : null}
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="space-y-1">
+          <FormLabel htmlFor="queue-type">Type</FormLabel>
+          <select
+            id="queue-type"
+            className="h-9 rounded-md border px-3 text-sm"
+            value={filter.type}
+            onChange={(event) => onFilterChange({ ...filter, type: event.currentTarget.value as QueueFilter["type"] })}
+          >
+            <option value="all">All</option>
+            <option value="property">Property</option>
+            <option value="kyb">KYB</option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <FormLabel htmlFor="queue-search">Search</FormLabel>
+          <Input
+            id="queue-search"
+            type="search"
+            value={filter.search}
+            onChange={(event) => onFilterChange({ ...filter, search: event.currentTarget.value })}
+          />
+        </div>
+      </div>
+      {page.total === 0 ? (
+        <p className="text-sm">
+          {isFiltered(filter) ? "No items match these filters." : "Nothing is waiting for review."}
+        </p>
+      ) : null}
       {page.total > 0 ? (
         <>
           <Table>
@@ -108,7 +143,9 @@ export function DecisionView({
   evidence: EvidenceItem[];
   canViewDocuments: boolean;
   submitting: boolean;
-  errors?: DecisionErrors;
+  // Pass a new errors object for each rejected submission. Focus moves to the reason field whenever that object
+  // changes, so a repeated blank submit moves focus again even though the message text is the same.
+  errors?: DecisionErrors | undefined;
   // A message about the whole decision, such as a conflict, that is not tied to one field.
   notice?: string;
   onSubmit: (input: { decision: string | null; reason: string }) => void;
@@ -116,8 +153,8 @@ export function DecisionView({
   const reasonRef = useRef<HTMLInputElement>(null);
   const reasonError = errors?.reason;
   useEffect(() => {
-    if (reasonError !== undefined) reasonRef.current?.focus();
-  }, [reasonError]);
+    if (errors?.reason !== undefined) reasonRef.current?.focus();
+  }, [errors]);
 
   const shown = visibleEvidence(evidence, { canViewDocuments });
   const documentsHidden = shown.length < evidence.length;

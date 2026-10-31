@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DecisionView, QueueView } from "./ops-review-views";
-import { pageQueue, type QueueItem } from "./review-logic";
+import { NO_QUEUE_FILTER, pageQueue, type QueueItem } from "./review-logic";
 
 function queueOf(count: number): QueueItem[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -15,7 +15,13 @@ function queueOf(count: number): QueueItem[] {
 describe("QueueView (UI-017, UI-023, TP-W3-023)", () => {
   test("shows one page of rows and the count of the whole queue", () => {
     const html = renderToStaticMarkup(
-      <QueueView page={pageQueue(queueOf(50), 1)} onPageChange={() => {}} onReview={() => {}} />,
+      <QueueView
+        page={pageQueue(queueOf(50), 1)}
+        filter={NO_QUEUE_FILTER}
+        onFilterChange={() => {}}
+        onPageChange={() => {}}
+        onReview={() => {}}
+      />,
     );
     expect(html).toContain("Showing 1–25 of 50");
     expect(html).toContain(">Item 0<");
@@ -25,7 +31,13 @@ describe("QueueView (UI-017, UI-023, TP-W3-023)", () => {
 
   test("Prev is disabled on the first page and Next moves on", () => {
     const html = renderToStaticMarkup(
-      <QueueView page={pageQueue(queueOf(50), 1)} onPageChange={() => {}} onReview={() => {}} />,
+      <QueueView
+        page={pageQueue(queueOf(50), 1)}
+        filter={NO_QUEUE_FILTER}
+        onFilterChange={() => {}}
+        onPageChange={() => {}}
+        onReview={() => {}}
+      />,
     );
     expect(html).toMatch(/<button[^>]* disabled=""[^>]*>Prev<\/button>/);
     expect(html).not.toMatch(/<button[^>]* disabled=""[^>]*>Next<\/button>/);
@@ -33,10 +45,47 @@ describe("QueueView (UI-017, UI-023, TP-W3-023)", () => {
 
   test("an empty queue says so instead of drawing an empty table", () => {
     const html = renderToStaticMarkup(
-      <QueueView page={pageQueue([], 1)} onPageChange={() => {}} onReview={() => {}} />,
+      <QueueView
+        page={pageQueue([], 1)}
+        filter={NO_QUEUE_FILTER}
+        onFilterChange={() => {}}
+        onPageChange={() => {}}
+        onReview={() => {}}
+      />,
     );
     expect(html).toContain("Nothing is waiting for review.");
     expect(html).not.toContain("<tbody");
+  });
+});
+
+describe("QueueView filter controls (UI-017, UI-023)", () => {
+  test("the queue offers a type filter and a search field", () => {
+    const html = renderToStaticMarkup(
+      <QueueView
+        page={pageQueue(queueOf(50), 1)}
+        filter={NO_QUEUE_FILTER}
+        onFilterChange={() => {}}
+        onPageChange={() => {}}
+        onReview={() => {}}
+      />,
+    );
+    expect(html).toContain('for="queue-type"');
+    expect(html).toContain('for="queue-search"');
+    expect(html).toContain('type="search"');
+  });
+
+  test("a filter that matches nothing says so instead of 'nothing is waiting'", () => {
+    const html = renderToStaticMarkup(
+      <QueueView
+        page={pageQueue([], 1)}
+        filter={{ type: "kyb", search: "" }}
+        onFilterChange={() => {}}
+        onPageChange={() => {}}
+        onReview={() => {}}
+      />,
+    );
+    expect(html).toContain("No items match these filters.");
+    expect(html).not.toContain("Nothing is waiting for review.");
   });
 });
 

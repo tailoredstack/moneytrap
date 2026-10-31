@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   type DecisionClient,
   type EvidenceItem,
+  filterQueue,
   formatWaiting,
+  NO_QUEUE_FILTER,
   pageQueue,
   QUEUE_PAGE_SIZE,
   type QueueItem,
@@ -65,6 +67,40 @@ describe("pageQueue (TP-W3-023)", () => {
     expect(page.pageCount).toBe(1);
     expect(page.from).toBe(0);
     expect(page.to).toBe(0);
+  });
+});
+
+describe("filterQueue (UI-017, UI-023)", () => {
+  test("no filter keeps every item", () => {
+    expect(filterQueue(queueOf(50), NO_QUEUE_FILTER)).toHaveLength(50);
+  });
+
+  test("a type filter keeps only that type, and the paged count follows it", () => {
+    const kyb = filterQueue(queueOf(50), { type: "kyb", search: "" });
+    expect(kyb).toHaveLength(25);
+    expect(pageQueue(kyb, 1).total).toBe(25);
+    expect(kyb.every((item) => item.type === "kyb")).toBe(true);
+  });
+
+  test("a search matches part of the item label, ignoring case and surrounding spaces", () => {
+    const found = filterQueue(queueOf(50), { type: "all", search: "  ITEM 4" });
+    expect(found.map((item) => item.label)).toEqual([
+      "Item 4",
+      "Item 40",
+      "Item 41",
+      "Item 42",
+      "Item 43",
+      "Item 44",
+      "Item 45",
+      "Item 46",
+      "Item 47",
+      "Item 48",
+      "Item 49",
+    ]);
+  });
+
+  test("a search with no match returns an empty list", () => {
+    expect(filterQueue(queueOf(50), { type: "all", search: "zzz" })).toEqual([]);
   });
 });
 
