@@ -40,7 +40,7 @@ async function startServer(): Promise<string> {
       PATH: "/usr/bin:/bin",
       // Better Auth config is required at boot. The pool connects lazily, so this database is never reached here.
       DATABASE_URL: "postgres://unused.invalid:5432/moneytrap",
-      // The Redis client also connects lazily, so this URL is never reached here either.
+      // The Redis client connects at once and retries in the background. The test kills the process, which ends the retries.
       REDIS_URL: "redis://unused.invalid:6379",
       BETTER_AUTH_SECRET: "binary-test-secret-at-least-32-characters",
       BASE_URL: `http://127.0.0.1:${port}`,
