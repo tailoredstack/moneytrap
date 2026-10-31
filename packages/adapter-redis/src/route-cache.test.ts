@@ -56,15 +56,29 @@ describeWithRedis("route cache", () => {
     expect(await cache.get(token)).toBeNull();
   });
 
-  test("a stalled write cannot extend a view: revocation is seen within the bound (ADR-007 gate)", async () => {
+  test("a stalled write cannot extend a view: the age bound alone denies it (ADR-007 gate)", async () => {
     const cache = createRouteCache(connection);
     // The source read captures the clock and sees an active link.
     const loadedAt = await cache.readServerTime();
-    // The cache write stalls past the three-second bound, and meanwhile the link is revoked and its version published.
+    // The cache write stalls past the three-second bound. No version is published, so only the age check can deny it.
     await sleep(3100);
-    await cache.publishVersion(linkId, 2);
     await cache.put(token, view(1), loadedAt);
     // The stalled, older view must not be served.
+    expect(await cache.get(token)).toBeNull();
+  });
+
+  test("a view loadedAt in the future is refused", async () => {
+    const cache = createRouteCache(connection);
+    await cache.put(token, view(), (await cache.readServerTime()) + 10_000);
+    expect(await cache.get(token)).toBeNull();
+  });
+
+  test("a view just inside the three-second bound is served, and one just outside is not", async () => {
+    const cache = createRouteCache(connection);
+    const now = await cache.readServerTime();
+    await cache.put(token, view(), now - 2_900);
+    expect(await cache.get(token)).toEqual(view());
+    await cache.put(token, view(), now - 3_100);
     expect(await cache.get(token)).toBeNull();
   });
 
