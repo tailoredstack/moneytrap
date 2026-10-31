@@ -1,3 +1,4 @@
+import { parseId } from "@moneytrap/domain";
 import type { Guard } from "./policy";
 
 // The route permission table (Blueprint §3.1). Keys are `METHOD /path` using the route pattern Elysia reports.
@@ -20,4 +21,13 @@ export const ROUTE_GUARDS: Readonly<Record<string, Guard>> = {
   "GET /api/sessions": { access: "session" },
   "DELETE /api/sessions/:id": { access: "session" },
   "PUT /api/password": { access: "session" },
+  // Click analytics for one organization (API-045). Membership and reports:read are checked against the path's org.
+  "GET /api/organizations/:organizationId/reports/clicks": {
+    access: "permission",
+    permission: "reports:read",
+    scope: async (params) => {
+      const organizationId = parseId("organization", params.organizationId);
+      return organizationId ? { organizationId } : null;
+    },
+  },
 };

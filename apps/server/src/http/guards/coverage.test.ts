@@ -14,10 +14,16 @@ const stubAuth = {
 
 const clock = { now: () => new Date("2026-10-31T12:00:00Z") };
 const ids = { next: () => "x" } as never;
+// Reports are wired with inert stores: these tests only check that the route exists and declares its guard.
+const reports = {
+  clicks: { countByLink: async () => [], latestRecordedAt: async () => null },
+  clock,
+  principal: async () => null,
+};
 
 describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
   test("every route the app serves declares a guard", () => {
-    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth));
+    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth, undefined, reports));
     expect(undeclaredRoutes(app.routes)).toEqual([]);
   });
 
@@ -38,7 +44,7 @@ describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
   });
 
   test("the guard table has no entry for a route the app does not serve", () => {
-    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth));
+    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth, undefined, reports));
     const served = new Set(app.routes.map((route) => `${route.method} ${route.path}`));
     const stale = Object.keys(ROUTE_GUARDS).filter((key) => !served.has(key));
     expect(stale).toEqual([]);
