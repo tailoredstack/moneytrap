@@ -248,7 +248,15 @@ export function authOptions({
     plugins: [
       haveIBeenPwned(),
       twoFactor({ issuer: "Moneytrap" }),
-      organization({ ac: accessControl, roles }),
+      // Invitations keep Better Auth's defaults: a 48-hour expiry, and acceptance is refused once the invitation is no
+      // longer pending, so a second accept fails and creates no second membership.
+      organization({
+        ac: accessControl,
+        roles,
+        sendInvitationEmail: async ({ id, email, invitation }) => {
+          await mailer.sendInvitation(email, `${baseURL}/invitations/${id}`, new Date(invitation.expiresAt));
+        },
+      }),
       apiKey({ enableSessionForAPIKeys: true }),
       {
         id: "moneytrap-step-up",

@@ -21,7 +21,7 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
   let schema: string;
   let pool: Pool;
   let db: Kysely<unknown>;
-  let sent: Array<{ kind: "verify" | "reset"; to: string; url: string }>;
+  let sent: Array<{ kind: "verify" | "reset" | "invite"; to: string; url: string }>;
   let originalFetch: typeof fetch;
   let auth: ReturnType<typeof createAuth>;
 
@@ -42,6 +42,9 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       },
       async sendPasswordReset(to, url) {
         sent.push({ kind: "reset", to, url });
+      },
+      async sendInvitation(to, url) {
+        sent.push({ kind: "invite", to, url });
       },
     };
     originalFetch = globalThis.fetch;
@@ -578,6 +581,137 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
     });
     const still = await sql<{ twoFactorEnabled: boolean }>`select "twoFactorEnabled" from "user"`.execute(db);
     expect(still.rows).toEqual([{ twoFactorEnabled: true }]);
+  });
+
+  describe("organization invitations (WP-2.10)", () => {
+    const INVITEE = "grace@example.test";
+    const HOUR_MS = 60 * 60 * 1000;
+
+    const signUpAndVerify = async (email: string) => {
+      await auth.api.signUpEmail({ body: { email, password: VALID_PASSWORD, name: email }, asResponse: true });
+      const link = sent.filter((message) => message.kind === "verify" && message.to === email).at(-1);
+      await verifyLink(new URL(link?.url ?? "https://none.invalid").searchParams.get("token") ?? "");
+      return cookieHeaders(await auth.api.signInEmail({ body: { email, password: VALID_PASSWORD }, asResponse: true }));
+    };
+
+    const invitationRow = async (id: string) =>
+      (
+        await sql<{
+          status: string;
+          expiresAt: Date;
+        }>`select status, "expiresAt" from invitation where id = ${id}`.execute(db)
+      ).rows[0];
+
+    const membershipCount = async (organizationId: string, email: string) =>
+      (
+        await sql<{ n: number }>`
+          select count(*)::int as n from member m join "user" u on u.id = m."userId"
+          where m."organizationId" = ${organizationId} and u.email = ${email}`.execute(db)
+      ).rows[0]?.n;
+
+    // Better Auth's organization endpoints run through auth.api at runtime; the config types keep them generic.
+    const orgApi = () =>
+      auth.api as unknown as {
+        createOrganization(input: { body: { name: string; slug: string }; headers: Headers }): Promise<{ id: string }>;
+        createInvitation(input: {
+          body: { email: string; role: string; organizationId: string };
+          headers: Headers;
+        }): Promise<{ id: string }>;
+        acceptInvitation(input: {
+          body: { invitationId: string };
+          headers: Headers;
+          asResponse: true;
+        }): Promise<Response>;
+      };
+
+    // Owner creates an org and invites the invitee. Returns the ids and the owner's headers.
+    const invite = async () => {
+      const ownerHeaders = await signUpAndVerify("ada@example.test");
+      const org = await orgApi().createOrganization({ body: { name: "Acme", slug: "acme" }, headers: ownerHeaders });
+      const invitation = await orgApi().createInvitation({
+        body: { email: INVITEE, role: "member", organizationId: org.id },
+        headers: ownerHeaders,
+      });
+      return { ownerHeaders, organizationId: org.id, invitationId: invitation.id };
+    };
+
+    test("an invitation sends one invite email to the invitee, expiring in 48 hours", async () => {
+      const { invitationId } = await invite();
+
+      const invites = sent.filter((message) => message.kind === "invite");
+      expect(invites).toHaveLength(1);
+      expect(invites[0]).toMatchObject({ to: INVITEE, url: `https://moneytrap.test/invitations/${invitationId}` });
+      const row = await invitationRow(invitationId);
+      expect(row?.status).toBe("pending");
+      const remaining = row ? row.expiresAt.getTime() - Date.now() : 0;
+      expect(remaining).toBeGreaterThan(47 * HOUR_MS);
+      expect(remaining).toBeLessThanOrEqual(48 * HOUR_MS);
+    });
+
+    test("TP-W2-030: accepting an invitation twice leaves one membership", async () => {
+      const { organizationId, invitationId } = await invite();
+      const inviteeHeaders = await signUpAndVerify(INVITEE);
+
+      const first = await orgApi().acceptInvitation({
+        body: { invitationId },
+        headers: inviteeHeaders,
+        asResponse: true,
+      });
+      const second = await orgApi().acceptInvitation({
+        body: { invitationId },
+        headers: inviteeHeaders,
+        asResponse: true,
+      });
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(400);
+      expect(await membershipCount(organizationId, INVITEE)).toBe(1);
+      expect((await invitationRow(invitationId))?.status).toBe("accepted");
+    });
+
+    test("TP-W2-031: an expired invitation is rejected and creates no membership", async () => {
+      const { organizationId, invitationId } = await invite();
+      await sql`update invitation set "expiresAt" = ${new Date(Date.now() - 60_000)} where id = ${invitationId}`.execute(
+        db,
+      );
+      const inviteeHeaders = await signUpAndVerify(INVITEE);
+
+      const response = await orgApi().acceptInvitation({
+        body: { invitationId },
+        headers: inviteeHeaders,
+        asResponse: true,
+      });
+
+      expect(response.status).toBe(400);
+      expect(await membershipCount(organizationId, INVITEE)).toBe(0);
+    });
+
+    test("TP-W2-039: two concurrent accepts create exactly one membership", async () => {
+      const { organizationId, invitationId } = await invite();
+      const inviteeHeaders = await signUpAndVerify(INVITEE);
+
+      const responses = await Promise.all([
+        orgApi().acceptInvitation({ body: { invitationId }, headers: inviteeHeaders, asResponse: true }),
+        orgApi().acceptInvitation({ body: { invitationId }, headers: inviteeHeaders, asResponse: true }),
+      ]);
+
+      expect(responses.map((response) => response.status).sort()).toEqual([200, 400]);
+      expect(await membershipCount(organizationId, INVITEE)).toBe(1);
+    });
+
+    test("an invitation can be accepted only by the invited account", async () => {
+      const { ownerHeaders, organizationId, invitationId } = await invite();
+
+      const response = await orgApi().acceptInvitation({
+        body: { invitationId },
+        headers: ownerHeaders,
+        asResponse: true,
+      });
+
+      expect(response.status).toBe(403);
+      expect(await membershipCount(organizationId, INVITEE)).toBe(0);
+      expect((await invitationRow(invitationId))?.status).toBe("pending");
+    });
   });
 
   test("the migration creates the Better Auth tables", async () => {

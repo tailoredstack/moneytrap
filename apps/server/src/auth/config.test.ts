@@ -16,6 +16,7 @@ function setup() {
     async sendPasswordReset(to, url) {
       sent.push({ kind: "reset", to, url });
     },
+    async sendInvitation() {},
   };
   const options = authOptions({
     pool: new Pool({ connectionString: "postgres://unused.invalid/db" }),
@@ -138,7 +139,7 @@ describe("auth rate limits (WP-2.14)", () => {
       pool: new Pool({ connectionString: "postgres://unused.invalid/db" }),
       secret: "test-secret-at-least-32-characters-long",
       baseURL: "https://moneytrap.test",
-      mailer: { async sendVerification() {}, async sendPasswordReset() {} },
+      mailer: { async sendVerification() {}, async sendPasswordReset() {}, async sendInvitation() {} },
       rateLimitCounter: counter,
     });
     const before = options.hooks?.before;
