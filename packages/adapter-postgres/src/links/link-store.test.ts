@@ -247,6 +247,7 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
       await holder.query("begin");
       // The suspension holds the property row until it commits, as its UPDATE does in the property store.
       await holder.query("update properties set status = 'suspended' where id = $1", [propertyId]);
+      const holderPid = (await holder.query("select pg_backend_pid() as pid")).rows[0].pid as number;
 
       pending = store.insert({
         record: record(),
@@ -254,12 +255,14 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
         event: event("evt_1", 1),
         precondition: allowed,
       });
-      // Commit only once this insert is queued behind the suspension's lock, so the refusal is not a race. The probe
-      // matches the gate's read of the property row, not any lock waiter in the database.
+      // Commit only once the gate's read of the property row is queued behind this holder, so the refusal is not a race.
+      // The probe ties the waiter to the holder's session with pg_blocking_pids, so another session cannot satisfy it.
       for (let waited = 0; ; waited += 25) {
         const waiting = await pool.query(
           `select count(*)::int as n from pg_stat_activity
-            where wait_event_type = 'Lock' and datname = current_database() and query like 'select status from properties%'`,
+            where wait_event_type = 'Lock' and datname = current_database()
+              and query like 'select status from properties%' and $1 = any(pg_blocking_pids(pid))`,
+          [holderPid],
         );
         if (waiting.rows[0].n > 0) break;
         if (waited > 5000) throw new Error("insert never waited on the property lock");
