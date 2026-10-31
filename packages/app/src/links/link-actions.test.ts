@@ -722,6 +722,34 @@ describe("route cache invalidation (ADR-007)", () => {
     expect(routeCache.publishes.at(-1)).toEqual({ linkId, version: 4 });
   });
 
+  test("create and edit publish their new versions too", async () => {
+    const { deps, links, routeCache } = setup();
+    await createActiveLink(ctxFor(actorId), deps, createInput);
+    expect(routeCache.publishes.at(-1)).toEqual({ linkId, version: 1 });
+    seededLink(links, "active");
+    await editLinkDestination(ctxFor(actorId), deps, {
+      organizationId: orgId,
+      linkId,
+      destination: "https://shop.example.com/other",
+    });
+    expect(routeCache.publishes.at(-1)).toEqual({ linkId, version: 3 });
+  });
+
+  test("a write the store refuses after a version move publishes nothing", async () => {
+    const { deps, links, routeCache } = setup();
+    seededLink(links, "active");
+    const original = links.update.bind(links);
+    links.update = async (write) => {
+      links.rows.set(linkId, { ...write.record, link: { ...write.record.link, version: 99 } });
+      return original(write);
+    };
+    expect(await pauseLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId })).toEqual({
+      ok: false,
+      code: "STATE_CONFLICT",
+    });
+    expect(routeCache.publishes).toHaveLength(0);
+  });
+
   test("a refused write publishes nothing", async () => {
     const { deps, links, routeCache } = setup();
     seededLink(links, "revoked");
@@ -755,7 +783,7 @@ describe("route cache invalidation (ADR-007)", () => {
     const started = Date.now();
     const result = await revokeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
     expect(result).toMatchObject({ ok: true, value: { status: "revoked" } });
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(Date.now() - started).toBeLessThan(500);
     expect(links.rows.get(linkId)?.link.status).toBe("revoked");
   });
 
