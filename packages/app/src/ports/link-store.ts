@@ -43,11 +43,13 @@ export interface LinkPolicy {
 }
 
 // A monetized write (create, edit, resume) must still hold the gate it passed. The adapter checks, in the same
-// transaction as the link row, that the property is approved and the latest eligibility decision allows the program.
-// A suspension or a deny decision that lands after the gate therefore blocks the write (CT-006, CT-010).
+// transaction as the link row, that the property is approved, the latest eligibility decision allows the program, and
+// the destination host is still on the program's allow-list. A suspension, a deny decision, or a removed host that lands
+// after the gate therefore blocks the write (CT-006, CT-010, spec §4.4).
 export interface LinkWritePrecondition {
   propertyId: Id<"property">;
   programId: Id<"program">;
+  host: string;
 }
 
 // Each write commits its row with its audit row and outbox event, or none of them. The write applies only when the

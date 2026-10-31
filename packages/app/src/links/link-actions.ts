@@ -166,8 +166,27 @@ async function commit(
           event,
           precondition: input.precondition,
         });
-  if (!applied) return { ok: false, code: "STATE_CONFLICT" };
-  return { ok: true, value: view(input.record) };
+  if (applied) return { ok: true, value: view(input.record) };
+  return refusalOf(deps, input.organizationId, input.precondition);
+}
+
+// A refused write has one of two causes: the version moved (a plain STATE_CONFLICT), or the gate no longer holds. The
+// gate is read again so the caller learns the reason: the property or the decision, or a host that left the allow-list.
+async function refusalOf(
+  deps: LinkDeps,
+  organizationId: Id<"organization">,
+  precondition: LinkWritePrecondition | null,
+): Promise<LinkResult> {
+  if (!precondition) return { ok: false, code: "STATE_CONFLICT" };
+  const recheck = await gate(deps, organizationId, precondition.propertyId, precondition.programId);
+  if (!recheck.ok) return recheck;
+  if (!recheck.hosts.includes(precondition.host)) return { ok: false, code: "VALIDATION_FAILED" };
+  return { ok: false, code: "STATE_CONFLICT" };
+}
+
+// The host a monetized write routes to. The destination was validated before this, so the URL always parses.
+function hostOf(url: string): string {
+  return new URL(url).hostname;
 }
 
 export interface PreviewLinkInput {
@@ -233,7 +252,7 @@ export async function createActiveLink(ctx: Ctx, deps: LinkDeps, input: CreateLi
     record: { link: active.value, organizationId: input.organizationId, programId },
     action: "create",
     expectedVersion: null,
-    precondition: { propertyId, programId },
+    precondition: { propertyId, programId, host: hostOf(active.value.destinationUrl) },
   });
 }
 
@@ -276,7 +295,11 @@ export async function editLinkDestination(
     record: { ...record, link: changed.value },
     action: "edit",
     expectedVersion: record.link.version,
-    precondition: { propertyId: record.link.propertyId, programId: record.programId },
+    precondition: {
+      propertyId: record.link.propertyId,
+      programId: record.programId,
+      host: hostOf(changed.value.destinationUrl),
+    },
   });
 }
 
@@ -315,7 +338,11 @@ export async function resumeLinkAction(
     record: { ...record, link: resumed.value },
     action: "resume",
     expectedVersion: record.link.version,
-    precondition: { propertyId: record.link.propertyId, programId: record.programId },
+    precondition: {
+      propertyId: record.link.propertyId,
+      programId: record.programId,
+      host: hostOf(resumed.value.destinationUrl),
+    },
   });
 }
 

@@ -55,6 +55,8 @@ export class FakeLinkStore implements LinkStore, LinkPolicy {
     event: LinkEvent;
     precondition: LinkWritePrecondition | null;
   }): Promise<boolean> {
+    // An insert never replaces an existing link.
+    if (this.rows.has(write.record.link.id)) return false;
     if (!this.holds(write.precondition)) return false;
     this.rows.set(write.record.link.id, structuredClone(write.record));
     this.audits.push({ ...write.audit });
@@ -71,6 +73,8 @@ export class FakeLinkStore implements LinkStore, LinkPolicy {
     precondition: LinkWritePrecondition | null;
   }): Promise<boolean> {
     const stored = this.rows.get(write.record.link.id);
+    // The row must belong to the tenant the write names, and the record must carry that same tenant.
+    if (write.record.organizationId !== write.organizationId) return false;
     // Another tenant's row, a moved version, or a missing link: nothing is written.
     if (!stored || stored.organizationId !== write.organizationId) return false;
     if (stored.link.version !== write.expectedVersion) return false;
@@ -81,11 +85,13 @@ export class FakeLinkStore implements LinkStore, LinkPolicy {
     return true;
   }
 
-  // The property must still be approved and the latest decision must still allow the program, as the port requires.
+  // The property must still be approved, the latest decision must still allow the program, and the host must still be on
+  // the program's allow-list, as the port requires.
   private holds(precondition: LinkWritePrecondition | null): boolean {
     if (!precondition) return true;
     if (this.propertyStatuses.get(precondition.propertyId) !== "approved") return false;
     const decision = this.decisions.get(`${precondition.propertyId}|${precondition.programId}`);
-    return decision?.decision === "allow";
+    if (decision?.decision !== "allow") return false;
+    return (this.hosts.get(precondition.programId) ?? []).includes(precondition.host);
   }
 }

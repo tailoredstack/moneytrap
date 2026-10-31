@@ -150,7 +150,11 @@ class MemoryLinks implements LinkStore {
   }
   private holds(precondition: LinkWritePrecondition | null): boolean {
     if (!precondition) return true;
-    return this.live.status === "approved" && this.live.decision?.decision === "allow";
+    return (
+      this.live.status === "approved" &&
+      this.live.decision?.decision === "allow" &&
+      this.live.hosts.includes(precondition.host)
+    );
   }
 }
 
@@ -273,20 +277,35 @@ describe("create", () => {
     const { deps, links, live } = setup();
     changeBeforeWrite(links, (state) => (state.status = "suspended"), live);
     const result = await createActiveLink(ctxFor(actorId), deps, createInput);
-    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT", reason: "property_not_approved" });
     expect(links.rows.size).toBe(0);
     expect(links.events).toHaveLength(0);
   });
 
-  test("the decision flips to deny between the gate and the write: the write is refused", async () => {
+  test("the decision flips to deny between the gate and the write: the write is refused with the decision's reasons", async () => {
     const { deps, links, live } = setup();
     changeBeforeWrite(
       links,
       (state) => (state.decision = { decision: "deny", policyVersion: 1, reasons: ["contract"], checks: [] }),
       live,
     );
-    expect(await createActiveLink(ctxFor(actorId), deps, createInput)).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(await createActiveLink(ctxFor(actorId), deps, createInput)).toEqual({
+      ok: false,
+      code: "PROGRAM_INELIGIBLE",
+      reasons: ["contract"],
+    });
     expect(links.rows.size).toBe(0);
+  });
+
+  test("the host leaves the allow-list between the gate and the write: the write is refused and nothing is stored", async () => {
+    const { deps, links, live } = setup();
+    changeBeforeWrite(links, (state) => (state.hosts = []), live);
+    expect(await createActiveLink(ctxFor(actorId), deps, createInput)).toEqual({
+      ok: false,
+      code: "VALIDATION_FAILED",
+    });
+    expect(links.rows.size).toBe(0);
+    expect(links.events).toHaveLength(0);
   });
 });
 
@@ -393,8 +412,22 @@ describe("edit destination", () => {
       linkId,
       destination: "https://shop.example.com/other",
     });
-    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(result).toEqual({ ok: false, code: "PROGRAM_INELIGIBLE", reasons: ["channel"] });
     expect(links.rows.get(linkId)?.link.destinationUrl).toBe(destination);
+  });
+
+  test("the host leaves the allow-list between the gate and the write: the edit is refused and the destination is kept", async () => {
+    const { deps, links, live } = setup();
+    seededLink(links, "active");
+    changeBeforeWrite(links, (state) => (state.hosts = []), live);
+    const result = await editLinkDestination(ctxFor(actorId), deps, {
+      organizationId: orgId,
+      linkId,
+      destination: "https://shop.example.com/other",
+    });
+    expect(result).toEqual({ ok: false, code: "VALIDATION_FAILED" });
+    expect(links.rows.get(linkId)?.link.destinationUrl).toBe(destination);
+    expect(links.audits).toHaveLength(0);
   });
 
   test("a caller that is not a user is UNAUTHENTICATED", async () => {
@@ -440,6 +473,27 @@ describe("pause, resume, revoke", () => {
     seededLink(links, "paused");
     const result = await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
     expect(result).toEqual({ ok: false, code: "VALIDATION_FAILED" });
+    expect(links.rows.get(linkId)?.link.status).toBe("paused");
+  });
+
+  test("the property is suspended between the gate and a resume write: the resume is refused with the property reason", async () => {
+    const { deps, links, live } = setup();
+    seededLink(links, "paused");
+    changeBeforeWrite(links, (state) => (state.status = "suspended"), live);
+    const result = await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId });
+    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT", reason: "property_not_approved" });
+    expect(links.rows.get(linkId)?.link.status).toBe("paused");
+    expect(links.audits).toHaveLength(0);
+  });
+
+  test("the host leaves the allow-list between the gate and a resume write: the resume is refused", async () => {
+    const { deps, links, live } = setup();
+    seededLink(links, "paused");
+    changeBeforeWrite(links, (state) => (state.hosts = []), live);
+    expect(await resumeLinkAction(ctxFor(actorId), deps, { organizationId: orgId, linkId })).toEqual({
+      ok: false,
+      code: "VALIDATION_FAILED",
+    });
     expect(links.rows.get(linkId)?.link.status).toBe("paused");
   });
 
