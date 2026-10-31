@@ -134,6 +134,22 @@ describe("evaluateEligibility fails closed on malformed input", () => {
     expect(result.decision === "deny" && result.reasons).toEqual(["geography"]);
   });
 
+  test("a truthy but non-boolean contract flag does not count as active", () => {
+    for (const active of [1, "true", {}]) {
+      const result = evaluateEligibility(
+        input({ contract: { active, countries: ["GB"], channels: ["web"] } as never }),
+      );
+      expect(result.decision === "deny" && result.reasons).toEqual(["contract"]);
+    }
+  });
+
+  test("a non-string geography or channel denies as unknown instead of throwing", () => {
+    const geography = evaluateEligibility(input({ geography: 826 as unknown as string }));
+    expect(geography.decision === "deny" && geography.reasons).toEqual(["unknown"]);
+    const channel = evaluateEligibility(input({ channel: null as unknown as string }));
+    expect(channel.decision === "deny" && channel.reasons).toEqual(["unknown"]);
+  });
+
   test("a non-string entry in a contract channel list is not a match", () => {
     const result = evaluateEligibility(
       input({ contract: { active: true, countries: ["GB"], channels: [null, 7] as unknown as string[] } }),
