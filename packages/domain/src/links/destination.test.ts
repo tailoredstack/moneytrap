@@ -62,6 +62,17 @@ describe("destination allow-list", () => {
     expect(validateDestination("https:shop.example.com:443/", allowed)).toMatchObject({ reason: "port" });
   });
 
+  test("control characters are refused before parsing, so they cannot hide the authority", () => {
+    expect(validateDestination("\x01https://user:pw@shop.example.com/", allowed)).toMatchObject({
+      reason: "malformed",
+    });
+    expect(validateDestination("ht\ttps://shop.example.com:8443/", allowed)).toMatchObject({ reason: "malformed" });
+    expect(validateDestination("https:\t/user:pw@shop.example.com/", allowed)).toMatchObject({ reason: "malformed" });
+    expect(validateDestination("https:\n//user:pw@shop.example.com/", allowed)).toMatchObject({ reason: "malformed" });
+    expect(validateDestination("https:\t//shop.example.com:8443/", allowed)).toMatchObject({ reason: "malformed" });
+    expect(validateDestination("https://shop.example.com/\x7f", allowed)).toMatchObject({ reason: "malformed" });
+  });
+
   test("a trailing-dot host does not match the entry without the dot", () => {
     expect(validateDestination("https://shop.example.com./", allowed)).toMatchObject({ reason: "host-not-allowed" });
   });
