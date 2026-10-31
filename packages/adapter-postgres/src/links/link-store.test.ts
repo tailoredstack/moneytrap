@@ -345,4 +345,41 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
     ).toBe(false);
     expect(await store.find(orgA, linkId)).toEqual(record());
   });
+
+  test("an update whose gate no longer holds writes nothing (CT-006, CT-010)", async () => {
+    const store = createLinkStore(db);
+    await store.insert({ record: record(), audit: audit("aud_1"), event: event("evt_1", 1), precondition: null });
+
+    // A suspension lands after the link was created, so the next edit must be refused.
+    await sql`update properties set status = 'suspended' where id = ${propertyId}`.execute(db);
+    expect(
+      await store.update({
+        organizationId: orgA,
+        expectedVersion: 1,
+        record: record(2, "paused"),
+        audit: audit("aud_2"),
+        event: event("evt_2", 2),
+        precondition: allowed,
+      }),
+    ).toBe(false);
+
+    // Restore the property, then remove the host from the allow-list. The next edit is refused on the host.
+    await sql`update properties set status = 'approved' where id = ${propertyId}`.execute(db);
+    await sql`update program_revisions set payload = '{"allowedHosts": []}'::jsonb where program_id = ${programId}`.execute(
+      db,
+    );
+    expect(
+      await store.update({
+        organizationId: orgA,
+        expectedVersion: 1,
+        record: record(2, "paused"),
+        audit: audit("aud_3"),
+        event: event("evt_3", 2),
+        precondition: allowed,
+      }),
+    ).toBe(false);
+
+    expect(await store.find(orgA, linkId)).toEqual(record());
+    expect(await counts()).toEqual({ audits: 1, events: 1 });
+  });
 });
