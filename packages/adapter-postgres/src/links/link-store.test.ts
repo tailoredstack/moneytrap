@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { LinkAudit, LinkEvent, LinkRecord, LinkWritePrecondition } from "@moneytrap/app/src/ports/link-store";
 import type { Id } from "@moneytrap/domain";
 import { Kysely, PostgresDialect, sql } from "kysely";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { migrate } from "../migrate";
 import { createLinkStore } from "./link-store";
 
@@ -206,5 +206,60 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
     ).toBe(true);
     expect(await linkRows()).toEqual([{ id: linkId }]);
     expect(await counts()).toEqual({ audits: 1, events: 1 });
+  });
+
+  test("an update that passes the gate commits the new version with its audit and event", async () => {
+    const store = createLinkStore(db);
+    await store.insert({ record: record(), audit: audit("aud_1"), event: event("evt_1", 1), precondition: allowed });
+
+    expect(
+      await store.update({
+        organizationId: orgA,
+        expectedVersion: 1,
+        record: record(2, "paused"),
+        audit: audit("aud_2"),
+        event: event("evt_2", 2),
+        precondition: allowed,
+      }),
+    ).toBe(true);
+    expect(await store.find(orgA, linkId)).toEqual(record(2, "paused"));
+    expect(await counts()).toEqual({ audits: 2, events: 2 });
+  });
+
+  test("an internationalised allow-list entry matches its punycode destination host (CT-010)", async () => {
+    await sql`update program_revisions set payload = '{"allowedHosts": ["bücher.de"]}'::jsonb where program_id = ${programId}`.execute(
+      db,
+    );
+    const store = createLinkStore(db);
+    const idn = { ...allowed, host: "xn--bcher-kva.de" };
+
+    expect(
+      await store.insert({ record: record(), audit: audit("aud_1"), event: event("evt_1", 1), precondition: idn }),
+    ).toBe(true);
+  });
+
+  test("a suspension that commits while the write waits is refused, and nothing is written (CT-006)", async () => {
+    const holder: PoolClient = await pool.connect();
+    try {
+      await holder.query("begin");
+      // The suspension holds the property row until it commits, as its UPDATE does in the property store.
+      await holder.query("update properties set status = 'suspended' where id = $1", [propertyId]);
+
+      const store = createLinkStore(db);
+      const pending = store.insert({
+        record: record(),
+        audit: audit("aud_1"),
+        event: event("evt_1", 1),
+        precondition: allowed,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await holder.query("commit");
+
+      expect(await pending).toBe(false);
+      expect(await linkRows()).toEqual([]);
+      expect(await counts()).toEqual({ audits: 0, events: 0 });
+    } finally {
+      holder.release();
+    }
   });
 });

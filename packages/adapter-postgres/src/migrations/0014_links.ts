@@ -6,6 +6,9 @@ import type { Migration } from "kysely/migration";
 // eligibility decisions and program approvals do. The program is a catalog row, so it is a plain foreign key.
 export const links: Migration = {
   async up(db: Kysely<unknown>) {
+    // Target of the foreign key below. It adds a wider key over columns already unique on their own.
+    await sql`alter table properties add constraint properties_id_publisher_uq unique (id, publisher_id)`.execute(db);
+
     await db.schema
       .createTable("links")
       .addColumn("id", "text", (column) => column.primaryKey())
@@ -31,10 +34,19 @@ export const links: Migration = {
         ["id", "organization_id"],
         (constraint) => constraint.onDelete("cascade"),
       )
+      // A link's publisher is the property's publisher, so the pair is the target and a row cannot disagree with it.
+      .addForeignKeyConstraint(
+        "links_property_publisher_fk",
+        ["property_id", "publisher_id"],
+        "properties",
+        ["id", "publisher_id"],
+        (constraint) => constraint.onDelete("cascade"),
+      )
       .execute();
   },
 
   async down(db: Kysely<unknown>) {
     await sql`drop table if exists links`.execute(db);
+    await sql`alter table properties drop constraint if exists properties_id_publisher_uq`.execute(db);
   },
 };

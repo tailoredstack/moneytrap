@@ -1,3 +1,4 @@
+import { allowsHost } from "@moneytrap/app/src/links/link-actions";
 import type {
   LinkAudit,
   LinkEvent,
@@ -38,8 +39,8 @@ function toRecord(row: LinkRow): LinkRecord {
   };
 }
 
-// The gate is read again inside the write's transaction. The property row is locked for share, so a suspension that lands
-// before the commit waits for this write, and a write that lands after the lock sees the suspension (CT-006, CT-010).
+// The gate is read again inside the write's transaction. The property row is locked for share. A suspension's UPDATE and an
+// eligibility decision's FOR NO KEY UPDATE both conflict with that lock, so each waits for an in-flight link write (CT-006, CT-010).
 // The allow-list is the program's latest revision, under its `allowedHosts` field.
 async function holds(
   tx: Transaction<unknown>,
@@ -63,7 +64,10 @@ async function holds(
     limit 1`.execute(tx);
   const hosts = revision.rows[0]?.payload.allowedHosts;
   if (!Array.isArray(hosts)) return false;
-  return hosts.some((entry) => typeof entry === "string" && entry.trim().toLowerCase() === host.toLowerCase());
+  return allowsHost(
+    hosts.filter((entry): entry is string => typeof entry === "string"),
+    host,
+  );
 }
 
 async function writeAudit(tx: Transaction<unknown>, audit: LinkAudit): Promise<void> {
