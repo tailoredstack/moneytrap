@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { apiKey } from "@better-auth/api-key";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx, isAPIError } from "better-auth/api";
 import { haveIBeenPwned, organization, twoFactor } from "better-auth/plugins";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import type { Pool } from "pg";
+import { requireRecentSecondFactor } from "../http/guards/assurance";
 import type { AuthMailer } from "./mailer";
 
 // Blueprint §7: Better Auth keeps its defaults for hashing, tokens, and expiry. These are the only
@@ -29,6 +30,7 @@ export type AuthConfigDeps = {
   secret: string;
   baseURL: string;
   mailer: AuthMailer;
+  stepUpWindowSeconds?: number;
 };
 
 // Better Auth verifies email tokens statelessly and never records their use, so a second click on the same
@@ -137,7 +139,29 @@ function settleVerificationLink(db: Kysely<any>) {
   });
 }
 
-export function authOptions({ pool, secret, baseURL, mailer }: AuthConfigDeps): BetterAuthOptions {
+// Better Auth's disable route only requires a session, not a fresh one, so the step-up check runs before it.
+// The session's creation time stands in for the second-factor time: an MFA user's session is only created
+// after the second factor passes. The guard fails closed when the session cannot be read.
+function requireStepUpToDisableMfa(stepUpWindow: number) {
+  return createAuthMiddleware(async (ctx) => {
+    const session = await getSessionFromCtx(ctx);
+    if (!session?.session) return;
+    const result = requireRecentSecondFactor({
+      secondFactorAt: new Date(session.session.createdAt),
+      now: new Date(),
+      windowSeconds: stepUpWindow,
+    });
+    if (!result.ok) throw new APIError("FORBIDDEN", { code: result.code, message: "Step-up required" });
+  });
+}
+
+export function authOptions({
+  pool,
+  secret,
+  baseURL,
+  mailer,
+  stepUpWindowSeconds: stepUpWindow = DEFAULT_STEP_UP_WINDOW_SECONDS,
+}: AuthConfigDeps): BetterAuthOptions {
   // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
   const db = new Kysely<any>({ dialect: new PostgresDialect({ pool }) });
   return {
@@ -151,6 +175,10 @@ export function authOptions({ pool, secret, baseURL, mailer }: AuthConfigDeps): 
     },
     secret,
     baseURL,
+    // Sensitive routes, including disabling MFA, need a session created within the step-up window (TP-W2-019).
+    session: {
+      freshAge: stepUpWindow,
+    },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
@@ -172,6 +200,14 @@ export function authOptions({ pool, secret, baseURL, mailer }: AuthConfigDeps): 
       twoFactor({ issuer: "Moneytrap" }),
       organization(),
       apiKey({ enableSessionForAPIKeys: true }),
+      {
+        id: "moneytrap-step-up",
+        hooks: {
+          before: [
+            { matcher: (ctx) => ctx.path === "/two-factor/disable", handler: requireStepUpToDisableMfa(stepUpWindow) },
+          ],
+        },
+      },
     ],
   };
 }

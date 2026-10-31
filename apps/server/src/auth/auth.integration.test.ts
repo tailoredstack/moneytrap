@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { migrate, migrationProvider } from "@moneytrap/adapter-postgres";
 import type { NotificationMessage, Notifier } from "@moneytrap/app";
 import { createEmailVerificationToken } from "better-auth/api";
@@ -416,6 +416,100 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
     expect(await response.json()).toBeNull();
   });
 
+  // Turns a response's Set-Cookie headers into a request Cookie header, so later calls run with that session.
+  const cookieHeaders = (response: Response) => {
+    const cookie = response.headers.get("set-cookie") ?? "";
+    return new Headers({
+      cookie: cookie
+        .split(",")
+        .map((part) => part.split(";")[0]?.trim() ?? "")
+        .join("; "),
+    });
+  };
+
+  // The two-factor methods come from the plugin at runtime; the config types stay generic, so name them here.
+  const twoFactor = () =>
+    auth.api as unknown as {
+      enableTwoFactor(input: {
+        body: { password: string };
+        headers: Headers;
+      }): Promise<{ totpURI: string; backupCodes: string[] }>;
+      verifyTOTP(input: { body: { code: string }; headers: Headers; asResponse: true }): Promise<Response>;
+      verifyBackupCode(input: { body: { code: string }; headers: Headers; asResponse: true }): Promise<Response>;
+      disableTwoFactor(input: { body: { password: string }; headers: Headers }): Promise<unknown>;
+    };
+
+  const signedInHeaders = async () =>
+    cookieHeaders(
+      await auth.api.signInEmail({ body: { email: "ada@example.test", password: VALID_PASSWORD }, asResponse: true }),
+    );
+
+  const enrollTotp = async (headers: Headers) => {
+    const result = await twoFactor().enableTwoFactor({ body: { password: VALID_PASSWORD }, headers });
+    const secret = new URL(result.totpURI).searchParams.get("secret") ?? "";
+    return { secret, backupCodes: result.backupCodes };
+  };
+
+  // Confirming enrollment rotates the session, so the caller must use the returned headers from here on.
+  const confirmTotp = async (headers: Headers, secret: string) =>
+    cookieHeaders(await twoFactor().verifyTOTP({ body: { code: totpCode(secret) }, headers, asResponse: true }));
+
+  test("TP-W2-017: MFA is not active until a TOTP code confirms enrollment", async () => {
+    await signUp(VALID_PASSWORD);
+    await verifyLink(tokenFromSentEmail());
+    const headers = await signedInHeaders();
+
+    const { secret } = await enrollTotp(headers);
+    const beforeConfirm = await sql<{ twoFactorEnabled: boolean }>`select "twoFactorEnabled" from "user"`.execute(db);
+    expect(beforeConfirm.rows).toEqual([{ twoFactorEnabled: false }]);
+
+    await confirmTotp(headers, secret);
+    const afterConfirm = await sql<{ twoFactorEnabled: boolean }>`select "twoFactorEnabled" from "user"`.execute(db);
+    expect(afterConfirm.rows).toEqual([{ twoFactorEnabled: true }]);
+  });
+
+  test("TP-W2-018: a recovery code signs in once and is rejected the second time", async () => {
+    await signUp(VALID_PASSWORD);
+    await verifyLink(tokenFromSentEmail());
+    const headers = await signedInHeaders();
+    const { secret, backupCodes } = await enrollTotp(headers);
+    await confirmTotp(headers, secret);
+    expect(backupCodes.length).toBeGreaterThan(0);
+    const code = backupCodes[0] ?? "";
+
+    // A password sign-in for an MFA user stops at the second-factor challenge, which holds the backup code path.
+    const challenge = () =>
+      auth.api.signInEmail({ body: { email: "ada@example.test", password: VALID_PASSWORD }, asResponse: true });
+    const challengeHeaders = cookieHeaders(await challenge());
+    const first = await twoFactor().verifyBackupCode({ body: { code }, headers: challengeHeaders, asResponse: true });
+    const second = await twoFactor().verifyBackupCode({
+      body: { code },
+      headers: cookieHeaders(await challenge()),
+      asResponse: true,
+    });
+
+    expect(first.status).toBe(200);
+    expect(second.status).not.toBe(200);
+  });
+
+  test("TP-W2-019: disabling MFA with a session older than the step-up window is refused", async () => {
+    await signUp(VALID_PASSWORD);
+    await verifyLink(tokenFromSentEmail());
+    const headers = await signedInHeaders();
+    const { secret } = await enrollTotp(headers);
+    const fresh = await confirmTotp(headers, secret);
+    // Move the session's creation time past the step-up window without waiting in the test.
+    await sql`update "session" set "createdAt" = now() - interval '1 hour'`.execute(db);
+
+    await expect(
+      twoFactor().disableTwoFactor({ body: { password: VALID_PASSWORD }, headers: fresh }),
+    ).rejects.toMatchObject({
+      body: { code: "STEP_UP_REQUIRED" },
+    });
+    const still = await sql<{ twoFactorEnabled: boolean }>`select "twoFactorEnabled" from "user"`.execute(db);
+    expect(still.rows).toEqual([{ twoFactorEnabled: true }]);
+  });
+
   test("the migration creates the Better Auth tables", async () => {
     const tables = await db.introspection.getTables();
     const names = tables.map((table) => table.name);
@@ -438,4 +532,20 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
 
 function sha1Suffix(password: string): string {
   return createHash("sha1").update(password).digest("hex").slice(5).toUpperCase();
+}
+
+// RFC 6238 TOTP (SHA-1, 6 digits, 30-second step) for a base32 secret from the enrollment URI.
+function totpCode(base32Secret: string, at = Date.now()): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const char of base32Secret.toUpperCase().replace(/=+$/, ""))
+    bits += alphabet.indexOf(char).toString(2).padStart(5, "0");
+  const key = Buffer.from(bits.match(/.{8}/g)?.map((byte) => Number.parseInt(byte, 2)) ?? []);
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(at / 30_000)));
+  const hmac = createHmac("sha1", key).update(counter).digest();
+  const offset = hmac.readUInt8(hmac.length - 1) & 0x0f;
+  return String(hmac.readUInt32BE(offset) & 0x7fffffff)
+    .slice(-6)
+    .padStart(6, "0");
 }
