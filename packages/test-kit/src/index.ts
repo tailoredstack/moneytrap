@@ -2,6 +2,7 @@ export { FakeClock } from "./clock";
 export { FakeDnsResolver } from "./fakes/dns-resolver";
 export { FakeIdGenerator } from "./fakes/id-generator";
 export { FakeIdempotencyStore } from "./fakes/idempotency-store";
+export { FakeNetworkConnector } from "./fakes/network-connector";
 export { FakeNotifier } from "./fakes/notifier";
 export { FakePropertyReviewStore } from "./fakes/property-review-store";
 export { FakePropertyStore } from "./fakes/property-store";
