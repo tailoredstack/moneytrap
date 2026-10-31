@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "bun ./build.ts --manifest-only && tsc -p tsconfig.json"
   },
   "dependencies": {
     "@moneytrap/adapter-postgres": "workspace:*",

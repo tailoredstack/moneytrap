@@ -15,7 +15,7 @@
     "typecheck": "bun run --filter '*' typecheck",
     "check:docs": "bun scripts/check-docs.ts",
     "check:ports": "bun run --cwd packages/test-kit check:ports",
-    "build:binary": "bun build --compile apps/server/src/index.ts --outfile dist/moneytrap"
+    "build:binary": "bun apps/server/build.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
