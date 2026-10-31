@@ -81,6 +81,12 @@ function storeWith(status: PublisherStatus, organizationId = orgId): MemoryRevie
 
 const input = (body: unknown) => ({ publisherId, organizationId: orgId, body });
 
+// Returns the value, or fails the test when it is missing, so a test never reads through a null.
+function required<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error("expected a value");
+  return value;
+}
+
 describe("decideReview: reason is required (TP-W3-005)", () => {
   test("an approval without a reason is refused with VALIDATION_FAILED and nothing is written", async () => {
     const store = storeWith("in_review");
@@ -159,7 +165,7 @@ describe("decideReview: approval and rejection (TP-W3-006)", () => {
   test("a publisher that another writer moved after it was read is STATE_CONFLICT and nothing is written", async () => {
     const store = storeWith("in_review");
     // Simulates a concurrent writer: this action reads the stale in_review snapshot, but the stored row has moved on.
-    const stale = store.records[0]!;
+    const stale = required(store.records[0]);
     store.records = [{ ...stale, publisher: { ...stale.publisher, status: "suspended" } }];
     store.find = async () => stale;
     const result = await decideReview(ctxFor(reviewerId), store, input({ decision: "approve", reason: "DNS ok" }));

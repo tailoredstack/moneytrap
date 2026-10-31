@@ -90,6 +90,12 @@ function storeWith(status: PropertyStatus, organizationId = orgId): MemoryProper
 
 const input = { propertyId, organizationId: orgId };
 
+// Returns the value, or fails the test when it is missing, so a test never reads through a null.
+function required<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error("expected a value");
+  return value;
+}
+
 describe("submitProperty: a verified property goes to review (TP-W3-014)", () => {
   test("TP-W3-014 submitting a verified property moves it to review pending and writes one audit row", async () => {
     const store = storeWith("verified");
@@ -135,7 +141,7 @@ describe("submitProperty: a verified property goes to review (TP-W3-014)", () =>
 
   test("a property another writer moved after it was read is STATE_CONFLICT and nothing is written", async () => {
     const store = storeWith("verified");
-    const stale = store.records[0]!;
+    const stale = required(store.records[0]);
     store.records = [{ ...stale, property: { ...stale.property, status: "rejected" } }];
     store.find = async () => stale;
     const result = await submitProperty(ctxFor(actorId), store, input);
@@ -170,7 +176,7 @@ describe("submitProperty: a verified property goes to review (TP-W3-014)", () =>
 
   test("a property that moves to another organization after it was read writes nothing (tenant race)", async () => {
     const store = storeWith("verified");
-    const stale = store.records[0]!;
+    const stale = required(store.records[0]);
     // The read sees the caller's organization, but the stored row has moved to another tenant with the same status.
     store.records = [{ ...stale, organizationId: otherOrgId }];
     store.find = async () => stale;

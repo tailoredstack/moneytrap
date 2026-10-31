@@ -4,6 +4,7 @@ import type { Id } from "@moneytrap/domain";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool, type PoolClient } from "pg";
 import { migrate } from "../migrate";
+import { createBulkJobStore } from "./bulk-jobs";
 import { createLinkStore } from "./link-store";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -118,6 +119,68 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
         (select count(*)::int from audit_logs) as audits,
         (select count(*)::int from outbox_events) as events`.execute(db)
     ).rows[0];
+
+  test("a repeat insert of the same link ID is refused and writes nothing, so bulk recovery sees a duplicate, not an error", async () => {
+    const store = createLinkStore(db);
+    expect(
+      await store.insert({ record: record(), audit: audit("aud_1"), event: event("evt_1", 1), precondition: allowed }),
+    ).toBe(true);
+    expect(
+      await store.insert({ record: record(), audit: audit("aud_2"), event: event("evt_2", 1), precondition: allowed }),
+    ).toBe(false);
+    expect(await linkRows()).toHaveLength(1);
+    expect(await counts()).toEqual({ audits: 1, events: 1 });
+  });
+
+  test("a write fenced to a bulk row claim writes only for the run that holds the row (WP-5.3)", async () => {
+    const jobs = createBulkJobStore(db);
+    expect(
+      await jobs.create({
+        organizationId: orgA,
+        submissionId: "sub-fence",
+        propertyId,
+        contentHash: "hash-fence",
+        state: "running",
+        rows: [
+          {
+            row: 1,
+            programId,
+            destination: `https://${host}/spring`,
+            status: "pending",
+            linkId: null,
+            code: null,
+            reason: null,
+          },
+        ],
+      }),
+    ).toBe(true);
+    const claim = { owner: "run-a", now, expiresAt: new Date(now.getTime() + 300_000) };
+    expect(await jobs.claimRow(orgA, "sub-fence", 1, claim)).toBe(true);
+
+    const fence = (owner: string) => ({
+      ...allowed,
+      rowClaim: { organizationId: orgA, submissionId: "sub-fence", row: 1, owner },
+    });
+    const store = createLinkStore(db);
+    expect(
+      await store.insert({
+        record: record(),
+        audit: audit("aud_3"),
+        event: event("evt_3", 1),
+        precondition: fence("run-b"),
+      }),
+    ).toBe(false);
+    expect(await linkRows()).toHaveLength(0);
+    expect(
+      await store.insert({
+        record: record(),
+        audit: audit("aud_4"),
+        event: event("evt_4", 1),
+        precondition: fence("run-a"),
+      }),
+    ).toBe(true);
+    expect(await linkRows()).toHaveLength(1);
+  });
 
   test("an inserted link reads back under its own organization", async () => {
     const store = createLinkStore(db);

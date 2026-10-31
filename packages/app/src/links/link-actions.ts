@@ -23,6 +23,7 @@ import type {
   LinkRecord,
   LinkStore,
   LinkWritePrecondition,
+  RowClaimFence,
 } from "../ports/link-store";
 import type { PropertyReviewStore } from "../ports/property-review-store";
 import type { RouteCache } from "../ports/route-cache";
@@ -128,7 +129,8 @@ async function gate(
 
 // Create publishes link.created and revoke publishes link.revoked. Pause, resume, and edit publish link.updated.
 function eventTopic(action: LinkAction): LinkEvent["topic"] {
-  if (action === "create") return "link.created";
+  // Activation is the moment a draft first becomes routable, so it publishes as a creation of an active link.
+  if (action === "create" || action === "activate") return "link.created";
   if (action === "revoke") return "link.revoked";
   return "link.updated";
 }
@@ -162,7 +164,8 @@ async function commit(
   };
   const event: LinkEvent = {
     id: ctx.ids.next("event"),
-    topic: eventTopic(input.action),
+    // A draft is not routable, so its create is published as an update, and a consumer never treats it as a new active link.
+    topic: link.status === "draft" ? "link.updated" : eventTopic(input.action),
     aggregateId: link.id,
     aggregateVersion: link.version,
     payload: { action: input.action, status: link.status },
@@ -253,6 +256,12 @@ export interface CreateLinkInput {
   // A caller that must not create a second link for the same request (bulk rows, WP-5.3) names the ID. The store then
   // refuses a repeat, because the ID is the primary key. Otherwise the next generated ID is used.
   linkId?: Id<"link">;
+  // Asked right before the link is written. A false answer stops the write, so a caller whose claim has lapsed writes nothing.
+  beforeWrite?: () => boolean;
+  // A draft is stored but not routable. Bulk rows store a draft and activate it only once the row is final (WP-5.3).
+  status?: "draft";
+  // The bulk row whose claim must still hold when the link is written.
+  rowClaim?: RowClaimFence;
 }
 
 // Creates and activates a link for an approved property (UC11, API-036). The link is stored once, already active, so no
@@ -280,15 +289,22 @@ export async function createActiveLink(ctx: Ctx, deps: LinkDeps, input: CreateLi
   // The link is stored once, already active, at its creation version (1). Version 1 is the first version anyone can see,
   // because the draft is never persisted. createLink has just checked the destination against the same allow-list, so
   // the activation check adds nothing here, and a second version bump would make the first stored version 2.
-  const active = { ok: true as const, value: { ...created.value, status: "active" as const } };
+  const status: "draft" | "active" = input.status ?? "active";
+  const active = { ok: true as const, value: { ...created.value, status } };
 
+  if (input.beforeWrite && !input.beforeWrite()) return { ok: false, code: "STATE_CONFLICT" };
   return commit(ctx, deps, {
     actor,
     organizationId: input.organizationId,
     record: { link: active.value, organizationId: input.organizationId, programId },
     action: "create",
     expectedVersion: null,
-    precondition: { propertyId, programId, host: hostOf(active.value.destinationUrl) },
+    precondition: {
+      propertyId,
+      programId,
+      host: hostOf(active.value.destinationUrl),
+      ...(input.rowClaim ? { rowClaim: input.rowClaim } : {}),
+    },
     metadata: { destinationUrl: active.value.destinationUrl },
   });
 }
@@ -338,6 +354,42 @@ export async function editLinkDestination(
       host: hostOf(changed.value.destinationUrl),
     },
     metadata: { fromDestinationUrl: record.link.destinationUrl, toDestinationUrl: changed.value.destinationUrl },
+  });
+}
+
+// Activates a draft link (WP-5.3). A bulk row stores its link as a draft and activates it only after the row is final, so a
+// row that is rejected never has an active link. Activation passes the same gate as resume: the property is approved, the
+// decision allows the program, and the destination is still on the allow-list.
+export async function activateLinkAction(
+  ctx: Ctx,
+  deps: LinkDeps,
+  input: { organizationId: Id<"organization">; linkId: string; rowClaim?: RowClaimFence },
+): Promise<LinkResult> {
+  const actor = actorOf(ctx);
+  if (!actor) return { ok: false, code: "UNAUTHENTICATED" };
+  const loaded = await loadLink(deps, input.organizationId, input.linkId);
+  if (!loaded.ok) return loaded;
+  const { record } = loaded;
+  if (record.link.status !== "draft") return { ok: false, code: "STATE_CONFLICT" };
+
+  const checked = await gate(deps, input.organizationId, record.link.propertyId, record.programId);
+  if (!checked.ok) return checked;
+
+  const activated = activateLink(record.link, checked.hosts);
+  if (!activated.ok) return domainDenial(activated.code);
+  return commit(ctx, deps, {
+    actor,
+    organizationId: input.organizationId,
+    record: { ...record, link: activated.value },
+    action: "activate",
+    expectedVersion: record.link.version,
+    precondition: {
+      propertyId: record.link.propertyId,
+      programId: record.programId,
+      host: hostOf(activated.value.destinationUrl),
+      ...(input.rowClaim ? { rowClaim: input.rowClaim } : {}),
+    },
+    metadata: { fromStatus: "draft", toStatus: "active" },
   });
 }
 

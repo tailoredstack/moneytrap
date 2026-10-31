@@ -1,4 +1,10 @@
-import type { BulkJob, BulkJobRow, BulkJobState, BulkJobStore } from "@moneytrap/app/src/ports/bulk-job-store";
+import type {
+  BulkJob,
+  BulkJobRow,
+  BulkJobState,
+  BulkJobStore,
+  BulkRowClaim,
+} from "@moneytrap/app/src/ports/bulk-job-store";
 import type { Id } from "@moneytrap/domain";
 import { type Kysely, sql } from "kysely";
 import { withTx } from "../transaction";
@@ -88,12 +94,35 @@ export function createBulkJobStore(db: Kysely<unknown>): BulkJobStore {
       };
     },
 
-    async saveRow(organizationId: Id<"organization">, submissionId: string, row: BulkJobRow): Promise<void> {
-      await sql`
-        update link_bulk_rows
-        set status = ${row.status}, link_id = ${row.linkId}, code = ${row.code}, reason = ${row.reason}
-        where organization_id = ${organizationId} and submission_id = ${submissionId} and row_index = ${row.row}
+    async claimRow(
+      organizationId: Id<"organization">,
+      submissionId: string,
+      row: number,
+      claim: BulkRowClaim,
+    ): Promise<boolean> {
+      const { rows } = await sql<{ row_index: number }>`
+        update link_bulk_rows set status = 'processing', claim_owner = ${claim.owner}, claim_expires_at = ${claim.expiresAt}
+        where organization_id = ${organizationId} and submission_id = ${submissionId} and row_index = ${row}
+          and (status = 'pending' or (status = 'processing' and (claim_expires_at is null or claim_expires_at <= ${claim.now})))
+        returning row_index
       `.execute(db);
+      return rows.length === 1;
+    },
+
+    async saveRow(
+      organizationId: Id<"organization">,
+      submissionId: string,
+      row: BulkJobRow,
+      owner: string,
+    ): Promise<boolean> {
+      const { rows } = await sql<{ row_index: number }>`
+        update link_bulk_rows
+        set status = ${row.status}, link_id = ${row.linkId}, code = ${row.code}, reason = ${row.reason}, claim_owner = case when ${row.status} = 'processing' then claim_owner else null end, claim_expires_at = case when ${row.status} = 'processing' then claim_expires_at else null end
+        where organization_id = ${organizationId} and submission_id = ${submissionId} and row_index = ${row.row}
+          and status in ('pending', 'processing') and claim_owner = ${owner}
+        returning row_index
+      `.execute(db);
+      return rows.length === 1;
     },
 
     async setState(organizationId: Id<"organization">, submissionId: string, state: BulkJobState): Promise<void> {

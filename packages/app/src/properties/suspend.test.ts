@@ -98,6 +98,12 @@ function storeWith(status: PropertyStatus, organizationId: Id<"organization"> = 
   return new MemoryPropertyStore({ property: propertyIn(status), organizationId });
 }
 
+// Returns the value, or fails the test when it is missing, so a test never reads through a null.
+function required<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error("expected a value");
+  return value;
+}
+
 describe("suspension (WP-3.7)", () => {
   test("TP-W3-018 suspending an approved property sets it suspended and writes the status and audit row together", async () => {
     const store = storeWith("approved");
@@ -105,7 +111,7 @@ describe("suspension (WP-3.7)", () => {
 
     expect(result).toEqual({ ok: true, value: { status: "suspended" } });
     expect(store.records[0]?.property.status).toBe("suspended");
-    expect(isMonetizable(store.records[0]!.property)).toBe(false);
+    expect(isMonetizable(required(store.records[0]).property)).toBe(false);
     expect(store.audits).toHaveLength(1);
     expect(store.audits[0]).toMatchObject({ action: "suspend", entityId: propertyId, organizationId: orgId });
   });
@@ -113,7 +119,7 @@ describe("suspension (WP-3.7)", () => {
   test("TP-W3-019 a suspended property is denied monetization immediately, with the not approved reason", async () => {
     const store = storeWith("approved");
     await suspendProperty(ctxFor(staffId), store, { propertyId, organizationId: orgId });
-    expect(monetizationDenial(store.records[0]!.property)).toBe("not approved");
+    expect(monetizationDenial(required(store.records[0]).property)).toBe("not approved");
   });
 
   test("an optional suspension reason is recorded in the audit metadata", async () => {
@@ -171,7 +177,7 @@ describe("reinstatement (WP-3.7)", () => {
     });
 
     expect(result).toEqual({ ok: true, value: { status: "approved" } });
-    expect(isMonetizable(store.records[0]!.property)).toBe(true);
+    expect(isMonetizable(required(store.records[0]).property)).toBe(true);
     expect(store.audits[0]).toMatchObject({ action: "reinstate", organizationId: orgId });
     expect(store.audits[0]?.metadata).toEqual({ reason: "Content fixed" });
   });

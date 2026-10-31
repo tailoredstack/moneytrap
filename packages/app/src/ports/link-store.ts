@@ -7,7 +7,7 @@ export interface LinkRecord {
   programId: Id<"program">;
 }
 
-export type LinkAction = "create" | "edit" | "pause" | "resume" | "revoke";
+export type LinkAction = "create" | "edit" | "pause" | "resume" | "revoke" | "activate";
 
 // One row in audit_logs for a link change.
 export interface LinkAudit {
@@ -51,6 +51,16 @@ export interface LinkWritePrecondition {
   propertyId: Id<"property">;
   programId: Id<"program">;
   host: string;
+  // A bulk row's claim. When given, the write also requires that this owner still holds the row as processing, checked in
+  // the same transaction as the write, so a run that lost its row writes nothing (WP-5.3).
+  rowClaim?: RowClaimFence;
+}
+
+export interface RowClaimFence {
+  organizationId: Id<"organization">;
+  submissionId: string;
+  row: number;
+  owner: string;
 }
 
 // Each write commits its row with its audit row and outbox event, or none of them. The write applies only when the
@@ -58,6 +68,7 @@ export interface LinkWritePrecondition {
 // It returns false and writes nothing when either check fails, so the caller must reload and decide again.
 export interface LinkStore {
   find(organizationId: Id<"organization">, linkId: Id<"link">): Promise<LinkRecord | null>;
+  // Returns false, and writes nothing, when the ID already exists, so a repeat of an insert is a refusal, not an error.
   insert(write: {
     record: LinkRecord;
     audit: LinkAudit;

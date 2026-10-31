@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type SyncCatalogResult, syncCatalog } from "@moneytrap/app/src/networks/sync-catalog";
-import type { ConnectorResult, NetworkConnector } from "@moneytrap/app/src/ports/network-connector";
+import type { NetworkConnector } from "@moneytrap/app/src/ports/network-connector";
 import { FakeClock } from "../clock";
 import { FakeCatalogSyncStore } from "../fakes/catalog-sync-store";
 import { FakeIdGenerator } from "../fakes/id-generator";
@@ -90,7 +90,7 @@ describe("disabled credential is a safe, typed failure (WP-4.7)", () => {
 
   test("TP-W4-007 an unrecognized state is reported as not_authorized, never passed through", async () => {
     const connector = withOverrides(new RecordedNetworkSimulator("clean-catalog"), {
-      discoverAdvertisers: async () => ({ ok: false, failure: leakingFailure("upstream said " + SECRET) }),
+      discoverAdvertisers: async () => ({ ok: false, failure: leakingFailure(`upstream said ${SECRET}`) }),
     });
     const result = await run(connector);
 
