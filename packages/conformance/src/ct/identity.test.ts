@@ -331,6 +331,50 @@ describeWithDatabase("[M1] identity conformance", () => {
     });
   });
 
+  describe("CT-005 refusals and successful removals", () => {
+    test("a request that names org B by slug alongside an org A ID is refused like a missing one", async () => {
+      const adaSession = await signUpVerified(ADA);
+      const adaOrg = await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Org A", slug: "org-a" }, adaSession),
+      );
+      const outsiderSession = await signUpVerified(OUTSIDER);
+      await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession);
+
+      const mixed = await get(
+        `/api/auth/organization/get-full-organization?organizationId=${adaOrg.id}&organizationSlug=org-b`,
+        adaSession,
+      );
+      const missing = await get(
+        `/api/auth/organization/get-full-organization?organizationId=${adaOrg.id}&organizationSlug=org-missing`,
+        adaSession,
+      );
+
+      expect(mixed.status).toBe(missing.status);
+      expect(await bodyOf(mixed)).toEqual(await bodyOf(missing));
+    });
+
+    test("a member leaving an organization gets a success and loses the membership", async () => {
+      const ownerSession = await signUpVerified(ADA);
+      const inviteeSession = await signUpVerified(GRACE);
+      const org = await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Acme", slug: "acme" }, ownerSession),
+      );
+      const invitation = await json<{ id: string }>(
+        await post(
+          "/api/auth/organization/invite-member",
+          { email: GRACE, role: "member", organizationId: org.id },
+          ownerSession,
+        ),
+      );
+      await post("/api/auth/organization/accept-invitation", { invitationId: invitation.id }, inviteeSession);
+
+      const left = await post("/api/auth/organization/leave", { organizationId: org.id }, inviteeSession);
+
+      expect(left.status).toBe(200);
+      expect(await membershipCount(org.id, GRACE)).toBe(0);
+    });
+  });
+
   describe("CT-008 valid but reused invitation", () => {
     test("reaccepting an accepted invitation leaves one membership", async () => {
       const ownerSession = await signUpVerified(ADA);

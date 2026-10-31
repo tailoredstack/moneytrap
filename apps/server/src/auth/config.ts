@@ -159,38 +159,40 @@ async function settleVerificationLink(ctx: AuthContext, db: Kysely<any>) {
   }
 }
 
-// Better Auth's organization routes name the organization in the query or body. A caller who is not a member gets the
-// not-found answer for both a foreign and a missing organization, so a response never reveals that a foreign one exists
-// (CT-005, TP-W2-033, TP-W2-034). Better Auth alone would answer them differently (403 against 400).
+// Better Auth's organization routes name the organization by ID or by slug, in the query or the body. A caller who is
+// not a member of every organization a request names gets the not-found answer, the same for a foreign and a missing
+// organization, so no response reveals that a foreign one exists (CT-005, TP-W2-033, TP-W2-034). Better Auth alone
+// would answer them differently (403 against 400). The check runs before the endpoint, so a successful leave or delete
+// is not reported as a failure after its own membership change.
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
-async function foreignOrganizationRefusal(ctx: AuthContext, db: Kysely<any>): Promise<Response | undefined> {
-  if (!ctx.path?.startsWith("/organization/")) return undefined;
-  // The after hook's context does not carry the session the endpoint resolved, so the caller is read again here.
+async function refuseForeignOrganization(ctx: AuthContext, db: Kysely<any>): Promise<void> {
+  if (!ctx.path?.startsWith("/organization/")) return;
   const userId = (await getSessionFromCtx(ctx))?.user.id;
-  if (!userId) return undefined;
-  const organizationId = await namedOrganizationId(ctx, db);
-  if (organizationId === undefined) return undefined;
-  const member =
-    await sql`select 1 from "member" where "organizationId" = ${organizationId} and "userId" = ${userId}`.execute(db);
-  if (member.rows.length > 0) return undefined;
-  // A thrown error would keep the endpoint's own status (403 or 400), so the hook sets the result with its status.
-  return new Response(JSON.stringify({ code: "RESOURCE_NOT_FOUND", message: "Resource not found" }), {
-    status: 404,
-    headers: { "content-type": "application/json" },
-  });
+  if (!userId) return;
+  // Every named organization is checked, so a request that names two cannot pass on the one the caller belongs to.
+  for (const organizationId of await namedOrganizationIds(ctx, db)) {
+    const member =
+      await sql`select 1 from "member" where "organizationId" = ${organizationId} and "userId" = ${userId}`.execute(db);
+    if (member.rows.length === 0) {
+      throw new APIError("NOT_FOUND", { code: "RESOURCE_NOT_FOUND", message: "Resource not found" });
+    }
+  }
 }
 
-// The organization a request names by ID or by slug. Undefined when it names none. A slug that matches nothing
+// The organizations a request names, by ID and by slug. Empty when it names none. A slug that matches nothing
 // resolves to an empty ID, which no membership matches, so it is refused like any other foreign organization.
 // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
-async function namedOrganizationId(ctx: AuthContext, db: Kysely<any>): Promise<string | undefined> {
+async function namedOrganizationIds(ctx: AuthContext, db: Kysely<any>): Promise<string[]> {
   const input = { ...ctx.query, ...(isRecord(ctx.body) ? ctx.body : {}) };
-  if (typeof input.organizationId === "string") return input.organizationId;
-  if (typeof input.organizationSlug !== "string") return undefined;
-  const row = await sql<{
-    id: string;
-  }>`select "id" from "organization" where "slug" = ${input.organizationSlug}`.execute(db);
-  return row.rows[0]?.id ?? "";
+  const ids: string[] = [];
+  if (typeof input.organizationId === "string") ids.push(input.organizationId);
+  if (typeof input.organizationSlug === "string") {
+    const row = await sql<{
+      id: string;
+    }>`select "id" from "organization" where "slug" = ${input.organizationSlug}`.execute(db);
+    ids.push(row.rows[0]?.id ?? "");
+  }
+  return ids;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -252,12 +254,10 @@ export function authOptions({
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         await refuseIfSpent(rateLimitCounter, ctx.path, ctx.body ?? {}, limits);
+        await refuseForeignOrganization(ctx, db);
         return claimVerificationLink(ctx, db);
       }),
       after: createAuthMiddleware(async (ctx) => {
-        const refusal = await foreignOrganizationRefusal(ctx, db);
-        // The hook replaces the endpoint result; returning a value from an after hook does not reach the response.
-        if (refusal) ctx.context.returned = refusal;
         if (ctx.path === "/sign-in/email" && isFailedSignIn(ctx.context.returned)) {
           await recordFailedSignIn(rateLimitCounter, ctx.body ?? {}, limits);
         }
