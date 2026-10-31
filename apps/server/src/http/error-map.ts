@@ -17,7 +17,8 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   PAYOUT_OUTCOME_UNKNOWN: 502,
 };
 
-// Unknown codes never leak their name or a stack trace; they surface as a generic 500.
+// Unknown codes never leak their name or a stack trace; they surface as a generic 500 with the
+// `INTERNAL` code, which is deliberately outside the closed §7.1 set.
 export function errorResponse(code: string): { status: number; body: { error: { code: string } } } {
   if (!isErrorCode(code)) return { status: 500, body: { error: { code: "INTERNAL" } } };
   return { status: ERROR_HTTP_STATUS[code], body: { error: { code } } };

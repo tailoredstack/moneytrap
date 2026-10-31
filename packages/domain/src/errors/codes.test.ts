@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ERROR_CODES, isErrorCode } from "./codes";
 
-// Spec §7.1 error category examples, copied verbatim so a drift in codes.ts fails here.
+// Spec §7.1 error category examples, hand-copied. Catches edits to either this list or codes.ts, not spec changes.
 const SPEC_SEC_7_1 = [
   "VALIDATION_FAILED",
   "UNAUTHENTICATED",
