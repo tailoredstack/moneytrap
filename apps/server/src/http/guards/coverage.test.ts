@@ -22,8 +22,19 @@ describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
   });
 
   test("a route with no guard declaration is listed by the build check", () => {
-    const app = new Elysia().get("/api/unguarded", () => "x").get("/healthz", () => "ok");
+    const app = new Elysia().get("/api/unguarded", () => "x");
     expect(undeclaredRoutes(app.routes)).toEqual(["GET /api/unguarded"]);
+  });
+
+  test("a route whose key is in the table but installs no guard is listed", () => {
+    // /healthz has a table entry, but this registration never calls guard(), so nothing runs before the handler.
+    const app = new Elysia().get("/healthz", () => "ok");
+    expect(undeclaredRoutes(app.routes)).toEqual(["GET /healthz"]);
+  });
+
+  test("a guard installed for a different route does not count", () => {
+    const app = new Elysia().get("/healthz", guard("GET /readyz"), () => "ok");
+    expect(undeclaredRoutes(app.routes)).toEqual(["GET /healthz"]);
   });
 
   test("the guard table has no entry for a route the app does not serve", () => {
