@@ -26,9 +26,17 @@ export function authRoutes(auth: AuthHandler, options: { trustProxy: boolean } =
 // Bun's server reports the socket peer. Only the peer goes into x-forwarded-for, so a client cannot choose its bucket.
 type ServerPeer = { requestIP(request: Request): { address: string } | null };
 
+// A new Request is built from its parts. Cloning with an empty header set keeps the original headers on Bun, so a
+// request whose only header was x-forwarded-for would keep it.
 function withPeerAddress(request: Request, peer: string | undefined): Request {
   const headers = new Headers(request.headers);
   if (peer) headers.set("x-forwarded-for", peer);
   else headers.delete("x-forwarded-for");
-  return new Request(request, { headers });
+  const hasBody = request.method !== "GET" && request.method !== "HEAD";
+  return new Request(request.url, {
+    method: request.method,
+    headers,
+    body: hasBody ? request.body : undefined,
+    duplex: "half",
+  } as RequestInit);
 }

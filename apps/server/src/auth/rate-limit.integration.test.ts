@@ -154,6 +154,7 @@ describeWithStores("auth rate limiting against Postgres and Redis (TP-W2-014, TP
     const unknownLimited = await requestReset(auth, "nobody@example.test", "10.0.4.4");
 
     expect(knownFirst.status).toBe(200);
+    expect(knownLimited.status).toBe(429);
     expect(unknownFirst.status).toBe(knownFirst.status);
     expect(unknownLimited.status).toBe(knownLimited.status);
     expect(await unknownLimited.text()).toEqual(await knownLimited.text());
