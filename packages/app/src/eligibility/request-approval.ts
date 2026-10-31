@@ -36,7 +36,8 @@ function toView(record: ProgramApprovalRecord): ProgramApprovalView {
 
 // Asks for approval of a program for one property (API-035). The request is stored once per property and program, so
 // a repeat call returns the stored request and writes nothing. No input here can set approval: the status is read from
-// the network's state, and this action never writes it.
+// the network's state, and this action never writes it. The caller passes organizationId from the authorized scope, and
+// the guard has already checked the actor's membership and catalog:write permission, as with submitProperty.
 export async function requestProgramApproval(
   ctx: Ctx,
   store: ProgramApprovalStore,
