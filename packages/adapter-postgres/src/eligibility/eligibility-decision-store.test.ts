@@ -271,6 +271,49 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     expect(await countRows("eligibility_decisions")).toBe(1);
   });
 
+  test("facts that return to an earlier state under a later revision are a new decision", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const first = await store.record(writeFor(allowed));
+    const facts = createSourceFactStore(db);
+    const advertiserId =
+      (await sql<{ id: string }>`select id from network_advertisers where external_id = 'adv-1'`.execute(db)).rows[0]
+        ?.id ?? "";
+    const payloadFor = (approval: "approved" | "pending") => ({
+      name: "Acme Summer",
+      terms: "30 day",
+      eligibility: "all",
+      countries: ["GB"],
+      channels: ["web"],
+      approval,
+    });
+
+    // Revision 2 withdraws approval, revision 3 restores it. Revision 3 has the same facts as revision 1.
+    await facts.upsertProgram({
+      id: "prg_elig_one",
+      networkAdvertiserId: advertiserId,
+      sourceId: "prg-1",
+      sourceRevision: "r2",
+      payload: payloadFor("pending"),
+      observedAt: now,
+    });
+    await facts.upsertProgram({
+      id: "prg_elig_one",
+      networkAdvertiserId: advertiserId,
+      sourceId: "prg-1",
+      sourceRevision: "r3",
+      payload: payloadFor("approved"),
+      observedAt: now,
+    });
+    const third = await store.record(writeFor(allowed));
+
+    expect(third.outcome).toBe("recorded");
+    expect(third.decision.id).not.toBe(first.decision.id);
+    expect(third.decision.programRevisionSeq).toBe(3);
+    expect(third.decision.sourceRevision).toBe("r3");
+    expect(await countRows("eligibility_decisions")).toBe(2);
+    expect(await store.replay(orgId, third.decision.id)).toBe("reproduced");
+  });
+
   test("a program with no stored source revision is denied as unknown, not allowed", async () => {
     // A program row exists but has never had a revision, so there are no facts to decide on.
     await sql`insert into programs (id, network_advertiser_id, external_id, current_revision_seq, created_at, updated_at)

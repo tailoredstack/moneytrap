@@ -133,7 +133,11 @@ function sortKeys(value: unknown): unknown {
 // in another order is the same evaluation. The stored inputs keep the order they arrived in.
 // Country codes and channel names compare without case or surrounding space (see the policy's normalise), so the hash
 // does the same. Duplicates are dropped for the same reason: the policy only asks whether a value is listed.
-function hashEvaluation(policyVersion: number, inputs: EligibilityInput): string {
+function hashEvaluation(
+  policyVersion: number,
+  inputs: EligibilityInput,
+  revision: { seq: number | null; source: string | null },
+): string {
   const text = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : value);
   const set = (values: unknown) => (Array.isArray(values) ? [...new Set(values.map(text))].sort() : values);
   const keyed = {
@@ -148,7 +152,7 @@ function hashEvaluation(policyVersion: number, inputs: EligibilityInput): string
     },
   };
   return createHash("sha256")
-    .update(canonicalJson({ policyVersion, inputs: keyed }))
+    .update(canonicalJson({ policyVersion, inputs: keyed, revision }))
     .digest("hex");
 }
 
@@ -215,7 +219,10 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
         });
         const evaluation = evaluateEligibility(inputs);
         const result = outcomeOf(evaluation);
-        const inputHash = hashEvaluation(evaluation.policyVersion, inputs);
+        const inputHash = hashEvaluation(evaluation.policyVersion, inputs, {
+          seq: revisionSeq,
+          source: sourceRevision,
+        });
 
         const inserted = await sql<DecisionRow>`insert into eligibility_decisions
           (id, organization_id, property_id, program_id, policy_version, decision, reasons, checks, inputs, input_hash,
@@ -265,7 +272,13 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
       if (stored.policyVersion !== ELIGIBILITY_POLICY_VERSION) return "policy_unavailable";
 
       // A row whose inputs no longer hash to its stored key was altered after it was written.
-      if (hashEvaluation(stored.policyVersion, stored.inputs) !== stored.inputHash) return "mismatch";
+      if (
+        hashEvaluation(stored.policyVersion, stored.inputs, {
+          seq: stored.programRevisionSeq,
+          source: stored.sourceRevision,
+        }) !== stored.inputHash
+      )
+        return "mismatch";
 
       const replayed = outcomeOf(evaluateEligibility(stored.inputs));
       const same =
