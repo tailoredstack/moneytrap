@@ -268,6 +268,8 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
       expect(await linkRows()).toEqual([]);
       expect(await counts()).toEqual({ audits: 0, events: 0 });
     } finally {
+      // A rollback after a commit is a no-op, so this also releases the lock if the test threw before committing.
+      await holder.query("rollback").catch(() => undefined);
       holder.release();
     }
   });
@@ -310,6 +312,24 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
         organizationId: orgA,
         expectedVersion: 1,
         record: { ...record(2, "active"), programId: otherProgram },
+        audit: audit("aud_2"),
+        event: event("evt_2", 2),
+        precondition: null,
+      }),
+    ).toBe(false);
+    expect(await store.find(orgA, linkId)).toEqual(record());
+  });
+
+  test("an update whose record names another property than the stored link writes nothing", async () => {
+    const store = createLinkStore(db);
+    await store.insert({ record: record(), audit: audit("aud_1"), event: event("evt_1", 1), precondition: null });
+    const otherProperty = "prp_01brz3ndektsv4rrffq69g5fav" as Id<"property">;
+
+    expect(
+      await store.update({
+        organizationId: orgA,
+        expectedVersion: 1,
+        record: { ...record(2, "active"), link: { ...record(2, "active").link, propertyId: otherProperty } },
         audit: audit("aud_2"),
         event: event("evt_2", 2),
         precondition: null,
