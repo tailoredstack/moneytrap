@@ -53,6 +53,33 @@ describeWithDatabase("relay worker", () => {
     expect(rows.rows[0]?.published_at).not.toBeNull();
   });
 
+  test("a second start is ignored, and start works again after stop", async () => {
+    const sent: string[] = [];
+    const relay = createRelay({
+      db,
+      idleMs: 5,
+      publish: async (event) => {
+        sent.push(event.id);
+      },
+    });
+    relay.start();
+    relay.start();
+    await relay.stop();
+    await withTx(db, async (tx) => {
+      await appendOutboxEvent(tx, {
+        id: "evt_3",
+        topic: "link.created",
+        aggregateId: "link_1",
+        aggregateVersion: 1,
+        payload: {},
+      });
+    });
+    relay.start();
+    for (let i = 0; i < 100 && sent.length === 0; i++) await Bun.sleep(5);
+    await relay.stop();
+    expect(sent).toEqual(["evt_3"]);
+  });
+
   test("start keeps polling until stop, and stop resolves", async () => {
     const sent: string[] = [];
     const relay = createRelay({
