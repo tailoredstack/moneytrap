@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@moneytrap/domain": "workspace:*",
+    "@moneytrap/schema": "workspace:*",
     "kysely": "0.29.7"
   }
 }
