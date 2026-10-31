@@ -4,6 +4,8 @@ export * from "./catalog/source-fact";
 export * from "./eligibility/policy";
 export * from "./errors/codes";
 export * from "./ids/ids";
+export * from "./links/destination";
+export * from "./links/link";
 export type { CurrencyCode } from "./money/iso4217";
 export { Money, MoneyError, type ParseResult, parseMoney } from "./money/money";
 export * from "./networks/capability";
