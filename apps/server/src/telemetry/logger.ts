@@ -1,0 +1,41 @@
+// Structured logs. Spec §4.4: logs must not expose reusable credentials, so every entry passes through
+// redact() before it is written. Redaction keys on field names and bearer strings, so a caller cannot
+// opt out by naming a secret field differently.
+export const REDACTED = "[REDACTED]";
+
+const SENSITIVE_KEY = /token|secret|passw|authorization|cookie|api[-_]?key|credential|session|private[-_]?key/i;
+const BEARER = /^bearer\s+\S+/i;
+
+export function redact(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string") return BEARER.test(value) ? REDACTED : value;
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+
+  if (Array.isArray(value)) return value.map((item) => redact(item, seen));
+  if (value instanceof Error) return { name: value.name, message: redact(value.message, seen) };
+
+  const out: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(value)) {
+    out[key] = SENSITIVE_KEY.test(key) ? REDACTED : redact(field, seen);
+  }
+  return out;
+}
+
+export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogSink = (line: string) => void;
+
+export function createLogger(sink: LogSink = (line) => console.log(line)) {
+  const write = (level: LogLevel, message: string, fields: Record<string, unknown> = {}) => {
+    sink(JSON.stringify(redact({ ...fields, level, message })));
+  };
+
+  return {
+    debug: (message: string, fields?: Record<string, unknown>) => write("debug", message, fields),
+    info: (message: string, fields?: Record<string, unknown>) => write("info", message, fields),
+    warn: (message: string, fields?: Record<string, unknown>) => write("warn", message, fields),
+    error: (message: string, fields?: Record<string, unknown>) => write("error", message, fields),
+  };
+}
+
+export type Logger = ReturnType<typeof createLogger>;
