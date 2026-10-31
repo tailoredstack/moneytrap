@@ -38,6 +38,8 @@ export interface ProgramRecord extends SourceIdentity {
   advertiserSourceId: string;
   name: string;
   terms: string;
+  // The eligibility conditions the network states for the program, as text. Not interpreted here (spec §6.1).
+  eligibility: string | null;
   countries: readonly string[];
   channels: readonly string[];
   // null when the network does not expose approval state for the program.
