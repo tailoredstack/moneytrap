@@ -28,7 +28,9 @@ export const ledger: Migration = {
       .addColumn("currency", "text", (column) => column.notNull())
       .execute();
 
-    await sql`ALTER TABLE postings ADD CONSTRAINT postings_account_currency_fk CHECK (currency = (SELECT currency FROM accounts WHERE id = account_id))`.execute(db).catch(() => {});
+    await sql`ALTER TABLE postings ADD CONSTRAINT postings_account_currency_fk CHECK (currency = (SELECT currency FROM accounts WHERE id = account_id))`
+      .execute(db)
+      .catch(() => {});
 
     await sql`
       CREATE OR REPLACE FUNCTION ledger_journal_balanced() RETURNS trigger AS $$
