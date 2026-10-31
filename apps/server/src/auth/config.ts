@@ -184,16 +184,24 @@ async function refuseForeignOrganization(ctx: AuthContext, db: Kysely<any>): Pro
   }
 }
 
-// A taken slug is the one create and update answer that reveals a foreign organization. The answer is replaced with the
-// same validation failure any other bad input gets, so a caller cannot tell a taken slug from a malformed one.
-function hideTakenSlug(ctx: AuthContext): Response | undefined {
-  if (ctx.path !== "/organization/create" && ctx.path !== "/organization/update") return undefined;
-  const returned = ctx.context.returned;
-  if (!isAPIError(returned) || returned.body?.code !== "ORGANIZATION_SLUG_ALREADY_TAKEN") return undefined;
-  return new Response(JSON.stringify({ code: "VALIDATION_FAILED", message: "Request failed" }), {
-    status: 400,
-    headers: { "content-type": "application/json" },
-  });
+// Slugs are chosen by the server, so a create never reveals whether a slug is taken (CT-005). The client's slug is
+// replaced with the name's slug plus a random suffix, which keeps creates from colliding. Updates cannot change the
+// slug, and a request that tries is refused with the generic validation failure.
+function organizationBodyFor(ctx: AuthContext): { context: { body: Record<string, unknown> } } | undefined {
+  if (ctx.path === "/organization/create") {
+    const body = isRecord(ctx.body) ? ctx.body : {};
+    const base = String(body.name ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    const slug = `${base || "org"}-${crypto.randomUUID().slice(0, 8)}`;
+    return { context: { body: { ...body, slug } } };
+  }
+  if (ctx.path === "/organization/update") {
+    const data = isRecord(ctx.body) && isRecord(ctx.body.data) ? ctx.body.data : {};
+    if ("slug" in data) throw new APIError("BAD_REQUEST", { code: "VALIDATION_FAILED", message: "Request failed" });
+  }
+  return undefined;
 }
 
 // The organizations a request names, by ID and by slug. Empty when it names none. A slug that matches nothing
@@ -272,12 +280,12 @@ export function authOptions({
       before: createAuthMiddleware(async (ctx) => {
         await refuseIfSpent(rateLimitCounter, ctx.path, ctx.body ?? {}, limits);
         await refuseForeignOrganization(ctx, db);
+        const organizationBody = organizationBodyFor(ctx);
+        if (organizationBody) return organizationBody;
         return claimVerificationLink(ctx, db);
       }),
       after: createAuthMiddleware(async (ctx) => {
         // The hook replaces the endpoint result; returning a value from an after hook does not reach the response.
-        const takenSlug = hideTakenSlug(ctx);
-        if (takenSlug) ctx.context.returned = takenSlug;
         if (ctx.path === "/sign-in/email" && isFailedSignIn(ctx.context.returned)) {
           await recordFailedSignIn(rateLimitCounter, ctx.body ?? {}, limits);
         }

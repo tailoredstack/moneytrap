@@ -365,17 +365,16 @@ describeWithDatabase("[M1] identity conformance", () => {
       expect(await bodyOf(taken)).toEqual(await bodyOf(free));
     });
 
-    test("creating an organization with a taken slug reveals neither the slug nor the other organization", async () => {
+    test("creating an organization with another organization's slug succeeds and reveals nothing about it", async () => {
       const adaSession = await signUpVerified(ADA);
       const outsiderSession = await signUpVerified(OUTSIDER);
       await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession);
 
-      const taken = await post("/api/auth/organization/create", { name: "Ada Org", slug: "org-b" }, adaSession);
-      const text = await taken.text();
+      const created = await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, adaSession);
+      const body = await json<{ slug?: string }>(created);
 
-      expect(taken.status).toBe(400);
-      expect(text).not.toContain("ALREADY_TAKEN");
-      expect(text).not.toContain("org-b");
+      expect(created.status).toBe(200);
+      expect(body.slug).not.toBe("org-b");
     });
 
     test("a member leaving an organization gets a success and loses the membership", async () => {
