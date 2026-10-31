@@ -485,6 +485,29 @@ describeWithDatabase("[M1] identity conformance", () => {
       expect(await bodyOf(foreign)).toEqual(await bodyOf(missing));
     });
 
+    test("removing a foreign member by email answers like a missing member", async () => {
+      const adaSession = await signUpVerified(ADA);
+      const outsiderSession = await signUpVerified(OUTSIDER);
+      const adaOrg = await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Org A", slug: "org-a" }, adaSession),
+      );
+      await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession);
+
+      const foreign = await post(
+        "/api/auth/organization/remove-member",
+        { memberIdOrEmail: OUTSIDER, organizationId: adaOrg.id },
+        adaSession,
+      );
+      const missing = await post(
+        "/api/auth/organization/remove-member",
+        { memberIdOrEmail: "nobody@example.test", organizationId: adaOrg.id },
+        adaSession,
+      );
+
+      expect(foreign.status).toBe(missing.status);
+      expect(await bodyOf(foreign)).toEqual(await bodyOf(missing));
+    });
+
     test("a member leaving an organization gets a success and loses the membership", async () => {
       const ownerSession = await signUpVerified(ADA);
       const inviteeSession = await signUpVerified(GRACE);
