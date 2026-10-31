@@ -284,6 +284,7 @@ These are starting points. Each is recorded as configurable policy with a versio
 | ADR-009 | Better Auth for authentication, organizations, two-factor, API keys; org access control for roles | Accepted, 2026-10-31 (feature gates in WP-2.2) |
 | ADR-010 | shadcn/ui, TanStack Query/Router/Table/Form, Vite for the frontend | Accepted, 2026-10-31 (gate: WP-1.14 web shell verification) |
 | ADR-011 | Deferred: OAuth 2.0 for user-delegated client access. M7 ships org-scoped API keys only | Accepted, 2026-10-31 (deferred) |
+| ADR-012 | Deferred: real network adapter until a partner is contracted; the recorded-fixture simulator is the connector | Accepted, 2026-11-01 (deferred) |
 | ADR-003 | Postgres + Kysely; migrations statically bundled | Accepted, 2026-10-31 |
 | ADR-004 | Postgres outbox → Redis queue; at-least-once with consumer dedupe | Accepted, 2026-10-31 (relay gated to WP-1.7) |
 | ADR-005 | Money as `bigint` minor units with largest-remainder allocation | Accepted, 2026-10-31 (gate: WP-1.1 domain tests green) |
