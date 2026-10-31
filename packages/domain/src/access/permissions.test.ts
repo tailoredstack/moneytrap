@@ -23,7 +23,8 @@ const MATRIX: ReadonlyArray<{ permission: Permission; apis: string; roles: reado
   { permission: "members:remove", apis: "API-021 (session:owner)", roles: ADMIN },
   { permission: "publisher:submit", apis: "API-022 (session:owner)", roles: ADMIN },
   { permission: "publisher:status", apis: "API-023 (session:member)", roles: ALL },
-  { permission: "publisher:review", apis: "API-069, API-070 (admin:reviewer)", roles: ADMIN },
+  // No tenant role holds the grant: owners and admins submit KYB and must not approve their own publishers (UC06).
+  { permission: "publisher:review", apis: "API-069, API-070 (admin:reviewer)", roles: [] },
   { permission: "properties:read", apis: "API-025, API-026 (properties:read)", roles: ALL },
   { permission: "properties:write", apis: "API-024, API-027–031 (properties:write)", roles: WRITERS },
   { permission: "links:read", apis: "API-037, API-038, API-042 (links:read)", roles: ALL },
