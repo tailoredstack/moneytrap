@@ -9,10 +9,14 @@ export type AssuranceInput = {
 
 export type AssuranceResult = { ok: true } | { ok: false; code: "STEP_UP_REQUIRED" };
 
+const STEP_UP_REQUIRED = { ok: false, code: "STEP_UP_REQUIRED" } as const;
+
 export function requireRecentSecondFactor({ secondFactorAt, now, windowSeconds }: AssuranceInput): AssuranceResult {
-  if (secondFactorAt === null) return { ok: false, code: "STEP_UP_REQUIRED" };
+  // Fail closed: a missing, invalid, or future timestamp, or an unusable window, never counts as recent.
+  if (secondFactorAt === null || !Number.isFinite(secondFactorAt.getTime())) return STEP_UP_REQUIRED;
+  if (!Number.isFinite(now.getTime()) || !Number.isFinite(windowSeconds) || windowSeconds <= 0) return STEP_UP_REQUIRED;
   const ageMs = now.getTime() - secondFactorAt.getTime();
   // A timestamp in the future cannot be verified, so it does not count as recent.
-  if (ageMs < 0 || ageMs > windowSeconds * 1000) return { ok: false, code: "STEP_UP_REQUIRED" };
+  if (ageMs < 0 || ageMs > windowSeconds * 1000) return STEP_UP_REQUIRED;
   return { ok: true };
 }

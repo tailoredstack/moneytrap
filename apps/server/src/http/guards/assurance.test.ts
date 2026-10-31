@@ -31,6 +31,27 @@ describe("requireRecentSecondFactor (Blueprint §7, TP-W2-016)", () => {
     });
   });
 
+  test("fails closed when the second factor timestamp is an invalid date", () => {
+    expect(requireRecentSecondFactor({ secondFactorAt: new Date("invalid"), now: NOW, windowSeconds: WINDOW })).toEqual(
+      { ok: false, code: "STEP_UP_REQUIRED" },
+    );
+  });
+
+  test("fails closed when now is an invalid date", () => {
+    expect(
+      requireRecentSecondFactor({ secondFactorAt: secondsAgo(60), now: new Date("invalid"), windowSeconds: WINDOW }),
+    ).toEqual({ ok: false, code: "STEP_UP_REQUIRED" });
+  });
+
+  test("fails closed when the window is not a positive finite number", () => {
+    for (const windowSeconds of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(requireRecentSecondFactor({ secondFactorAt: secondsAgo(1), now: NOW, windowSeconds })).toEqual({
+        ok: false,
+        code: "STEP_UP_REQUIRED",
+      });
+    }
+  });
+
   test("treats a second factor timestamp in the future as untrusted", () => {
     const future = new Date(NOW.getTime() + 5_000);
     expect(requireRecentSecondFactor({ secondFactorAt: future, now: NOW, windowSeconds: WINDOW })).toEqual({

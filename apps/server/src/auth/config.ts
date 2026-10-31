@@ -15,10 +15,11 @@ export const DEFAULT_STEP_UP_WINDOW_SECONDS = 900;
 
 export function stepUpWindowSeconds(raw: string | undefined): number {
   if (!raw) return DEFAULT_STEP_UP_WINDOW_SECONDS;
-  if (!/^[1-9]\d*$/.test(raw)) {
+  const seconds = Number(raw);
+  if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(seconds)) {
     throw new Error("STEP_UP_WINDOW_SECONDS must be a positive whole number of seconds");
   }
-  return Number(raw);
+  return seconds;
 }
 
 export type AuthConfigDeps = {

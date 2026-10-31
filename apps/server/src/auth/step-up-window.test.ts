@@ -13,7 +13,7 @@ describe("step-up window policy value", () => {
   });
 
   test("rejects values that are not positive whole seconds", () => {
-    for (const bad of ["0", "-1", "1.5", "abc", "10m"]) {
+    for (const bad of ["0", "-1", "1.5", "abc", "10m", "99999999999999999999"]) {
       expect(() => stepUpWindowSeconds(bad)).toThrow(
         "STEP_UP_WINDOW_SECONDS must be a positive whole number of seconds",
       );
