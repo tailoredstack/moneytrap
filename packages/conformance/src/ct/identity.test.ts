@@ -455,6 +455,36 @@ describeWithDatabase("[M1] identity conformance", () => {
       expect(JSON.stringify(mixedBody)).not.toContain(foreignInvitation.id);
     });
 
+    test("changing the role of a foreign membership answers like a missing one", async () => {
+      const adaSession = await signUpVerified(ADA);
+      const outsiderSession = await signUpVerified(OUTSIDER);
+      const adaOrg = await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Org A", slug: "org-a" }, adaSession),
+      );
+      await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession),
+      );
+      const foreignMember = await sql<{
+        id: string;
+      }>`select "id" from "member" where "userId" = (select "id" from "user" where "email" = ${OUTSIDER})`.execute(db);
+      const foreignMemberId = foreignMember.rows[0]?.id ?? "";
+
+      const foreign = await post(
+        "/api/auth/organization/update-member-role",
+        { memberId: foreignMemberId, role: "member", organizationId: adaOrg.id },
+        adaSession,
+      );
+      const missing = await post(
+        "/api/auth/organization/update-member-role",
+        { memberId: "mem_missing", role: "member", organizationId: adaOrg.id },
+        adaSession,
+      );
+
+      expect(foreignMemberId).not.toBe("");
+      expect(foreign.status).toBe(missing.status);
+      expect(await bodyOf(foreign)).toEqual(await bodyOf(missing));
+    });
+
     test("a member leaving an organization gets a success and loses the membership", async () => {
       const ownerSession = await signUpVerified(ADA);
       const inviteeSession = await signUpVerified(GRACE);

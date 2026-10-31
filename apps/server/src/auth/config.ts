@@ -218,6 +218,31 @@ async function refuseForeignInvitation(ctx: AuthContext, db: Kysely<any>): Promi
   }
 }
 
+// Member routes name a membership by its ID. The membership's organization decides who may act on it, so a caller who
+// is not a member of that organization gets the not-found answer, the same as for a missing membership (CT-005).
+const MEMBER_ROUTES = new Set(["/organization/remove-member", "/organization/update-member-role"]);
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+async function refuseForeignMember(ctx: AuthContext, db: Kysely<any>): Promise<void> {
+  if (!MEMBER_ROUTES.has(ctx.path ?? "")) return;
+  const input = { ...ctx.query, ...(isRecord(ctx.body) ? ctx.body : {}) };
+  // Routes that name the member by email rely on the organization check, which the request must name.
+  if (typeof input.memberId !== "string") return;
+  const session = await getSessionFromCtx(ctx);
+  const refuse = () => new APIError("NOT_FOUND", { code: "RESOURCE_NOT_FOUND", message: "Resource not found" });
+  if (!session) throw refuse();
+  const row = (
+    await sql<{ organizationId: string }>`select "organizationId" from "member" where "id" = ${input.memberId}`.execute(
+      db,
+    )
+  ).rows[0];
+  if (!row) throw refuse();
+  const member =
+    await sql`select 1 from "member" where "organizationId" = ${row.organizationId} and "userId" = ${session.user.id}`.execute(
+      db,
+    );
+  if (member.rows.length === 0) throw refuse();
+}
+
 // Slugs are chosen by the server, so a create never reveals whether a slug is taken (CT-005). The client's slug is
 // replaced with the name's slug plus a random suffix, which keeps creates from colliding. Updates cannot change the
 // slug, and a request that tries is refused with the generic validation failure.
@@ -315,6 +340,7 @@ export function authOptions({
         await refuseIfSpent(rateLimitCounter, ctx.path, ctx.body ?? {}, limits);
         await refuseForeignOrganization(ctx, db);
         await refuseForeignInvitation(ctx, db);
+        await refuseForeignMember(ctx, db);
         const organizationBody = organizationBodyFor(ctx);
         if (organizationBody) return organizationBody;
         return claimVerificationLink(ctx, db);
