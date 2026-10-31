@@ -111,7 +111,7 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     };
   }
 
-  async function countRows(table: "eligibility_decisions" | "audit_logs"): Promise<number> {
+  async function countRows(table: "eligibility_decisions" | "eligibility_evaluations" | "audit_logs"): Promise<number> {
     const result = await sql<{ n: string }>`select count(*)::text as n from ${sql.table(table)}`.execute(db);
     return Number(result.rows[0]?.n ?? 0);
   }
@@ -130,6 +130,22 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     const stored = await store.find(orgId, result.decision.id);
     expect(stored?.reasons).toEqual(["geography"]);
     expect(stored?.inputs).toEqual(storedInputs(denied));
+  });
+
+  test("a repeat of older inputs is the latest evaluation, so the gate sees the deny (CT-010)", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const at = (iso: string) => ({ ...writeFor(denied), occurredAt: new Date(iso) });
+    await store.record({ ...writeFor(denied), occurredAt: new Date("2026-11-01T10:00:00.000Z") });
+    await store.record({ ...writeFor(allowed), occurredAt: new Date("2026-11-01T11:00:00.000Z") });
+    // The denied inputs run again. The decision row is reused, so only the evaluation row records the new run.
+    const repeat = await store.record(at("2026-11-01T12:00:00.000Z"));
+
+    expect(repeat.outcome).toBe("existing");
+    expect(repeat.decision.decision).toBe("deny");
+    const latest = await sql<{ decision: string }>`select d.decision from eligibility_evaluations e
+      join eligibility_decisions d on d.id = e.decision_id order by e.seq desc limit 1`.execute(db);
+    expect(latest.rows[0]?.decision).toBe("deny");
+    expect(await countRows("eligibility_evaluations")).toBe(3);
   });
 
   test("the same inputs twice give an identical decision and no duplicate row (TP-W4-023)", async () => {

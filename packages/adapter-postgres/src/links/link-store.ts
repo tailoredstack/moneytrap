@@ -63,9 +63,12 @@ async function holds(
     where id = ${propertyId} and organization_id = ${organizationId} for share`.execute(tx);
   if (property.rows[0]?.status !== "approved") return false;
 
-  const decision = await sql<{ decision: string }>`select decision from eligibility_decisions
-    where organization_id = ${organizationId} and property_id = ${propertyId} and program_id = ${programId}
-    order by evaluated_at desc, policy_version desc, id desc
+  // The latest evaluation, not the latest decision row: a repeat of older inputs reuses that row, so only the evaluation
+  // sequence shows that the policy ran again and reached a different outcome (CT-010).
+  const decision = await sql<{ decision: string }>`select d.decision from eligibility_evaluations e
+    join eligibility_decisions d on d.id = e.decision_id
+    where e.organization_id = ${organizationId} and e.property_id = ${propertyId} and e.program_id = ${programId}
+    order by e.seq desc
     limit 1`.execute(tx);
   if (decision.rows[0]?.decision !== "allow") return false;
 
