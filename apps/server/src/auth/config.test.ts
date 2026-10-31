@@ -53,7 +53,7 @@ describe("Better Auth config (Blueprint §7)", () => {
     expect(sent).toEqual([{ kind: "verify", to: "ada@example.test", url: "https://x.test/verify?token=t" }]);
   });
 
-  test("disabling MFA is a sensitive action: sessions must be fresh within the step-up window (TP-W2-019)", () => {
+  test("sessions are fresh only within the step-up window, so sensitive routes need recent login (TP-W2-019)", () => {
     const { options } = setup();
 
     expect(options.session?.freshAge).toBe(900);

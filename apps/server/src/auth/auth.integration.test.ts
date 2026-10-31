@@ -417,15 +417,14 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
   });
 
   // Turns a response's Set-Cookie headers into a request Cookie header, so later calls run with that session.
-  const cookieHeaders = (response: Response) => {
-    const cookie = response.headers.get("set-cookie") ?? "";
-    return new Headers({
-      cookie: cookie
-        .split(",")
-        .map((part) => part.split(";")[0]?.trim() ?? "")
+  const cookieHeaders = (response: Response) =>
+    new Headers({
+      cookie: response.headers
+        .getSetCookie()
+        .map((entry) => entry.split(";")[0]?.trim() ?? "")
+        .filter(Boolean)
         .join("; "),
     });
-  };
 
   // The two-factor methods come from the plugin at runtime; the config types stay generic, so name them here.
   const twoFactor = () =>
@@ -437,6 +436,11 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
       verifyTOTP(input: { body: { code: string }; headers: Headers; asResponse: true }): Promise<Response>;
       verifyBackupCode(input: { body: { code: string }; headers: Headers; asResponse: true }): Promise<Response>;
       disableTwoFactor(input: { body: { password: string }; headers: Headers }): Promise<unknown>;
+    };
+
+  const apiKeyApi = () =>
+    auth.api as unknown as {
+      createApiKey(input: { body: { name: string }; headers: Headers }): Promise<{ key: string }>;
     };
 
   const signedInHeaders = async () =>
@@ -468,6 +472,22 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
     expect(afterConfirm.rows).toEqual([{ twoFactorEnabled: true }]);
   });
 
+  test("TP-W2-017: a wrong TOTP code does not activate MFA", async () => {
+    await signUp(VALID_PASSWORD);
+    await verifyLink(tokenFromSentEmail());
+    const headers = await signedInHeaders();
+    await enrollTotp(headers);
+
+    const wrong = await twoFactor().verifyTOTP({
+      body: { code: "000000" },
+      headers,
+      asResponse: true,
+    });
+    expect(wrong.status).not.toBe(200);
+    const rows = await sql<{ twoFactorEnabled: boolean }>`select "twoFactorEnabled" from "user"`.execute(db);
+    expect(rows.rows).toEqual([{ twoFactorEnabled: false }]);
+  });
+
   test("TP-W2-018: a recovery code signs in once and is rejected the second time", async () => {
     await signUp(VALID_PASSWORD);
     await verifyLink(tokenFromSentEmail());
@@ -489,7 +509,39 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
     });
 
     expect(first.status).toBe(200);
-    expect(second.status).not.toBe(200);
+    expect(second.status).toBe(401);
+    expect(await second.json()).toMatchObject({ code: "INVALID_BACKUP_CODE" });
+  });
+
+  test("TP-W2-019: disabling MFA with a fresh session succeeds and turns MFA off", async () => {
+    await signUp(VALID_PASSWORD);
+    await verifyLink(tokenFromSentEmail());
+    const headers = await signedInHeaders();
+    const { secret } = await enrollTotp(headers);
+    const fresh = await confirmTotp(headers, secret);
+
+    await twoFactor().disableTwoFactor({ body: { password: VALID_PASSWORD }, headers: fresh });
+
+    const rows = await sql<{ twoFactorEnabled: boolean }>`select "twoFactorEnabled" from "user"`.execute(db);
+    expect(rows.rows).toEqual([{ twoFactorEnabled: false }]);
+  });
+
+  test("TP-W2-019: an API-key request cannot disable MFA, even with a fresh session", async () => {
+    await signUp(VALID_PASSWORD);
+    await verifyLink(tokenFromSentEmail());
+    const headers = await signedInHeaders();
+    const { secret } = await enrollTotp(headers);
+    const fresh = await confirmTotp(headers, secret);
+    const { key } = await apiKeyApi().createApiKey({ body: { name: "ci" }, headers: fresh });
+    const viaKey = new Headers({ "x-api-key": key });
+
+    await expect(
+      twoFactor().disableTwoFactor({ body: { password: VALID_PASSWORD }, headers: viaKey }),
+    ).rejects.toMatchObject({
+      body: { code: "STEP_UP_REQUIRED" },
+    });
+    const rows = await sql<{ twoFactorEnabled: boolean }>`select "twoFactorEnabled" from "user"`.execute(db);
+    expect(rows.rows).toEqual([{ twoFactorEnabled: true }]);
   });
 
   test("TP-W2-019: disabling MFA with a session older than the step-up window is refused", async () => {

@@ -141,17 +141,21 @@ function settleVerificationLink(db: Kysely<any>) {
 
 // Better Auth's disable route only requires a session, not a fresh one, so the step-up check runs before it.
 // The session's creation time stands in for the second-factor time: an MFA user's session is only created
-// after the second factor passes. The guard fails closed when the session cannot be read.
+// after the second factor passes. Fails closed: a missing session, or any API-key request, is refused. The API-key
+// plugin builds its session with the request time as createdAt, so an API key must not count as a second factor.
+const API_KEY_HEADER = "x-api-key";
 function requireStepUpToDisableMfa(stepUpWindow: number) {
   return createAuthMiddleware(async (ctx) => {
+    const refuse = () => new APIError("FORBIDDEN", { code: "STEP_UP_REQUIRED", message: "Step-up required" });
+    if (ctx.headers?.has(API_KEY_HEADER)) throw refuse();
     const session = await getSessionFromCtx(ctx);
-    if (!session?.session) return;
+    if (!session?.session) throw refuse();
     const result = requireRecentSecondFactor({
       secondFactorAt: new Date(session.session.createdAt),
       now: new Date(),
       windowSeconds: stepUpWindow,
     });
-    if (!result.ok) throw new APIError("FORBIDDEN", { code: result.code, message: "Step-up required" });
+    if (!result.ok) throw refuse();
   });
 }
 
@@ -204,7 +208,10 @@ export function authOptions({
         id: "moneytrap-step-up",
         hooks: {
           before: [
-            { matcher: (ctx) => ctx.path === "/two-factor/disable", handler: requireStepUpToDisableMfa(stepUpWindow) },
+            {
+              matcher: (ctx) => (ctx.path ?? "").replace(/\/+$/, "") === "/two-factor/disable",
+              handler: requireStepUpToDisableMfa(stepUpWindow),
+            },
           ],
         },
       },
