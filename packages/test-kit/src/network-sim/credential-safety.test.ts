@@ -113,6 +113,20 @@ describe("disabled credential is a safe, typed failure (WP-4.7)", () => {
     expect(store.advertisers.size).toBeGreaterThan(0);
   });
 
+  test("TP-W4-007 a synchronous throw is handled the same way and writes nothing", async () => {
+    const store = new FakeCatalogSyncStore();
+    const connector = withOverrides(new RecordedNetworkSimulator("clean-catalog"), {
+      validateConnection: () => {
+        throw new Error(`sync throw ${SECRET}`);
+      },
+    });
+    const result = await run(connector, store);
+
+    expect(result).toEqual({ ok: false, failure: { state: "temporarily_unavailable", retryAfterSeconds: null } });
+    expect(JSON.stringify(result)).not.toContain(SECRET);
+    expect(store.advertisers.size + store.programs.size + store.quarantined.length).toBe(0);
+  });
+
   test("TP-W4-007 a connector that throws is reported as a retryable failure and its message is discarded", async () => {
     const cases: Overrides[] = [
       { validateConnection: async () => Promise.reject(new Error(`auth failed for ${SECRET}`)) },
