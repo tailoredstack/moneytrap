@@ -15,7 +15,15 @@ function setup() {
     .post("/payments", { body: t.Object({ amount: t.String() }) }, ({ body }) => ({
       call: ++calls,
       amount: body.amount,
-    }));
+    }))
+    .post(
+      "/shipments",
+      () =>
+        new Response(JSON.stringify({ shipped: true }), {
+          status: 201,
+          headers: { "content-type": "application/json", location: "/shipments/1" },
+        }),
+    );
   return { app, store, calls: () => calls };
 }
 
@@ -88,5 +96,22 @@ describe("idempotency middleware", () => {
     const replay = await post(app, "key-1", "10.00");
 
     expect(replay.headers.get("x-request-id")).toBeTruthy();
+  });
+
+  test("replay keeps the status and headers of a handler that returns its own Response", async () => {
+    const { app } = setup();
+    const create = () =>
+      app.handle(
+        new Request("http://localhost/shipments", { method: "POST", headers: { "idempotency-key": "ship-1" } }),
+      );
+
+    const first = await create();
+    const replay = await create();
+
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(201);
+    expect(replay.headers.get("location")).toBe("/shipments/1");
+    expect(replay.headers.get("content-type")).toBe("application/json");
+    expect(await replay.json()).toEqual({ shipped: true });
   });
 });
