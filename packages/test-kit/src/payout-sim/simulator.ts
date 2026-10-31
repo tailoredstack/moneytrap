@@ -110,7 +110,7 @@ export class PayoutProviderSimulator implements PayoutProvider {
    * can be unknown as well as the dispatch.
    */
   timeoutNextInspections(count: number): void {
-    this.queryTimeouts = count;
+    this.queryTimeouts += count;
   }
 
   /**
