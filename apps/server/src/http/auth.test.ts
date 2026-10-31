@@ -34,3 +34,31 @@ describe("/api/auth mount", () => {
     expect(response.status).toBe(404);
   });
 });
+
+// Without trusted proxies the server sets x-forwarded-for to the socket peer, or removes it when there is no peer. A
+// request whose only header is x-forwarded-for must not reach Better Auth with that header intact.
+describe("client IP without trusted proxies", () => {
+  test("removes a client-sent x-forwarded-for when there is no socket peer, even when no other header remains", async () => {
+    let seen: string | null | undefined;
+    const app = new Elysia().use(
+      authRoutes(
+        {
+          handler: async (request: Request) => {
+            seen = request.headers.get("x-forwarded-for");
+            return new Response("ok");
+          },
+        },
+        { trustProxy: false },
+      ),
+    );
+
+    await app.handle(
+      new Request("http://localhost/api/auth/sign-in/email", {
+        method: "POST",
+        headers: { "x-forwarded-for": "fake" },
+      }),
+    );
+
+    expect(seen).toBeNull();
+  });
+});
