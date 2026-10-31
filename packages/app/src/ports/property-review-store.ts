@@ -10,7 +10,7 @@ export interface PropertyTransitionAudit {
   id: Id<"audit">;
   organizationId: Id<"organization">;
   actor: { type: string; id: string };
-  action: "submit" | "approve" | "reject";
+  action: "submit" | "approve" | "reject" | "suspend" | "reinstate";
   entityType: "property";
   entityId: Id<"property">;
   metadata: { reason?: string };
@@ -31,4 +31,6 @@ export interface PropertyTransitionWrite {
 export interface PropertyReviewStore {
   find(id: Id<"property">): Promise<PropertyReviewRecord | null>;
   recordTransition(write: PropertyTransitionWrite): Promise<boolean>;
+  // Every audit row for one property, oldest first. Filtered by organization, so another tenant's rows never appear.
+  auditTrail(organizationId: Id<"organization">, propertyId: Id<"property">): Promise<PropertyTransitionAudit[]>;
 }

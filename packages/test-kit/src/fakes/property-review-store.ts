@@ -17,6 +17,10 @@ export class FakePropertyReviewStore implements PropertyReviewStore {
     return this.records.find((record) => record.property.id === id) ?? null;
   }
 
+  async auditTrail(organizationId: Id<"organization">, propertyId: Id<"property">): Promise<PropertyTransitionAudit[]> {
+    return this.audits.filter((audit) => audit.organizationId === organizationId && audit.entityId === propertyId);
+  }
+
   async recordTransition(write: PropertyTransitionWrite): Promise<boolean> {
     const current = this.records.find((record) => record.property.id === write.property.id);
     if (current?.organizationId !== write.expectedOrganizationId) return false;

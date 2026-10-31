@@ -16,6 +16,7 @@ import type { Ctx } from "../ctx";
 import type {
   PropertyReviewRecord,
   PropertyReviewStore,
+  PropertyTransitionAudit,
   PropertyTransitionWrite,
 } from "../ports/property-review-store";
 import { decideProperty } from "./decide";
@@ -70,6 +71,10 @@ class MemoryPropertyStore implements PropertyReviewStore {
 
   async find(id: Id<"property">): Promise<PropertyReviewRecord | null> {
     return this.records.find((r) => r.property.id === id) ?? null;
+  }
+
+  async auditTrail(): Promise<PropertyTransitionAudit[]> {
+    return [];
   }
 
   async recordTransition(write: PropertyTransitionWrite): Promise<boolean> {
