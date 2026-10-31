@@ -1,5 +1,6 @@
 export { FakeClock } from "./clock";
 export { FakeCatalogSyncStore } from "./fakes/catalog-sync-store";
+export { FakeClickReportStore } from "./fakes/click-report-store";
 export { FakeClickStore } from "./fakes/click-store";
 export { FakeDnsResolver } from "./fakes/dns-resolver";
 export { FakeIdGenerator } from "./fakes/id-generator";
