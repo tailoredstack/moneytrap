@@ -15,6 +15,9 @@
     "apps/server": {
       "name": "@moneytrap/server",
       "version": "0.0.0",
+      "dependencies": {
+        "@moneytrap/domain": "workspace:*",
+      },
     },
     "apps/web": {
       "name": "@moneytrap/web",
