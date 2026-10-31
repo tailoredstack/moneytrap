@@ -605,7 +605,12 @@ describe("pause, resume, revoke", () => {
     const scope = { organizationId: otherOrgId, linkId };
     expect(await pauseLinkAction(ctxFor(actorId), deps, scope)).toEqual({ ok: false, code: "RESOURCE_NOT_FOUND" });
     expect(await revokeLinkAction(ctxFor(actorId), deps, scope)).toEqual({ ok: false, code: "RESOURCE_NOT_FOUND" });
+    expect(await resumeLinkAction(ctxFor(actorId), deps, scope)).toEqual({ ok: false, code: "RESOURCE_NOT_FOUND" });
+    expect(
+      await editLinkDestination(ctxFor(actorId), deps, { ...scope, destination: "https://shop.example.com/other" }),
+    ).toEqual({ ok: false, code: "RESOURCE_NOT_FOUND" });
     expect(links.rows.get(linkId)?.link.status).toBe("active");
+    expect(links.rows.get(linkId)?.link.destinationUrl).toBe(destination);
   });
 
   test("a stale version loses the compare-and-set on pause and writes nothing", async () => {
