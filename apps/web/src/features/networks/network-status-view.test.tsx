@@ -50,12 +50,12 @@ describe("NetworkStatusView (UI-026, UI-076, TP-W4-029, TP-W4-030)", () => {
     const html = renderToStaticMarkup(<NetworkStatusView state={ready({ catalogStale: true })} />);
     expect(html).toContain("Catalog data: stale");
     expect(html).toContain("Data stale");
-    expect(html).toContain("2026-10-31T09:04:00.000Z");
+    expect(html).toContain("2026-10-31 09:04 UTC");
   });
 
   test("the credential panel shows status and rotation date, never the credential value (TP-W4-030)", () => {
     const html = renderToStaticMarkup(<NetworkStatusView state={ready()} ops />);
-    expect(html).toContain("✓ configured");
+    expect(html).toContain('aria-hidden="true">✓</span> configured');
     expect(html).toContain("2026-08-02");
     expect(html).toMatch(/<button[^>]*>Retry sync<\/button>/);
   });

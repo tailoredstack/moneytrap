@@ -59,7 +59,16 @@ describe("DirectoryView (UI-028, TP-W4-027, TP-W4-031)", () => {
       />,
     );
     expect(html).toContain("No programs match. Try removing a filter.");
-    expect(html).toMatch(/<button[^>]*>Clear filters<\/button>/);
+    expect(html).not.toContain("Clear filters");
+    const withClear = renderToStaticMarkup(
+      <DirectoryView
+        state={ready({ rows: [] })}
+        countries={COUNTRIES}
+        filters={{ q: "zzz", country: "", eligibleOnly: false }}
+        onClearFilters={() => {}}
+      />,
+    );
+    expect(withClear).toMatch(/<button[^>]*>Clear filters<\/button>/);
   });
 
   test("the loaded count is a live status, so a change is announced", () => {
@@ -84,7 +93,9 @@ describe("DirectoryView (UI-028, TP-W4-027, TP-W4-031)", () => {
   });
 
   test("more results are offered as a button, so the list pages instead of loading everything", () => {
-    const html = renderToStaticMarkup(<DirectoryView state={ready({ rows, hasMore: true })} countries={COUNTRIES} />);
+    const html = renderToStaticMarkup(
+      <DirectoryView state={ready({ rows, hasMore: true })} countries={COUNTRIES} onLoadMore={() => {}} />,
+    );
     expect(html).toMatch(/<button[^>]*>Load more<\/button>/);
   });
 

@@ -70,6 +70,16 @@ describe("ProgramTermsView (UI-029, UI-030, TP-W4-028)", () => {
     expect(html).not.toContain("Request approval");
   });
 
+  test("an eligible program offers no approval request", () => {
+    const html = renderToStaticMarkup(
+      <ProgramTermsView
+        state={ready({ decision: { decision: "allow" }, approval: "not_reported" })}
+        canRequestApproval
+      />,
+    );
+    expect(html).not.toContain("Request approval");
+  });
+
   test("a stale catalog keeps the terms visible and labelled", () => {
     const html = renderToStaticMarkup(<ProgramTermsView state={ready({ stale: true })} />);
     expect(html).toContain("Data stale");
