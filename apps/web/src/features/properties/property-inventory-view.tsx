@@ -1,3 +1,4 @@
+import { Button } from "@moneytrap/ui";
 import { PROPERTY_STATUS_LABELS, type PropertyStatus } from "./property-status";
 
 export type PropertyRow = { id: string; domain: string; status: PropertyStatus };
@@ -10,7 +11,17 @@ const STATUS_ICONS: Partial<Record<PropertyStatus, string>> = {
 };
 
 // SKELETONS §2.3 "Property inventory". Each row has a status label and one action.
-export function PropertyInventoryView({ rows, asOf }: { rows: PropertyRow[]; asOf: string }) {
+export function PropertyInventoryView({
+  rows,
+  asOf,
+  onView,
+  onInstructions,
+}: {
+  rows: PropertyRow[];
+  asOf: string;
+  onView?: ((id: string) => void) | undefined;
+  onInstructions?: ((id: string) => void) | undefined;
+}) {
   return (
     <section className="max-w-3xl space-y-4">
       <div className="flex items-center justify-between">
@@ -44,7 +55,17 @@ export function PropertyInventoryView({ rows, asOf }: { rows: PropertyRow[]; asO
                     {PROPERTY_STATUS_LABELS[row.status]}
                   </span>
                 </td>
-                <td>{row.status === "verification_pending" ? "Instructions" : "View"}</td>
+                <td>
+                  {row.status === "verification_pending" ? (
+                    <Button variant="outline" size="sm" onClick={() => onInstructions?.(row.id)}>
+                      Instructions
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => onView?.(row.id)}>
+                      View
+                    </Button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

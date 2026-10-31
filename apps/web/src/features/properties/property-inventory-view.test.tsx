@@ -26,6 +26,12 @@ describe("PropertyInventoryView (TP-W3-028, UI-019, UI-020, UI-021)", () => {
     expect(html).toContain("Verify DNS");
   });
 
+  test("each row's action is a button a publisher can use", () => {
+    const html = renderToStaticMarkup(<PropertyInventoryView rows={rows} asOf={ASOF} />);
+    expect(html).toMatch(/<button[^>]*>Instructions<\/button>/);
+    expect(html).toMatch(/<button[^>]*>View<\/button>/);
+  });
+
   test("an empty inventory invites the first website", () => {
     const html = renderToStaticMarkup(<PropertyInventoryView rows={[]} asOf={ASOF} />);
     expect(html).toContain("Add your first website to start linking.");

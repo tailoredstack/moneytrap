@@ -31,6 +31,11 @@ describe("KybFormView (UI-015)", () => {
     expect(html).toMatch(/role="alert"[\s\S]*Enter the legal name\./);
   });
 
+  test("offers a labelled document upload control", () => {
+    const html = renderToStaticMarkup(<KybFormView values={{ legalName: "", country: "", businessType: null }} />);
+    expect(html).toMatch(/<label[^>]*>[\s\S]*Document[\s\S]*<input[^>]* type="file"[^>]*name="document"/);
+  });
+
   test("says the document is kept as a reference only", () => {
     const html = renderToStaticMarkup(<KybFormView values={{ legalName: "", country: "", businessType: null }} />);
     expect(html).toContain("Stored securely; we keep a reference only.");

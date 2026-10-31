@@ -27,7 +27,8 @@ export function PropertyDetailsView({
   onRefresh?: (() => void) | undefined;
   onSubmit?: (() => void) | undefined;
 }) {
-  const canSubmit = status === "verified" && !stale;
+  // A change made in another tab blocks submit until the user refreshes, even when the page is not otherwise stale.
+  const canSubmit = status === "verified" && !stale && !changedElsewhere;
   return (
     <section className="max-w-2xl space-y-4 text-sm">
       <h1 className="text-xl font-semibold">{domain}</h1>
