@@ -159,6 +159,44 @@ async function settleVerificationLink(ctx: AuthContext, db: Kysely<any>) {
   }
 }
 
+// Better Auth's organization routes name the organization in the query or body. A caller who is not a member gets the
+// not-found answer for both a foreign and a missing organization, so a response never reveals that a foreign one exists
+// (CT-005, TP-W2-033, TP-W2-034). Better Auth alone would answer them differently (403 against 400).
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+async function foreignOrganizationRefusal(ctx: AuthContext, db: Kysely<any>): Promise<Response | undefined> {
+  if (!ctx.path?.startsWith("/organization/")) return undefined;
+  // The after hook's context does not carry the session the endpoint resolved, so the caller is read again here.
+  const userId = (await getSessionFromCtx(ctx))?.user.id;
+  if (!userId) return undefined;
+  const organizationId = await namedOrganizationId(ctx, db);
+  if (organizationId === undefined) return undefined;
+  const member =
+    await sql`select 1 from "member" where "organizationId" = ${organizationId} and "userId" = ${userId}`.execute(db);
+  if (member.rows.length > 0) return undefined;
+  // A thrown error would keep the endpoint's own status (403 or 400), so the hook sets the result with its status.
+  return new Response(JSON.stringify({ code: "RESOURCE_NOT_FOUND", message: "Resource not found" }), {
+    status: 404,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+// The organization a request names by ID or by slug. Undefined when it names none. A slug that matches nothing
+// resolves to an empty ID, which no membership matches, so it is refused like any other foreign organization.
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+async function namedOrganizationId(ctx: AuthContext, db: Kysely<any>): Promise<string | undefined> {
+  const input = { ...ctx.query, ...(isRecord(ctx.body) ? ctx.body : {}) };
+  if (typeof input.organizationId === "string") return input.organizationId;
+  if (typeof input.organizationSlug !== "string") return undefined;
+  const row = await sql<{
+    id: string;
+  }>`select "id" from "organization" where "slug" = ${input.organizationSlug}`.execute(db);
+  return row.rows[0]?.id ?? "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 // A failed sign-in is any 4xx/5xx except 429. A 429 is a refusal, not a password guess, so it is not recorded.
 function isFailedSignIn(returned: unknown): boolean {
   return isAPIError(returned) && returned.statusCode >= 400 && returned.statusCode !== 429;
@@ -217,6 +255,9 @@ export function authOptions({
         return claimVerificationLink(ctx, db);
       }),
       after: createAuthMiddleware(async (ctx) => {
+        const refusal = await foreignOrganizationRefusal(ctx, db);
+        // The hook replaces the endpoint result; returning a value from an after hook does not reach the response.
+        if (refusal) ctx.context.returned = refusal;
         if (ctx.path === "/sign-in/email" && isFailedSignIn(ctx.context.returned)) {
           await recordFailedSignIn(rateLimitCounter, ctx.body ?? {}, limits);
         }
