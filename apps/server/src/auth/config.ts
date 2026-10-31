@@ -6,6 +6,7 @@ import { haveIBeenPwned, organization, twoFactor } from "better-auth/plugins";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import type { Pool } from "pg";
 import { requireRecentSecondFactor } from "../http/guards/assurance";
+import { accessControl, roles } from "./access";
 import type { AuthMailer } from "./mailer";
 import {
   ipRateLimitRules,
@@ -234,7 +235,7 @@ export function authOptions({
     plugins: [
       haveIBeenPwned(),
       twoFactor({ issuer: "Moneytrap" }),
-      organization(),
+      organization({ ac: accessControl, roles }),
       apiKey({ enableSessionForAPIKeys: true }),
       {
         id: "moneytrap-step-up",
