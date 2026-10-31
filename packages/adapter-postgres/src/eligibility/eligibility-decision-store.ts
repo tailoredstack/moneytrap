@@ -194,8 +194,10 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
     async record(write) {
       return withTx(db, async (tx) => {
         // The property must belong to the organization the decision is written for. Foreign keys check only existence.
+        // FOR NO KEY UPDATE conflicts with the FOR SHARE that a link write takes, so a deny decision waits for an
+        // in-flight link write and a link write waits for an in-flight decision (WP-5.13).
         const owned = await sql`select 1 from properties where id = ${write.propertyId}
-          and organization_id = ${write.organizationId}`.execute(tx);
+          and organization_id = ${write.organizationId} for no key update`.execute(tx);
         if (owned.rows.length === 0) throw new Error("eligibility: property is not in the organization");
 
         // Program facts come from the latest stored revision. A program with no revision has unknown approval, so the
