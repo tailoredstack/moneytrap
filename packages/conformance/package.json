@@ -8,7 +8,10 @@
   },
   "dependencies": {
     "@moneytrap/adapter-postgres": "workspace:*",
+    "@moneytrap/app": "workspace:*",
+    "@moneytrap/domain": "workspace:*",
     "@moneytrap/server": "workspace:*",
+    "@moneytrap/test-kit": "workspace:*",
     "kysely": "0.29.7",
     "pg": "8.16.3"
   },

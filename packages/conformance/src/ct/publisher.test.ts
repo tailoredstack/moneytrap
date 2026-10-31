@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Ctx } from "@moneytrap/app/src/ctx";
 import { decideProperty } from "@moneytrap/app/src/properties/decide";
 import { readPropertyHistory } from "@moneytrap/app/src/properties/history";
 import { submitProperty } from "@moneytrap/app/src/properties/submit";
@@ -10,6 +11,7 @@ import {
   type Id,
   monetizationDenial,
   type Principal,
+  type Property,
   type Scope,
   startPublisherReview,
   submitPublisher,
@@ -39,12 +41,23 @@ const propertyId = fixtureId("property", 1) as Id<"property">;
 const principal: Principal = { userId: ownerId, memberships: [{ organizationId: orgId, role: "owner" }] };
 const scope: Scope = { organizationId: orgId };
 
+function actingAs(userId: string, clock: FakeClock, ids: FakeIdGenerator): Ctx {
+  return fixtureCtx<Record<string, never>>(undefined as never, { clock, ids, actor: { type: "user", id: userId } });
+}
+
+// The review store's row for the property, read fresh after each action.
+function reviewedProperty(reviews: FakePropertyReviewStore): Property {
+  const record = reviews.records[0];
+  if (!record) throw new Error("fixture: property missing from the review store");
+  return record.property;
+}
+
 // One world per case: a publisher that is approved (so only the property decides monetization) and a draft website property.
 async function approvedPublisherWithDraftProperty() {
   const clock = new FakeClock();
   const ids = new FakeIdGenerator();
-  const owner = fixtureCtx(undefined as never, { clock, ids, actor: { type: "user", id: ownerId } });
-  const reviewer = fixtureCtx(undefined as never, { clock, ids, actor: { type: "user", id: reviewerId } });
+  const owner = actingAs(ownerId, clock, ids);
+  const reviewer = actingAs(reviewerId, clock, ids);
 
   const publishers = new FakePublisherReviewStore();
   const draft = draftPublisher({ id: publisherId, legalName: "Example Media Ltd" });
@@ -104,13 +117,13 @@ describe("[M2] publisher conformance", () => {
     await verifyAndHandOff(world);
 
     // Verified means the publisher owns the site. It is not approved, so the link create gate must refuse it.
-    const verified = world.reviews.records[0]!.property;
+    const verified = reviewedProperty(world.reviews);
     expect(verified.status).toBe("verified");
     expect(monetizationDenial(verified)).toBe("not approved");
 
     const submitted = await submitProperty(world.owner, world.reviews, { propertyId, organizationId: orgId });
     expect(submitted).toEqual({ ok: true, value: { status: "review_pending" } });
-    expect(monetizationDenial(world.reviews.records[0]!.property)).toBe("not approved");
+    expect(monetizationDenial(reviewedProperty(world.reviews))).toBe("not approved");
 
     const decided = await decideProperty(world.reviewer, world.reviews, {
       propertyId,
@@ -118,7 +131,7 @@ describe("[M2] publisher conformance", () => {
       body: { decision: "approve", reason: "Site live and compliant" },
     });
     expect(decided).toEqual({ ok: true, value: { status: "approved" } });
-    expect(monetizationDenial(world.reviews.records[0]!.property)).toBeNull();
+    expect(monetizationDenial(reviewedProperty(world.reviews))).toBeNull();
   });
 
   test("[M2] CT-007 approved publisher/property: reviewer suspends property", async () => {
@@ -130,7 +143,7 @@ describe("[M2] publisher conformance", () => {
       organizationId: orgId,
       body: { decision: "approve", reason: "Site live and compliant" },
     });
-    expect(monetizationDenial(world.reviews.records[0]!.property)).toBeNull();
+    expect(monetizationDenial(reviewedProperty(world.reviews))).toBeNull();
 
     const suspended = await suspendProperty(world.reviewer, world.reviews, {
       propertyId,
@@ -140,8 +153,8 @@ describe("[M2] publisher conformance", () => {
     expect(suspended).toEqual({ ok: true, value: { status: "suspended" } });
 
     // New monetization is blocked in the same write that suspends the property, so the next link create sees it.
-    expect(world.reviews.records[0]!.property.status).toBe("suspended");
-    expect(monetizationDenial(world.reviews.records[0]!.property)).toBe("not approved");
+    expect(reviewedProperty(world.reviews).status).toBe("suspended");
+    expect(monetizationDenial(reviewedProperty(world.reviews))).toBe("not approved");
 
     // Staff can still read the suspended property's history, including who suspended it and why.
     const staff = await readPropertyHistory(world.reviewer, world.reviews, {
