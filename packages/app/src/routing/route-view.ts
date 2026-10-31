@@ -31,7 +31,7 @@ export function buildRouteView(link: Link, eligible: boolean): RouteView {
 // A Redis call that outlives this is treated as a cache outage, so a stalled cache cannot hold the redirect.
 const CACHE_DEADLINE_MS = 100;
 
-function withDeadline<T>(work: Promise<T>): Promise<T> {
+export function withDeadline<T>(work: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error("route cache deadline exceeded")), CACHE_DEADLINE_MS);
