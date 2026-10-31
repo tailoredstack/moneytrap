@@ -61,7 +61,9 @@ export function NetworkStatusView({
           <>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h1 className="text-xl font-semibold">Network: {data.networkName}</h1>
-              <p className="text-sm font-medium">{HEALTH_LABELS[data.health]}</p>
+              <p role="status" className="text-sm font-medium">
+                {HEALTH_LABELS[data.health]}
+              </p>
             </div>
             {HEALTH_EXPLANATIONS[data.health] ? <p className="text-sm">{HEALTH_EXPLANATIONS[data.health]}</p> : null}
             <p className="text-sm">

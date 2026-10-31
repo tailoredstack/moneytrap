@@ -64,8 +64,10 @@ export function ProgramTermsView({
               <ul className="list-disc pl-5">
                 {data.decision.decision === "allow" ? (
                   <li>Every eligibility rule passes for this property.</li>
-                ) : (
+                ) : data.decision.reasons.length > 0 ? (
                   data.decision.reasons.map((reason) => <li key={reason}>{REASON_LABELS[reason]}</li>)
+                ) : (
+                  <li>The network reported no reason for this decision.</li>
                 )}
               </ul>
             </div>

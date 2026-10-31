@@ -59,6 +59,12 @@ describe("DirectoryView (UI-028, TP-W4-027, TP-W4-031)", () => {
       />,
     );
     expect(html).toContain("No programs match. Try removing a filter.");
+    expect(html).toMatch(/<button[^>]*>Clear filters<\/button>/);
+  });
+
+  test("the loaded count is a live status, so a change is announced", () => {
+    const html = renderToStaticMarkup(<DirectoryView state={ready({ rows })} countries={COUNTRIES} />);
+    expect(html).toMatch(/<p role="status"[^>]*>3 programs shown<\/p>/);
   });
 
   test("each row shows its status as text, and only eligible programs say Open", () => {
@@ -80,6 +86,11 @@ describe("DirectoryView (UI-028, TP-W4-027, TP-W4-031)", () => {
   test("more results are offered as a button, so the list pages instead of loading everything", () => {
     const html = renderToStaticMarkup(<DirectoryView state={ready({ rows, hasMore: true })} countries={COUNTRIES} />);
     expect(html).toMatch(/<button[^>]*>Load more<\/button>/);
+  });
+
+  test("the last page has no load-more control", () => {
+    const html = renderToStaticMarkup(<DirectoryView state={ready({ rows, hasMore: false })} countries={COUNTRIES} />);
+    expect(html).not.toContain("Load more");
   });
 
   test("filters are labelled controls a keyboard user can reach", () => {

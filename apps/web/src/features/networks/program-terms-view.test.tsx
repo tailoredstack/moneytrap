@@ -31,6 +31,13 @@ describe("ProgramTermsView (UI-029, UI-030, TP-W4-028)", () => {
     expect(html).toContain("Not eligible: The program does not allow your country");
   });
 
+  test("a denial with no reason says so, rather than showing an empty list", () => {
+    const html = renderToStaticMarkup(
+      <ProgramTermsView state={ready({ decision: { decision: "deny", reasons: [] } })} />,
+    );
+    expect(html).toContain("The network reported no reason for this decision.");
+  });
+
   test("an allowed decision says every rule passes", () => {
     const html = renderToStaticMarkup(<ProgramTermsView state={ready({ decision: { decision: "allow" } })} />);
     expect(html).toContain("Every eligibility rule passes for this property.");
