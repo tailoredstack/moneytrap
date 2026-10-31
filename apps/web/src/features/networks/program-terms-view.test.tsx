@@ -54,17 +54,23 @@ describe("ProgramTermsView (UI-029, UI-030, TP-W4-028)", () => {
 
   test("request approval appears only when approval is still needed and the caller may ask", () => {
     const pending = renderToStaticMarkup(
-      <ProgramTermsView state={ready({ approval: "not_reported" })} canRequestApproval />,
+      <ProgramTermsView state={ready({ approval: "not_reported" })} canRequestApproval onRequestApproval={() => {}} />,
     );
     expect(pending).toMatch(/<button[^>]*>Request approval<\/button>/);
 
-    const approved = renderToStaticMarkup(<ProgramTermsView state={ready()} canRequestApproval />);
+    const approved = renderToStaticMarkup(
+      <ProgramTermsView state={ready()} canRequestApproval onRequestApproval={() => {}} />,
+    );
     expect(approved).not.toContain("Request approval");
   });
 
   test("once requested, the screen says the network decides, and offers no second request", () => {
     const html = renderToStaticMarkup(
-      <ProgramTermsView state={ready({ approval: "pending", approvalRequested: true })} canRequestApproval />,
+      <ProgramTermsView
+        state={ready({ approval: "pending", approvalRequested: true })}
+        canRequestApproval
+        onRequestApproval={() => {}}
+      />,
     );
     expect(html).toContain("Only the network can approve");
     expect(html).not.toContain("Request approval");
@@ -75,6 +81,7 @@ describe("ProgramTermsView (UI-029, UI-030, TP-W4-028)", () => {
       <ProgramTermsView
         state={ready({ decision: { decision: "allow" }, approval: "not_reported" })}
         canRequestApproval
+        onRequestApproval={() => {}}
       />,
     );
     expect(html).not.toContain("Request approval");

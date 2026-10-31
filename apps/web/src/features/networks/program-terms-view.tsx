@@ -75,8 +75,12 @@ export function ProgramTermsView({
               <p className="text-sm">
                 Approval requested. Only the network can approve; its decision will appear here.
               </p>
-            ) : canRequestApproval && data.decision.decision === "deny" && data.approval !== "approved" ? (
-              <Button variant="outline" onClick={() => onRequestApproval?.()}>
+            ) : canRequestApproval &&
+              onRequestApproval &&
+              data.decision.decision === "deny" &&
+              data.approval !== "approved" &&
+              data.approval !== "pending" ? (
+              <Button variant="outline" onClick={() => onRequestApproval()}>
                 Request approval
               </Button>
             ) : null}

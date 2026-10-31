@@ -65,7 +65,13 @@ export function NetworkStatusView({
                 {HEALTH_LABELS[data.health]}
               </p>
             </div>
-            {HEALTH_EXPLANATIONS[data.health] ? <p className="text-sm">{HEALTH_EXPLANATIONS[data.health]}</p> : null}
+            {data.health === "temporarily_unavailable" && data.lastSuccessfulSync === null ? (
+              <p className="text-sm">
+                The network did not answer, and no sync has succeeded yet. Sync retries automatically.
+              </p>
+            ) : HEALTH_EXPLANATIONS[data.health] ? (
+              <p className="text-sm">{HEALTH_EXPLANATIONS[data.health]}</p>
+            ) : null}
             <p className="text-sm">
               Last successful sync:{" "}
               {data.lastSuccessfulSync ? (
@@ -114,9 +120,11 @@ export function NetworkStatusView({
                     </>
                   ) : null}
                 </p>
-                <Button variant="outline" onClick={() => onRetrySync?.()}>
-                  Retry sync
-                </Button>
+                {onRetrySync ? (
+                  <Button variant="outline" onClick={() => onRetrySync()}>
+                    Retry sync
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </>

@@ -37,7 +37,7 @@ describe("DirectoryView (UI-028, TP-W4-027, TP-W4-031)", () => {
 
   test("an error shows a retry and the request reference", () => {
     const html = renderToStaticMarkup(
-      <DirectoryView state={{ kind: "error", ref: "req_123" }} countries={COUNTRIES} />,
+      <DirectoryView state={{ kind: "error", ref: "req_123" }} countries={COUNTRIES} onRetry={() => {}} />,
     );
     expect(html).toContain('role="alert"');
     expect(html).toContain("load programs.");
@@ -72,12 +72,16 @@ describe("DirectoryView (UI-028, TP-W4-027, TP-W4-031)", () => {
   });
 
   test("the loaded count is a live status, so a change is announced", () => {
-    const html = renderToStaticMarkup(<DirectoryView state={ready({ rows })} countries={COUNTRIES} />);
+    const html = renderToStaticMarkup(
+      <DirectoryView state={ready({ rows })} countries={COUNTRIES} onOpen={() => {}} />,
+    );
     expect(html).toMatch(/<p role="status"[^>]*>3 programs shown<\/p>/);
   });
 
   test("each row shows its status as text, and only eligible programs say Open", () => {
-    const html = renderToStaticMarkup(<DirectoryView state={ready({ rows })} countries={COUNTRIES} />);
+    const html = renderToStaticMarkup(
+      <DirectoryView state={ready({ rows })} countries={COUNTRIES} onOpen={() => {}} />,
+    );
     expect(html).toContain("Eligible");
     expect(html).toContain("Not eligible: The program does not allow your country");
     expect(html).toContain("Unknown");
@@ -105,7 +109,9 @@ describe("DirectoryView (UI-028, TP-W4-027, TP-W4-031)", () => {
   });
 
   test("filters are labelled controls a keyboard user can reach", () => {
-    const html = renderToStaticMarkup(<DirectoryView state={ready({ rows })} countries={COUNTRIES} />);
+    const html = renderToStaticMarkup(
+      <DirectoryView state={ready({ rows })} countries={COUNTRIES} onOpen={() => {}} />,
+    );
     expect(html).toContain('for="directory-search"');
     expect(html).toContain('for="directory-country"');
     expect(html).toContain('type="checkbox"');
