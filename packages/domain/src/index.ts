@@ -1,5 +1,6 @@
 export * from "./access/organization";
 export * from "./access/permissions";
+export * from "./catalog/source-fact";
 export * from "./errors/codes";
 export * from "./ids/ids";
 export type { CurrencyCode } from "./money/iso4217";
