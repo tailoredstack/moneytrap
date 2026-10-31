@@ -337,8 +337,17 @@ describe("[M3] network conformance", () => {
       // Case and surrounding space vary, so a regression that drops trimming or case folding changes an outcome.
       const geographies = ["US", "GB", "CA", "AU", "", " us ", "Us", "gb ", "   "];
       const channels = ["website", "sms", "email", "", " WEBSITE", "Sms ", " "];
+      // Entries in the program's and the contract's lists vary too, so a regression that drops trimming or case folding
+      // on the list side changes an outcome. Both lists keep the original values, so the grid above is unchanged.
+      const messyProgram: ProgramFactPayload = {
+        ...program,
+        countries: [" us ", "Ca"],
+        channels: ["Website ", "EMAIL"],
+      };
+      const messyContractCountries = [...contractCountries, [" us ", "Gb"]];
+      const messyContractChannels = [...contractChannels, ["Website ", " SMS"]];
       for (let i = 0; i < GENERATED_CASES; i++) {
-        assertSweepCase(program, {
+        assertSweepCase(pick(random, [program, messyProgram]), {
           publisher: pick(random, statuses),
           property: pick(random, statuses),
           approval: pick(random, approvals),
@@ -346,8 +355,8 @@ describe("[M3] network conformance", () => {
           geography: pick(random, geographies),
           channel: pick(random, channels),
           consent: pick(random, consents),
-          contractCountries: pick(random, contractCountries),
-          contractChannels: pick(random, contractChannels),
+          contractCountries: pick(random, messyContractCountries),
+          contractChannels: pick(random, messyContractChannels),
         });
         cases++;
       }
