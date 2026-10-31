@@ -28,6 +28,17 @@ export function buildRouteView(link: Link, eligible: boolean): RouteView {
   };
 }
 
+// A Redis call that outlives this is treated as a cache outage, so a stalled cache cannot hold the redirect.
+const CACHE_DEADLINE_MS = 100;
+
+function withDeadline<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("route cache deadline exceeded")), CACHE_DEADLINE_MS);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
 // Reads a route view for a token. A fresh cache entry answers without a source read. Otherwise the cache clock is read
 // before the source read starts, so the stored loadedAt bounds the entry's life (ADR-007 rule 1). Redis or Postgres
 // failures never produce a view: a Redis failure falls back to the source, and a source failure is unavailable.
@@ -36,7 +47,7 @@ export async function readRouteView(
   token: string,
 ): Promise<RouteViewResult> {
   try {
-    const cached = await deps.cache.get(token);
+    const cached = await withDeadline(deps.cache.get(token));
     if (cached) return { kind: "found", view: cached };
   } catch {
     // A cache outage requires a source read. The redirect still answers.
@@ -44,7 +55,7 @@ export async function readRouteView(
 
   let loadedAt: number | null = null;
   try {
-    loadedAt = await deps.cache.readServerTime();
+    loadedAt = await withDeadline(deps.cache.readServerTime());
   } catch {
     // Without a cache clock the view is not stored, so the next request reads the source again.
   }
@@ -59,11 +70,8 @@ export async function readRouteView(
 
   const view = buildRouteView(record.link, record.eligible);
   if (loadedAt !== null) {
-    try {
-      await deps.cache.put(token, view, loadedAt);
-    } catch {
-      // Postgres stays authoritative. The view is returned either way.
-    }
+    // Not awaited, so a slow cache write never delays the response. A failed write leaves Postgres authoritative.
+    withDeadline(deps.cache.put(token, view, loadedAt)).catch(() => {});
   }
   return { kind: "found", view };
 }

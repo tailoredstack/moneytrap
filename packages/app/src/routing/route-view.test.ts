@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createLink, type Id, type Link } from "@moneytrap/domain";
 import type { RouteCache } from "../ports/route-cache";
 import type { RouteSource, RouteSourceRecord } from "../ports/route-source";
-import { buildRouteView, readRouteView } from "./route-view";
+import { buildRouteView, type RouteView, readRouteView } from "./route-view";
 
 const HOSTS = ["shop.example.com"];
 
@@ -143,6 +143,20 @@ describe("readRouteView", () => {
     const result = await readRouteView({ cache, source }, "tok");
     expect(result.kind).toBe("found");
     expect(cacheCalls).not.toContain("put");
+  });
+
+  test("does not wait past the cache deadline when a Redis read hangs", async () => {
+    const hanging: RouteCache = {
+      readServerTime: () => new Promise<number>(() => {}),
+      get: () => new Promise<RouteView | null>(() => {}),
+      async put() {},
+      async publishVersion() {},
+    };
+    const { source } = fakeSource({ link: link(), eligible: true });
+    const started = performance.now();
+    const result = await readRouteView({ cache: hanging, source }, "tok");
+    expect(result.kind).toBe("found");
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   test("answers when the cache write fails", async () => {

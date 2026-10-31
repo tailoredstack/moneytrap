@@ -85,25 +85,35 @@ describeWithRedis("route cache", () => {
       version: 1,
     };
     let record: RouteSourceRecord = { link: active, eligible: true };
+    // Resolves once the first request has read the source, so the revocation lands after that read and before its write.
+    let sourceRead!: () => void;
+    const readSeen = new Promise<void>((resolve) => {
+      sourceRead = resolve;
+    });
     const source: RouteSource = {
       async findByToken() {
+        sourceRead();
         return record;
       },
     };
-    // The first request reads the source while the link is active, then its cache write stalls past the bound.
+    // The cache write stalls for 3.1 s after the source read has captured loadedAt, and then lands.
+    let landed: Promise<void> = Promise.resolve();
     const stalled: RouteCache = {
       ...cache,
-      async put(key, value, loadedAt) {
-        await sleep(3100);
-        await cache.put(key, value, loadedAt);
+      put(key, value, loadedAt) {
+        landed = (async () => {
+          await sleep(3100);
+          await cache.put(key, value, loadedAt);
+        })();
+        return landed;
       },
     };
     const allowed = readRouteView({ cache: stalled, source }, token);
-    // The link is revoked while that write is stalled.
-    await sleep(50);
+    await readSeen;
     record = { link: { ...active, status: "revoked", version: 2 }, eligible: true };
     const revokedAt = performance.now();
-    await allowed;
+    expect((await allowed).kind).toBe("found");
+    await landed;
     const denied = await readRouteView({ cache, source }, token);
     expect(denied).toMatchObject({ kind: "found", view: { decision: "deny", state: "revoked", version: 2 } });
     expect(performance.now() - revokedAt).toBeLessThan(5000);
