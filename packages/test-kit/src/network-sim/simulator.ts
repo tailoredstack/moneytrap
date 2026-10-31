@@ -15,7 +15,7 @@ import type {
   TransactionRecord,
   VerifiedNotification,
 } from "@moneytrap/app/src/ports/network-connector";
-import type { ConnectorOperation } from "@moneytrap/domain";
+import { type ConnectorOperation, Money } from "@moneytrap/domain";
 import { FIXTURE_NAMES, type FixtureName, RECORDED_FIXTURES, type RecordedFixture } from "./fixtures";
 
 export interface ConnectorRequest {
@@ -24,10 +24,12 @@ export interface ConnectorRequest {
 }
 
 const RETRY_AFTER_SECONDS = 30;
+const CURSOR_PREFIX = "sim1.";
 
 /**
  * Replays a recorded fixture through the connector port. Every answer is a pure function of the fixture and the
- * request, so the same calls always return the same results. Each request is logged in `requests`.
+ * request, so the same calls always return the same results. Each response is a fresh copy, so a caller that mutates
+ * it cannot change later answers. Each request is logged in `requests`.
  */
 export class RecordedNetworkSimulator implements NetworkConnector {
   readonly requests: ConnectorRequest[] = [];
@@ -49,12 +51,12 @@ export class RecordedNetworkSimulator implements NetworkConnector {
     if (!this.fixture.credentialEnabled) return { ok: false, failure: { state: "not_authorized" } };
     return {
       ok: true,
-      value: { capabilities: this.fixture.capabilities, rateLimit: null, permittedScopes: ["read"] },
+      value: copy({ capabilities: this.fixture.capabilities, rateLimit: null, permittedScopes: ["read"] }),
     };
   }
 
   async discoverAdvertisers(input: { cursor: string | null }): Promise<ConnectorResult<Page<AdvertiserRecord>>> {
-    return this.page("discover_advertisers", input.cursor, this.fixture.advertisers);
+    return this.page("discover_advertisers", "", input.cursor, this.fixture.advertisers);
   }
 
   async discoverPrograms(input: {
@@ -63,7 +65,7 @@ export class RecordedNetworkSimulator implements NetworkConnector {
   }): Promise<ConnectorResult<Page<ProgramRecord>>> {
     const programs = this.fixture.programs.filter((program) => program.advertiserSourceId === input.advertiserSourceId);
     // A malformed program is passed through as recorded; the catalog sync (WP-4.6) rejects it.
-    return this.page("discover_programs", input.cursor, programs as ProgramRecord[]);
+    return this.page("discover_programs", input.advertiserSourceId, input.cursor, programs as ProgramRecord[]);
   }
 
   async resolveTrackingDestination(input: TrackingDestinationRequest): Promise<ConnectorResult<TrackingLink>> {
@@ -82,6 +84,7 @@ export class RecordedNetworkSimulator implements NetworkConnector {
   ): Promise<ConnectorResult<Page<TransactionRecord>>> {
     return this.page(
       "list_transactions",
+      rangeScope(input),
       input.cursor,
       this.fixture.transactions.filter((item) => inRange(item.occurredAt, input)),
     );
@@ -92,6 +95,7 @@ export class RecordedNetworkSimulator implements NetworkConnector {
   ): Promise<ConnectorResult<Page<AdjustmentRecord>>> {
     return this.page(
       "list_adjustments",
+      rangeScope(input),
       input.cursor,
       this.fixture.adjustments.filter((item) => inRange(item.occurredAt, input)),
     );
@@ -102,6 +106,7 @@ export class RecordedNetworkSimulator implements NetworkConnector {
   ): Promise<ConnectorResult<Page<SettlementEvidenceRecord>>> {
     return this.page(
       "retrieve_settlement_evidence",
+      rangeScope(input),
       input.cursor,
       this.fixture.settlements.filter((item) => inRange(item.paidAt, input)),
     );
@@ -115,15 +120,21 @@ export class RecordedNetworkSimulator implements NetworkConnector {
     if (input.headers["x-sim-signature"] !== this.fixture.notification.signature) {
       return { ok: false, failure: { state: "not_authorized" } };
     }
-    return { ok: true, value: this.fixture.notification.event };
+    return { ok: true, value: copy(this.fixture.notification.event) };
   }
 
-  private page<T>(operation: ConnectorOperation, cursor: string | null, items: T[]): ConnectorResult<Page<T>> {
+  // `scope` is the query the cursor belongs to (advertiser, or time range). A cursor only resumes the query it came from.
+  private page<T>(
+    operation: ConnectorOperation,
+    scope: string,
+    cursor: string | null,
+    items: T[],
+  ): ConnectorResult<Page<T>> {
     this.requests.push({ operation, cursor });
     const failure = this.gate(operation);
     if (failure) return { ok: false, failure };
 
-    const offset = parseCursor(cursor);
+    const offset = parseCursor(cursor, { operation, scope, pageSize: this.fixture.pageSize, length: items.length });
     const interrupt = this.fixture.interruptOnce;
     if (!this.interruptFired && interrupt?.operation === operation && interrupt.atOffset === offset) {
       this.interruptFired = true;
@@ -131,10 +142,10 @@ export class RecordedNetworkSimulator implements NetworkConnector {
     }
 
     const end = offset + this.fixture.pageSize;
-    const nextCursor = end < items.length ? String(end) : null;
+    const nextCursor = end < items.length ? issueCursor(operation, scope, end) : null;
     return {
       ok: true,
-      value: { items: items.slice(offset, end), nextCursor, watermark: this.fixture.watermark },
+      value: copy({ items: items.slice(offset, end), nextCursor, watermark: this.fixture.watermark }),
     };
   }
 
@@ -154,9 +165,48 @@ function inRange(at: Date, range: TimeRange): boolean {
   return at.getTime() >= range.from.getTime() && at.getTime() < range.to.getTime();
 }
 
-// Cursors are item offsets. Anything else was not issued by this simulator, so it is a caller bug and throws.
-function parseCursor(cursor: string | null): number {
+function rangeScope(range: TimeRange): string {
+  return `${range.from.getTime()}..${range.to.getTime()}`;
+}
+
+// Cursors are opaque tokens that name the operation, the query scope, and the item offset. A token from another query
+// or operation, a fabricated one, or one that is not a page boundary of this fixture is a caller bug, so it throws.
+function issueCursor(operation: ConnectorOperation, scope: string, offset: number): string {
+  const payload = JSON.stringify([operation, scope, offset]);
+  return `${CURSOR_PREFIX}${Buffer.from(payload, "utf8").toString("base64url")}`;
+}
+
+function parseCursor(
+  cursor: string | null,
+  expected: { operation: ConnectorOperation; scope: string; pageSize: number; length: number },
+): number {
   if (cursor === null) return 0;
-  if (!/^\d+$/.test(cursor)) throw new RangeError(`invalid simulator cursor ${cursor}`);
-  return Number(cursor);
+  const invalid = () => new RangeError("cursor was not issued for this query");
+  if (!cursor.startsWith(CURSOR_PREFIX)) throw invalid();
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(Buffer.from(cursor.slice(CURSOR_PREFIX.length), "base64url").toString("utf8"));
+  } catch {
+    throw invalid();
+  }
+  if (!Array.isArray(decoded) || decoded.length !== 3) throw invalid();
+  const [operation, scope, offset] = decoded;
+  if (operation !== expected.operation || scope !== expected.scope) throw invalid();
+  if (!Number.isSafeInteger(offset) || offset < 0) throw invalid();
+  const onPageBoundary = offset % expected.pageSize === 0;
+  const withinItems = offset === 0 || offset < expected.length;
+  if (!onPageBoundary || !withinItems) throw invalid();
+  return offset;
+}
+
+// Deep copy for the value shapes the fixtures use: plain objects, arrays, Dates, and Money. Returned values never share
+// a mutable object with the fixture or with an earlier response.
+function copy<T>(value: T): T {
+  if (value instanceof Date) return new Date(value.getTime()) as T;
+  if (value instanceof Money) return Money.of(value.amount, value.currency) as T;
+  if (Array.isArray(value)) return value.map(copy) as T;
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, field]) => [key, copy(field)])) as T;
+  }
+  return value;
 }
