@@ -9,6 +9,7 @@ const publisher = {
 };
 
 const write = () => ({
+  expectedStatus: "in_review" as const,
   publisher,
   audit: {
     id: fixtureId("audit"),
@@ -34,6 +35,14 @@ describe("FakePublisherReviewStore", () => {
     await store.recordDecision(write());
     expect(store.records[0]?.publisher.status).toBe("approved");
     expect(store.audits).toHaveLength(1);
+  });
+
+  test("a write against a status the publisher no longer holds applies nothing", async () => {
+    const store = seeded();
+    store.records = [{ ...store.records[0]!, publisher: { ...publisher, status: "suspended" } }];
+    expect(await store.recordDecision(write())).toBe(false);
+    expect(store.records[0]?.publisher.status).toBe("suspended");
+    expect(store.audits).toHaveLength(0);
   });
 
   test("a failed audit write leaves the publisher in review", async () => {

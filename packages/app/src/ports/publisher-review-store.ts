@@ -1,4 +1,4 @@
-import type { Id, Publisher } from "@moneytrap/domain";
+import type { Id, Publisher, PublisherStatus } from "@moneytrap/domain";
 
 export interface PublisherReviewRecord {
   publisher: Publisher;
@@ -18,13 +18,16 @@ export interface ReviewDecisionAudit {
 }
 
 export interface ReviewDecisionWrite {
+  // The status the publisher must still hold for the write to apply. A changed status writes nothing.
+  expectedStatus: PublisherStatus;
   publisher: Publisher;
   audit: ReviewDecisionAudit;
 }
 
-// The adapter must write the new publisher status and the audit row in one transaction: either both exist
-// afterwards or neither does (TP-W3-006). A failed audit insert leaves the publisher in review.
+// The adapter writes the publisher status and the audit row in one transaction: either both exist afterwards or
+// neither does (TP-W3-006). recordDecision returns false, and writes nothing, when the publisher no longer holds
+// expectedStatus.
 export interface PublisherReviewStore {
   find(id: Id<"publisher">): Promise<PublisherReviewRecord | null>;
-  recordDecision(write: ReviewDecisionWrite): Promise<void>;
+  recordDecision(write: ReviewDecisionWrite): Promise<boolean>;
 }

@@ -59,12 +59,15 @@ class MemoryReviewStore implements PublisherReviewStore {
     return this.records.find((r) => r.publisher.id === id) ?? null;
   }
 
-  async recordDecision(write: ReviewDecisionWrite): Promise<void> {
+  async recordDecision(write: ReviewDecisionWrite): Promise<boolean> {
     // Stage the status change, then fail before committing if the audit insert fails.
+    const current = this.records.find((r) => r.publisher.id === write.publisher.id);
+    if (current?.publisher.status !== write.expectedStatus) return false;
     const staged = { ...write.publisher };
     if (this.failAudit) throw new Error("audit insert failed");
     this.records = this.records.map((r) => (r.publisher.id === staged.id ? { ...r, publisher: staged } : r));
     this.writes.push(write);
+    return true;
   }
 
   statusOf(): PublisherStatus | undefined {
@@ -118,6 +121,7 @@ describe("decideReview: approval and rejection (TP-W3-006)", () => {
     expect(store.statusOf()).toBe("approved");
     expect(store.writes).toEqual([
       {
+        expectedStatus: "in_review",
         publisher: expect.objectContaining({ id: publisherId, status: "approved" }),
         audit: {
           id: auditId,
@@ -149,6 +153,18 @@ describe("decideReview: approval and rejection (TP-W3-006)", () => {
       decideReview(ctxFor(reviewerId), store, input({ decision: "approve", reason: "DNS ok" })),
     ).rejects.toThrow("audit insert failed");
     expect(store.statusOf()).toBe("in_review");
+    expect(store.writes).toHaveLength(0);
+  });
+
+  test("a publisher that another writer moved after it was read is STATE_CONFLICT and nothing is written", async () => {
+    const store = storeWith("in_review");
+    // Simulates a concurrent writer: this action reads the stale in_review snapshot, but the stored row has moved on.
+    const stale = store.records[0]!;
+    store.records = [{ ...stale, publisher: { ...stale.publisher, status: "suspended" } }];
+    store.find = async () => stale;
+    const result = await decideReview(ctxFor(reviewerId), store, input({ decision: "approve", reason: "DNS ok" }));
+
+    expect(result).toEqual({ ok: false, code: "STATE_CONFLICT" });
     expect(store.writes).toHaveLength(0);
   });
 

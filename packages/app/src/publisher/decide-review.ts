@@ -50,7 +50,8 @@ export async function decideReview(
     parsed.decision === "approve" ? approvePublisher(record.publisher) : rejectPublisher(record.publisher);
   if (!transition.ok) return { ok: false, code: "STATE_CONFLICT" };
 
-  await store.recordDecision({
+  const applied = await store.recordDecision({
+    expectedStatus: record.publisher.status,
     publisher: transition.value,
     audit: {
       id: ctx.ids.next("audit"),
@@ -63,6 +64,8 @@ export async function decideReview(
       occurredAt: ctx.clock.now(),
     },
   });
+  // Another writer moved the publisher after it was read. Nothing was written, so the caller must reload and retry.
+  if (!applied) return { ok: false, code: "STATE_CONFLICT" };
 
   return { ok: true, value: { status: parsed.decision === "approve" ? "approved" : "rejected" } };
 }
