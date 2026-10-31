@@ -21,7 +21,7 @@ const click = (dedupKey: string, overrides: Partial<ClickObservation> = {}): Cli
   ...overrides,
 });
 
-describe("record click (TP-W5-032 to TP-W5-035, WP-5.8)", () => {
+describe("record click (TP-W5-032, TP-W5-033, WP-5.8; 034 and 035 are in the Postgres suite)", () => {
   test("one click leaves one fact (TP-W5-032)", async () => {
     const store = new MemoryClickStore();
     expect(await recordClick(store, click("click:a"))).toBe("recorded");
