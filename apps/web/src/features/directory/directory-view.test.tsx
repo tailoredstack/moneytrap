@@ -85,6 +85,7 @@ describe("DirectoryView (UI-028, TP-W4-027, TP-W4-031)", () => {
     expect(html).toContain("Eligible");
     expect(html).toContain("Not eligible: The program does not allow your country");
     expect(html).toContain("Unknown");
+    expect(html).toContain("None listed");
     expect(html).toMatch(/<button[^>]*aria-label="Open Acme Store"[^>]*>Open<\/button>/);
     expect(html).toMatch(/<button[^>]*aria-label="Why\? Foo Shoes"[^>]*>Why\?<\/button>/);
     expect(html).toMatch(/<button[^>]*aria-label="Why\? Bar Travel"[^>]*>Why\?<\/button>/);
@@ -106,6 +107,23 @@ describe("DirectoryView (UI-028, TP-W4-027, TP-W4-031)", () => {
   test("the last page has no load-more control", () => {
     const html = renderToStaticMarkup(<DirectoryView state={ready({ rows, hasMore: false })} countries={COUNTRIES} />);
     expect(html).not.toContain("Load more");
+  });
+
+  test("a filter value the list does not offer is still shown in the select", () => {
+    const html = renderToStaticMarkup(
+      <DirectoryView
+        state={ready({ rows })}
+        countries={COUNTRIES}
+        filters={{ q: "", country: "DE", eligibleOnly: false }}
+        onFiltersChange={() => {}}
+      />,
+    );
+    expect(html).toMatch(/<option value="DE"[^>]*selected[^>]*>DE<\/option>/);
+  });
+
+  test("filters are disabled when no handler is passed, so they cannot appear to work", () => {
+    const html = renderToStaticMarkup(<DirectoryView state={ready({ rows })} countries={COUNTRIES} />);
+    expect(html).toMatch(/<input[^>]*id="directory-search"[^>]*disabled/);
   });
 
   test("filters are labelled controls a keyboard user can reach", () => {

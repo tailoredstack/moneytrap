@@ -69,6 +69,8 @@ export function NetworkStatusView({
               <p className="text-sm">
                 The network did not answer, and no sync has succeeded yet. Sync retries automatically.
               </p>
+            ) : data.health === "not_authorized" && !ops ? (
+              <p className="text-sm">The network rejected this credential. Ask your operations team to check it.</p>
             ) : HEALTH_EXPLANATIONS[data.health] ? (
               <p className="text-sm">{HEALTH_EXPLANATIONS[data.health]}</p>
             ) : null}

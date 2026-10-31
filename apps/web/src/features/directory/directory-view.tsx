@@ -42,6 +42,9 @@ export function DirectoryView({
 }) {
   const filtered = filters.q !== "" || filters.country !== "" || filters.eligibleOnly;
   const change = (patch: Partial<DirectoryFilters>) => onFiltersChange?.({ ...filters, ...patch });
+  // A filter value the list does not offer is still shown, so the select never claims "All" while rows are filtered.
+  const countryOptions =
+    filters.country !== "" && !countries.includes(filters.country) ? [...countries, filters.country] : countries;
 
   return (
     <section className="max-w-4xl space-y-4">
@@ -53,6 +56,7 @@ export function DirectoryView({
             id="directory-search"
             type="search"
             value={filters.q}
+            disabled={!onFiltersChange}
             onChange={(event) => change({ q: event.target.value })}
             className="w-64"
           />
@@ -62,11 +66,12 @@ export function DirectoryView({
           <select
             id="directory-country"
             value={filters.country}
+            disabled={!onFiltersChange}
             onChange={(event) => change({ country: event.target.value })}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           >
             <option value="">All</option>
-            {countries.map((code) => (
+            {countryOptions.map((code) => (
               <option key={code} value={code}>
                 {code}
               </option>
@@ -76,6 +81,7 @@ export function DirectoryView({
         <label className="flex h-9 items-center gap-2 text-sm">
           <input
             type="checkbox"
+            disabled={!onFiltersChange}
             checked={filters.eligibleOnly}
             onChange={(event) => change({ eligibleOnly: event.target.checked })}
           />
@@ -117,7 +123,7 @@ export function DirectoryView({
                   {data.rows.map((row) => (
                     <tr key={row.id}>
                       <td>{row.name}</td>
-                      <td>{row.countries.join(", ")}</td>
+                      <td>{row.countries.length > 0 ? row.countries.join(", ") : "None listed"}</td>
                       <td>{statusText(row.decision)}</td>
                       <td>
                         {onOpen ? (
