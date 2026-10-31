@@ -76,13 +76,14 @@ export const platform: Migration = {
       .execute(db);
     await sql`grant select, insert on table audit_logs to ${sql.id(AUDIT_ROLE)}`.execute(db);
     await sql`revoke update, delete, truncate on table audit_logs from ${sql.id(AUDIT_ROLE)}`.execute(db);
+    await sql`revoke update, delete, truncate on table audit_logs from public`.execute(db);
   },
 
+  // The role is cluster-wide and may be shared with other databases, so down() leaves it in place.
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable("audit_logs").execute();
     await db.schema.dropTable("inbox_processed_events").execute();
     await db.schema.dropTable("outbox_events").execute();
     await db.schema.dropTable("idempotency_requests").execute();
-    await sql`drop role if exists ${sql.id(AUDIT_ROLE)}`.execute(db);
   },
 };
