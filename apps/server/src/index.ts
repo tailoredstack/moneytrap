@@ -1,8 +1,12 @@
 import { migrate } from "@moneytrap/adapter-postgres";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
+import { NotifyDev } from "./adapters/notify-dev";
 import { createApp } from "./app";
 import { serveWebAsset } from "./assets";
+import { createAuth } from "./auth/config";
+import { notifierMailer } from "./auth/mailer";
+import { authRoutes } from "./http/auth";
 import { randomIds, systemClock } from "./system";
 
 // The only runtime inputs are environment variables and argv. Migrations are not run on boot; `--migrate` runs them
@@ -24,11 +28,27 @@ async function runMigrations(): Promise<void> {
   }
 }
 
+function requiredEnv(name: string): string {
+  const value = Bun.env[name];
+  if (!value) throw new Error(`${name} is required to serve`);
+  return value;
+}
+
 function serve(): void {
   const port = Number(Bun.env.PORT ?? 3000);
   const hostname = Bun.env.HOST ?? "127.0.0.1";
+  // The pool connects on first use, so boot does not need a live database.
+  const auth = createAuth({
+    pool: new Pool({ connectionString: requiredEnv("DATABASE_URL") }),
+    secret: requiredEnv("BETTER_AUTH_SECRET"),
+    baseURL: requiredEnv("BASE_URL"),
+    // Dev sink: messages stay in memory until the production Notifier adapter lands. Verification and
+    // reset links are not delivered outside this process yet.
+    mailer: notifierMailer(new NotifyDev()),
+  });
 
   createApp({ clock: systemClock, ids: randomIds, readiness: [] })
+    .use(authRoutes(auth))
     .get("/api/health", () => ({ status: "ok" }))
     .get("/*", ({ request }) => {
       const { pathname } = new URL(request.url);

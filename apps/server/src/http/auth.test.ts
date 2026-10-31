@@ -16,6 +16,16 @@ describe("/api/auth mount", () => {
     expect(await post.json()).toEqual({ ok: true, path: "/api/auth/sign-up/email" });
   });
 
+  test("is not shadowed by a GET catch-all registered after it, as in serve()", async () => {
+    const app = new Elysia().use(authRoutes({ handler })).get("/*", () => new Response("shell", { status: 404 }));
+
+    const get = await app.handle(new Request("http://localhost/api/auth/get-session"));
+    const post = await app.handle(new Request("http://localhost/api/auth/sign-up/email", { method: "POST" }));
+
+    expect(await get.json()).toEqual({ ok: true, path: "/api/auth/get-session" });
+    expect(await post.json()).toEqual({ ok: true, path: "/api/auth/sign-up/email" });
+  });
+
   test("does not claim paths outside /api/auth", async () => {
     const app = new Elysia().use(authRoutes({ handler }));
 

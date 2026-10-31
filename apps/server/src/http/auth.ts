@@ -7,5 +7,14 @@ export type AuthHandler = { handler: (request: Request) => Response | Promise<Re
 // Forwards every method under /api/auth to Better Auth. Its own routes handle sign-up, sessions,
 // verification, reset, two-factor, organizations, and API keys.
 export function authRoutes(auth: AuthHandler) {
-  return new Elysia({ name: "auth" }).all("/api/auth/*", ({ request }) => auth.handler(request));
+  const forward = ({ request }: { request: Request }) => auth.handler(request);
+  // One route per method. In Elysia 2 a method-specific catch-all such as GET /* wins over an `.all` wildcard,
+  // so `.all` would let the app shell swallow GET /api/auth/* requests.
+  return new Elysia({ name: "auth" })
+    .get("/api/auth/*", forward)
+    .post("/api/auth/*", forward)
+    .put("/api/auth/*", forward)
+    .patch("/api/auth/*", forward)
+    .delete("/api/auth/*", forward)
+    .options("/api/auth/*", forward);
 }

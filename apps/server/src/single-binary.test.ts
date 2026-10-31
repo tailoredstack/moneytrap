@@ -35,7 +35,14 @@ afterAll(async () => {
 async function startServer(): Promise<string> {
   serverProcess = Bun.spawn([cleanBinary], {
     cwd: cleanDir,
-    env: { PORT: String(port), PATH: "/usr/bin:/bin" },
+    env: {
+      PORT: String(port),
+      PATH: "/usr/bin:/bin",
+      // Better Auth config is required at boot. The pool connects lazily, so this database is never reached here.
+      DATABASE_URL: "postgres://unused.invalid:5432/moneytrap",
+      BETTER_AUTH_SECRET: "binary-test-secret-at-least-32-characters",
+      BASE_URL: `http://127.0.0.1:${port}`,
+    },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -58,6 +65,10 @@ test("compiled binary serves the API, the web shell, and hashed assets", async (
   const health = await fetch(`${base}/api/health`);
   expect(health.status).toBe(200);
   expect(health.headers.get("x-request-id")).toBeTruthy();
+
+  // The request reaches Better Auth, not the shell. With no database here it answers 500, never 404.
+  const session = await fetch(`${base}/api/auth/get-session`);
+  expect(session.status).not.toBe(404);
   expect(await health.json()).toEqual({ status: "ok" });
 
   const shell = await fetch(`${base}/`);
