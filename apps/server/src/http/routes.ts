@@ -3,6 +3,7 @@ import { serveWebAsset } from "../assets";
 import type { createAuth } from "../auth/config";
 import { type AuthHandler, authRoutes } from "./auth";
 import { guard } from "./guards/enforce";
+import { type ReportWiring, reportRoutes } from "./reports";
 import { sessionRoutes } from "./sessions";
 
 // Every route the server serves, apart from the health probes that createApp mounts. Each one declares its guard
@@ -10,10 +11,12 @@ import { sessionRoutes } from "./sessions";
 export function apiRoutes(
   auth: AuthHandler & Pick<ReturnType<typeof createAuth>, "api">,
   options: { trustProxy: boolean } = { trustProxy: true },
+  reports?: ReportWiring,
 ) {
   return new Elysia({ name: "api" })
     .use(authRoutes(auth, options))
     .use(sessionRoutes(auth))
+    .use(reportRoutes(reports))
     .get("/api/health", guard("GET /api/health"), () => ({ status: "ok" }))
     .get("/*", guard("GET /*"), ({ request }) => {
       const { pathname } = new URL(request.url);

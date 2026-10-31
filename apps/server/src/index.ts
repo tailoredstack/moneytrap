@@ -1,4 +1,4 @@
-import { migrate } from "@moneytrap/adapter-postgres";
+import { createClickReportStore, createMembershipReader, migrate } from "@moneytrap/adapter-postgres";
 import { createRedisConnection, createRedisRateLimitCounter } from "@moneytrap/adapter-redis";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
@@ -7,6 +7,7 @@ import { createApp } from "./app";
 import { createAuth } from "./auth/config";
 import { notifierMailer } from "./auth/mailer";
 import { rateLimitPolicy } from "./auth/rate-limit";
+import { authenticate } from "./http/auth";
 import { apiRoutes } from "./http/routes";
 import { randomIds, systemClock } from "./system";
 
@@ -59,8 +60,18 @@ function serve(): void {
     mailer: notifierMailer(new NotifyDev()),
   });
 
+  // Reads for the report routes. They use their own pool, separate from Better Auth's.
+  const db = new Kysely<unknown>({
+    dialect: new PostgresDialect({ pool: new Pool({ connectionString: requiredEnv("DATABASE_URL") }) }),
+  });
+  const reports = {
+    clicks: createClickReportStore(db),
+    clock: systemClock,
+    principal: (headers: Headers) => authenticate(auth, headers, createMembershipReader(db)),
+  };
+
   createApp({ clock: systemClock, ids: randomIds, readiness: [] })
-    .use(apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }))
+    .use(apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }, reports))
     .listen({ hostname, port });
   console.log(`Listening on ${hostname}:${port}`);
 }
