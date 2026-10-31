@@ -164,7 +164,7 @@ describe("auth rate limits (WP-2.14)", () => {
       pool: new Pool({ connectionString: "postgres://unused.invalid/db" }),
       secret: "test-secret-at-least-32-characters-long",
       baseURL: "https://moneytrap.test",
-      mailer: { sendVerification: async () => {}, sendPasswordReset: async () => {} },
+      mailer: { sendVerification: async () => {}, sendPasswordReset: async () => {}, sendInvitation: async () => {} },
       rateLimitCounter: counter,
     };
 
