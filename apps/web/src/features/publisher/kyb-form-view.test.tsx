@@ -19,9 +19,10 @@ describe("validateKyb (UI-015)", () => {
 });
 
 describe("KybFormView (UI-015)", () => {
-  test("submit is disabled until the required fields are valid", () => {
+  test("submit is marked unavailable until the required fields are valid, but stays focusable", () => {
     const html = renderToStaticMarkup(<KybFormView values={{ legalName: "", country: "", businessType: null }} />);
-    expect(html).toMatch(/<button[^>]* disabled=""[^>]*>Submit for review<\/button>/);
+    expect(html).toMatch(/<button[^>]* aria-disabled="true"[^>]*>Submit for review<\/button>/);
+    expect(html).not.toMatch(/<button[^>]* disabled=""[^>]*>Submit for review<\/button>/);
   });
 
   test("an invalid submit shows the first error in a live region", () => {

@@ -1,5 +1,5 @@
 import { Button, Form, FormLabel, FormMessage, Input } from "@moneytrap/ui";
-import type { FormEvent } from "react";
+import { type FormEvent, useEffect, useRef } from "react";
 import { rateLimitMessage } from "./messages";
 
 // UI-007. The request reads the same whether or not the address has an account.
@@ -56,6 +56,11 @@ export function ResetPasswordView({
   retryAfterSeconds?: number | null;
   onSubmit?: (input: { newPassword: string; confirmation: string }) => void;
 }) {
+  const confirmationRef = useRef<HTMLInputElement>(null);
+  // A mismatch moves focus to the confirmation field, the one the user needs to correct.
+  useEffect(() => {
+    if (status === "mismatch") confirmationRef.current?.focus();
+  }, [status]);
   if (status === "expired") {
     return (
       <section className="max-w-sm space-y-3">
@@ -76,6 +81,7 @@ export function ResetPasswordView({
     );
   }
   const submitting = status === "submitting";
+  const mismatch = status === "mismatch";
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -101,9 +107,18 @@ export function ResetPasswordView({
         </div>
         <div className="space-y-1">
           <FormLabel htmlFor="reset-confirmation">Confirm</FormLabel>
-          <Input id="reset-confirmation" name="confirmation" type="password" autoComplete="new-password" required />
+          <Input
+            ref={confirmationRef}
+            id="reset-confirmation"
+            name="confirmation"
+            type="password"
+            autoComplete="new-password"
+            required
+            aria-invalid={mismatch}
+            aria-describedby={mismatch ? "reset-error" : undefined}
+          />
         </div>
-        <FormMessage>{resetMessage(status, retryAfterSeconds)}</FormMessage>
+        <FormMessage id="reset-error">{resetMessage(status, retryAfterSeconds)}</FormMessage>
         <Button type="submit" disabled={submitting}>
           Set password
         </Button>

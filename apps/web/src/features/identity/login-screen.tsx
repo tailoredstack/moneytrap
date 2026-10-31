@@ -1,5 +1,5 @@
 import { Button, Form, FormLabel, FormMessage, Input } from "@moneytrap/ui";
-import type { FormEvent } from "react";
+import { type FormEvent, useEffect, useRef } from "react";
 import { rateLimitMessage } from "./messages";
 
 // UI-003. A wrong password and an unknown email read the same. The password is never written back into the page.
@@ -17,6 +17,11 @@ export function LoginView({
   onSubmit?: (input: { email: string; password: string }) => void;
 }) {
   const submitting = status === "submitting";
+  const passwordRef = useRef<HTMLInputElement>(null);
+  // A failed sign-in moves focus to the password field, so the user can retype it without searching for it.
+  useEffect(() => {
+    if (status === "failed") passwordRef.current?.focus();
+  }, [status]);
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -37,9 +42,18 @@ export function LoginView({
         </div>
         <div className="space-y-1">
           <FormLabel htmlFor="login-password">Password</FormLabel>
-          <Input id="login-password" name="password" type="password" autoComplete="current-password" required />
+          <Input
+            ref={passwordRef}
+            id="login-password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            aria-invalid={status === "failed"}
+            aria-describedby={status === "failed" ? "login-error" : undefined}
+          />
         </div>
-        <FormMessage>{message}</FormMessage>
+        <FormMessage id="login-error">{message}</FormMessage>
         <div className="flex items-center gap-4">
           <Button type="submit" disabled={submitting}>
             Log in

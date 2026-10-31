@@ -15,6 +15,7 @@ export function AuditTable({ entries }: { entries: AuditEntry[] }) {
   }
   return (
     <table>
+      <caption className="sr-only">Review decisions, newest first</caption>
       <thead>
         <tr>
           <th scope="col">When</th>

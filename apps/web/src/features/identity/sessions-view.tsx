@@ -33,7 +33,12 @@ export function SessionsView({
             {session.current ? (
               <span className="text-muted-foreground">This session</span>
             ) : (
-              <Button variant="outline" size="sm" onClick={() => onRevoke?.(session.token)}>
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={`Revoke ${session.userAgent ?? "unknown device"} session from ${session.createdAt}`}
+                onClick={() => onRevoke?.(session.token)}
+              >
                 Revoke
               </Button>
             )}

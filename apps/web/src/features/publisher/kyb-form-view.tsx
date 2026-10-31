@@ -1,56 +1,102 @@
-import { Button } from "@moneytrap/ui";
+import { Button, FormMessage } from "@moneytrap/ui";
+import { type FormEvent, useRef, useState } from "react";
 import { type KybValues, validateKyb } from "./kyb-form";
 
-// SKELETONS §2.2 "KYB form". Errors are announced in a live region. Submit stays disabled until the form is valid.
+// SKELETONS §2.2 "KYB form". Each error sits under its field and the field points at it. Focus moves to the first
+// invalid field on every submit attempt. Submit stays focusable while invalid (aria-disabled), so keyboard users can
+// reach it and hear why it does nothing yet, instead of skipping over a disabled button.
+// `submitAttempted` shows the errors up front, for a parent that already tried to submit.
 export function KybFormView({
   values,
   submitAttempted = false,
   submitting = false,
   onDocumentSelected,
+  onSubmit,
 }: {
   values: KybValues;
   submitAttempted?: boolean | undefined;
   submitting?: boolean | undefined;
   onDocumentSelected?: ((file: File | null) => void) | undefined;
+  onSubmit?: (() => void) | undefined;
 }) {
   const errors = validateKyb(values);
-  const firstError = Object.values(errors)[0];
-  const canSubmit = Object.keys(errors).length === 0 && !submitting;
+  const invalid = Object.keys(errors).length > 0;
+  const [attempted, setAttempted] = useState(false);
+  const shown = submitAttempted || attempted ? errors : {};
+  const legalNameRef = useRef<HTMLInputElement>(null);
+  const countryRef = useRef<HTMLSelectElement>(null);
+  const businessTypeRef = useRef<HTMLInputElement>(null);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (invalid) {
+      // Every attempt re-focuses the first problem, even when the same field is still the first problem.
+      setAttempted(true);
+      (errors.legalName ? legalNameRef : errors.country ? countryRef : businessTypeRef).current?.focus();
+      return;
+    }
+    if (!submitting) onSubmit?.();
+  };
+
   return (
-    <form className="max-w-xl space-y-4 text-sm" noValidate>
+    <form className="max-w-xl space-y-4 text-sm" noValidate aria-busy={submitting} onSubmit={handleSubmit}>
       <h1 className="text-xl font-semibold">Business details</h1>
-      {submitAttempted && firstError ? (
-        <p role="alert" className="font-medium text-destructive">
-          {firstError}
-        </p>
-      ) : null}
-      <label className="block">
-        Legal name
-        <input className="mt-1 block w-full rounded-md border p-2" name="legalName" defaultValue={values.legalName} />
-      </label>
-      <label className="block">
-        Country
-        <select className="mt-1 block w-full rounded-md border p-2" name="country" defaultValue={values.country}>
+      <div className="block">
+        <label htmlFor="kyb-legal-name">Legal name</label>
+        <input
+          ref={legalNameRef}
+          id="kyb-legal-name"
+          className="mt-1 block w-full rounded-md border p-2"
+          name="legalName"
+          defaultValue={values.legalName}
+          aria-invalid={shown.legalName !== undefined}
+          aria-describedby={shown.legalName !== undefined ? "kyb-legal-name-error" : undefined}
+        />
+        <FormMessage id="kyb-legal-name-error">{shown.legalName}</FormMessage>
+      </div>
+      <div className="block">
+        <label htmlFor="kyb-country">Country</label>
+        <select
+          ref={countryRef}
+          id="kyb-country"
+          className="mt-1 block w-full rounded-md border p-2"
+          name="country"
+          defaultValue={values.country}
+          aria-invalid={shown.country !== undefined}
+          aria-describedby={shown.country !== undefined ? "kyb-country-error" : undefined}
+        >
           <option value="">Select a country</option>
           <option value="GB">United Kingdom</option>
           <option value="US">United States</option>
         </select>
-      </label>
+        <FormMessage id="kyb-country-error">{shown.country}</FormMessage>
+      </div>
       <fieldset>
         <legend>Business type</legend>
         <label className="mr-4">
           <input
+            ref={businessTypeRef}
             type="radio"
             name="businessType"
             value="individual"
             defaultChecked={values.businessType === "individual"}
+            aria-invalid={shown.businessType !== undefined}
+            aria-describedby={shown.businessType !== undefined ? "kyb-business-type-error" : undefined}
           />{" "}
           Individual
         </label>
         <label>
-          <input type="radio" name="businessType" value="company" defaultChecked={values.businessType === "company"} />{" "}
+          <input
+            type="radio"
+            name="businessType"
+            value="company"
+            defaultChecked={values.businessType === "company"}
+            aria-invalid={shown.businessType !== undefined}
+            aria-describedby={shown.businessType !== undefined ? "kyb-business-type-error" : undefined}
+          />{" "}
           Company
         </label>
+        <FormMessage id="kyb-business-type-error">{shown.businessType}</FormMessage>
       </fieldset>
       <label className="block">
         Document
@@ -63,7 +109,7 @@ export function KybFormView({
         />
         <span className="block text-muted-foreground">Stored securely; we keep a reference only.</span>
       </label>
-      <Button type="submit" disabled={!canSubmit}>
+      <Button type="submit" aria-disabled={invalid || undefined} disabled={submitting}>
         {submitting ? "Submitting…" : "Submit for review"}
       </Button>
     </form>

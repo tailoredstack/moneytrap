@@ -92,7 +92,13 @@ export function QueueView({
                   <TableCell>{typeLabel[row.type]}</TableCell>
                   <TableCell>{formatWaiting(row.waitingSince, now)}</TableCell>
                   <TableCell>
-                    <Button type="button" variant="outline" size="sm" onClick={() => onReview(row.id)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label={`Review ${row.label}`}
+                      onClick={() => onReview(row.id)}
+                    >
                       Review
                     </Button>
                   </TableCell>
@@ -101,12 +107,13 @@ export function QueueView({
             </TableBody>
           </Table>
           <div className="flex items-center justify-between text-sm">
-            <p>{`Showing ${page.from}–${page.to} of ${page.total}`}</p>
+            <p role="status">{`Showing ${page.from}–${page.to} of ${page.total}`}</p>
             <div className="flex gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
+                aria-label="Previous page"
                 disabled={!page.hasPrevious}
                 onClick={() => onPageChange(page.page - 1)}
               >
@@ -116,6 +123,7 @@ export function QueueView({
                 type="button"
                 variant="outline"
                 size="sm"
+                aria-label="Next page"
                 disabled={!page.hasNext}
                 onClick={() => onPageChange(page.page + 1)}
               >
@@ -178,7 +186,7 @@ export function DecisionView({
         </ul>
         {documentsHidden ? <p className="text-sm">Documents: restricted, not shown.</p> : null}
       </div>
-      <Form onSubmit={handleSubmit} className="rounded-md border p-4">
+      <Form onSubmit={handleSubmit} aria-busy={submitting} className="rounded-md border p-4">
         <h2 className="text-base font-medium">Decision</h2>
         <fieldset className="space-y-2">
           <legend className="sr-only">Decision</legend>
@@ -198,6 +206,7 @@ export function DecisionView({
             id="decision-reason"
             name="reason"
             ref={reasonRef}
+            aria-required="true"
             aria-invalid={reasonError !== undefined ? "true" : undefined}
             aria-describedby={reasonError !== undefined ? "decision-reason-error" : undefined}
           />
