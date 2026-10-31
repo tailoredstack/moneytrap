@@ -6,6 +6,7 @@ import {
   isMonetizable,
   markPropertyVerified,
   monetizationDenial,
+  reinstateProperty,
   rejectProperty,
   requestPropertyVerification,
   submitPropertyForReview,
@@ -171,5 +172,40 @@ describe("monetization is limited to approved properties (CT-006)", () => {
     if (!rejected.ok) throw new Error("fixture: reject failed");
     expect(isMonetizable(rejected.value)).toBe(false);
     expect(monetizationDenial(rejected.value)).toBe("not approved");
+  });
+});
+
+// WP-3.7: suspension stops monetization and reinstatement restores it, with no other path back to approved.
+describe("suspension and reinstatement (WP-3.7)", () => {
+  function suspendedProperty() {
+    const result = suspendProperty(approvedProperty());
+    if (!result.ok) throw new Error("fixture: suspend failed");
+    return result.value;
+  }
+
+  test("TP-W3-018 suspending an approved property makes it suspended and not monetizable", () => {
+    const suspended = suspendedProperty();
+    expect(suspended.status).toBe("suspended");
+    expect(isMonetizable(suspended)).toBe(false);
+    expect(monetizationDenial(suspended)).toBe("not approved");
+  });
+
+  test("TP-W3-022 reinstating a suspended property makes it approved and monetizable again", () => {
+    const reinstated = reinstateProperty(suspendedProperty());
+    expect(reinstated.ok && reinstated.value.status).toBe("approved");
+    if (!reinstated.ok) throw new Error("unexpected reinstate failure");
+    expect(isMonetizable(reinstated.value)).toBe(true);
+  });
+
+  test("only a suspended property can be reinstated; an approved one is STATE_CONFLICT", () => {
+    expect(reinstateProperty(approvedProperty())).toEqual({ ok: false, code: "STATE_CONFLICT" });
+    expect(reinstateProperty(reviewPendingProperty())).toEqual({ ok: false, code: "STATE_CONFLICT" });
+  });
+
+  test("reinstatement leaves the input property untouched", () => {
+    const suspended = suspendedProperty();
+    const before = { ...suspended };
+    reinstateProperty(suspended);
+    expect(suspended).toEqual(before);
   });
 });
