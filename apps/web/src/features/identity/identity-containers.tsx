@@ -14,6 +14,7 @@ import {
   registerAccount,
   requestPasswordReset,
   resetPassword,
+  revokeSession,
   signIn,
   validateRegistration,
   verifyRecoveryCode,
@@ -30,6 +31,7 @@ import {
 } from "./recovery-screens";
 import { type RegisterStatus, RegisterView } from "./register-screen";
 import { safeReturnTo } from "./return-to";
+import { SessionsView } from "./sessions-view";
 import { type StepUpMode, type StepUpStatus, StepUpView } from "./step-up-screen";
 
 // Each container owns the state of one screen and calls Better Auth through `authClient`. The views only render state.
@@ -174,6 +176,44 @@ export function ResetPasswordScreen({ token }: { token: string }) {
         setView({ status: "submitting", retryAfterSeconds: null });
         const outcome = await resetPassword(authClient, { token, newPassword });
         setView(resetViewState(outcome));
+      }}
+    />
+  );
+}
+
+export function SessionsScreen() {
+  const queryClient = useQueryClient();
+  const session = authClient.useSession();
+  const [error, setError] = useState<string | undefined>(undefined);
+  const sessions = useQuery({
+    queryKey: ["identity", "sessions"],
+    queryFn: async () => {
+      const { data, error: listError } = await authClient.listSessions();
+      if (listError || !data) throw new Error("sessions unavailable");
+      return data;
+    },
+  });
+  if (sessions.isError) return <SessionsView sessions={[]} error="Sessions could not be loaded. Try again." />;
+  if (!sessions.data) return <p role="status">Loading sessions…</p>;
+  const inUse = session.data?.session.token;
+  const rows = sessions.data.map((item) => ({
+    token: item.token,
+    createdAt: new Date(item.createdAt).toISOString(),
+    userAgent: item.userAgent ?? undefined,
+    current: item.token === inUse,
+  }));
+  return (
+    <SessionsView
+      sessions={rows}
+      error={error}
+      onRevoke={async (token) => {
+        const outcome = await revokeSession(authClient, token);
+        if (outcome.kind === "failed") {
+          setError("Could not end that session.");
+          return;
+        }
+        setError(undefined);
+        await queryClient.invalidateQueries({ queryKey: ["identity", "sessions"] });
       }}
     />
   );

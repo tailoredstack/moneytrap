@@ -17,6 +17,7 @@ import {
   RecoveryRequestScreen,
   RegisterScreen,
   ResetPasswordScreen,
+  SessionsScreen,
   StepUpScreen,
 } from "../features/identity/identity-containers";
 import { stepUpRedirect } from "../features/identity/return-to";
@@ -116,6 +117,12 @@ const accountSecurityRoute = createRoute({
   component: AccountSecurityScreen,
 });
 
+const sessionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/account/sessions",
+  component: SessionsScreen,
+});
+
 const membersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/org/members", component: MembersScreen });
 
 const invitationRoute = createRoute({
@@ -135,6 +142,7 @@ const routeTree = rootRoute.addChildren([
   forgotPasswordRoute,
   resetPasswordRoute,
   accountSecurityRoute,
+  sessionsRoute,
   membersRoute,
   invitationRoute,
 ]);

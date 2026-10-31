@@ -22,6 +22,7 @@ export type IdentityClient = {
   requestPasswordReset(input: { email: string; redirectTo: string }): Promise<Reply>;
   resetPassword(input: { token: string; newPassword: string }): Promise<Reply>;
   organization: { acceptInvitation(input: { invitationId: string }): Promise<Reply> };
+  revokeSession(input: { token: string }): Promise<Reply>;
 };
 
 // Better Auth reports these when an address is already registered. Showing them as an error would reveal the account.
@@ -179,4 +180,12 @@ export async function acceptInvitation(client: IdentityClient, invitationId: str
   if (error.code === ALREADY_MEMBER) return { kind: "already-member" };
   if (error.code === "INVITATION_EXPIRED") return { kind: "expired" };
   return { kind: "failed" };
+}
+
+export type RevokeOutcome = { kind: "ok" } | { kind: "failed" };
+
+// Ends one of the user's other sessions. The session in use is never revoked from the sessions screen.
+export async function revokeSession(client: IdentityClient, token: string): Promise<RevokeOutcome> {
+  const { error } = await client.revokeSession({ token });
+  return error ? { kind: "failed" } : { kind: "ok" };
 }
