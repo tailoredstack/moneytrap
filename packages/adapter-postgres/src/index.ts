@@ -2,6 +2,7 @@ export { createOrganizationStore } from "./access/organization-store";
 export { createSourceFactStore, type SourceFactStore, type UpsertOutcome } from "./catalog/source-fact-store";
 export { migrate } from "./migrate";
 export { migrationProvider } from "./migrations";
+export { createNetworkAccountStore } from "./networks/network-account-store";
 export { consumeOnce } from "./outbox/inbox";
 export { type Publish, type RelayedEvent, relayOutboxBatch } from "./outbox/relay";
 export { appendOutboxEvent, type OutboxEvent } from "./outbox/writer";
