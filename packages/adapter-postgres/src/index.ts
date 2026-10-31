@@ -11,4 +11,5 @@ export { appendOutboxEvent, type OutboxEvent } from "./outbox/writer";
 export { createPropertyStore } from "./properties/property-store";
 export { createPublisherKybStore } from "./publisher/publisher-kyb-store";
 export { createPublisherReviewStore } from "./publisher/publisher-review-store";
+export { createRiskFlagStore } from "./risk/risk-flag-store";
 export { withTx } from "./transaction";
