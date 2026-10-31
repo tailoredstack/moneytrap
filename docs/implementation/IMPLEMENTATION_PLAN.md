@@ -119,7 +119,7 @@ Goal: a publisher submits KYB and a website property, proves ownership, and is a
 | WP-3.7 | Suspend and reinstate property | B | 3.6 | `app/src/properties/suspend.ts` | UC08; CT-007 | Suspension blocks new monetization immediately; history stays readable for staff |
 | WP-3.8 | Ops review queue | C | 3.3, 3.6, 2.15 | `web/src/features/ops-review/` | UI-017, UI-018, UI-023, UI-024 | Queue, decision form with reason, evidence panel |
 | WP-3.9 | Audit viewer (minimal) | C | 1.5 | `app/src/operations/audit-query.ts`, `web/src/features/audit/` | UI-077; §4.4 | Shows actor, scope, reason, timestamp, object for review decisions |
-| WP-3.10 | Publisher onboarding and property screens | D | 1.14, 3.2, 3.5 | `web/src/features/publisher/`, `web/src/features/properties/` | UI-005, UI-015, UI-016, UI-019 to UI-022, UI-025 | Screens in [ui/SKELETONS.md](../ui/SKELETONS.md) §3 render all states |
+| WP-3.10 | Publisher onboarding and property screens | D | 1.14, 3.2, 3.5 | `web/src/features/publisher/`, `web/src/features/properties/` | UI-005, UI-015, UI-016, UI-019 to UI-022, UI-025 | Screens in [ui/SKELETONS.md](../ui/SKELETONS.md) §2 render all states |
 | WP-3.11 | Activate publisher conformance | E | 3.2 to 3.7 | `packages/conformance/src/ct/publisher.test.ts` | CT-006, CT-007 | Green in-process |
 
 ---
