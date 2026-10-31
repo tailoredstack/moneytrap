@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Id } from "@moneytrap/domain";
 import type { ClickCountQuery, ClickCountRow, ClickReportStore } from "../ports/click-report-store";
-import { CLICK_DATA_STALE_AFTER_MS, listClickCounts, MAX_CLICK_PAGE_SIZE } from "./clicks";
+import { listClickCounts, MAX_CLICK_PAGE_SIZE } from "./clicks";
 
 const orgA = "org_01arz3ndektsv4rrffq69g5fav" as Id<"organization">;
 const now = new Date("2026-11-01T12:00:00.000Z");
@@ -10,10 +10,10 @@ const window = { from: "2026-10-01T00:00:00.000Z", to: "2026-11-01T00:00:00.000Z
 // A store that keeps every row sorted by link ID and applies the keyset cursor and limit the way Postgres does.
 class FakeClickReports implements ClickReportStore {
   queries: ClickCountQuery[] = [];
-  lookbacks: Date[] = [];
+  sinces: Date[] = [];
   constructor(
     private readonly rows: ClickCountRow[],
-    private readonly latest: Date | null = null,
+    private readonly delayMs: number | null = null,
   ) {}
 
   async countByLink(query: ClickCountQuery): Promise<readonly ClickCountRow[]> {
@@ -24,17 +24,21 @@ class FakeClickReports implements ClickReportStore {
       .slice(0, query.limit);
   }
 
-  async latestRecordedAt(_organizationId: Id<"organization">, since: Date): Promise<Date | null> {
-    this.lookbacks.push(since);
-    return this.latest !== null && this.latest >= since ? this.latest : null;
+  async recordedDelayMs(_organizationId: Id<"organization">, since: Date): Promise<number | null> {
+    this.sinces.push(since);
+    return this.delayMs;
   }
 }
 
+const DAY = 24 * 60 * 60 * 1000;
 const clock = { now: () => now };
+const L1 = "lnk_01arz3ndektsv4rrffq69g5fa1";
+const L2 = "lnk_01arz3ndektsv4rrffq69g5fa2";
+const L3 = "lnk_01arz3ndektsv4rrffq69g5fa3";
 const rows = [
-  { linkId: "lnk_01arz3ndektsv4rrffq69g5fa1", clicks: 3 },
-  { linkId: "lnk_01arz3ndektsv4rrffq69g5fa2", clicks: 1 },
-  { linkId: "lnk_01arz3ndektsv4rrffq69g5fa3", clicks: 7 },
+  { linkId: L1, clicks: 3 },
+  { linkId: L2, clicks: 1 },
+  { linkId: L3, clicks: 7 },
 ];
 
 describe("click counts per link (API-045, WP-5.9)", () => {
@@ -59,20 +63,17 @@ describe("click counts per link (API-045, WP-5.9)", () => {
     const store = new FakeClickReports(rows);
     const first = await listClickCounts({ clicks: store, clock }, { organizationId: orgA, ...window, limit: 2 });
     if (!first.ok) throw new Error("expected a page");
-    expect(first.value.data.map((row) => row.linkId)).toEqual([
-      "lnk_01arz3ndektsv4rrffq69g5fa1",
-      "lnk_01arz3ndektsv4rrffq69g5fa2",
-    ]);
-    expect(first.value.nextCursor).toBe("lnk_01arz3ndektsv4rrffq69g5fa2");
+    expect(first.value.data.map((row) => row.linkId)).toEqual([L1, L2]);
+    expect(first.value.nextCursor).toBe(L2);
 
     const second = await listClickCounts(
       { clicks: store, clock },
       { organizationId: orgA, ...window, limit: 2, cursor: first.value.nextCursor },
     );
     if (!second.ok) throw new Error("expected a page");
-    expect(second.value.data.map((row) => row.linkId)).toEqual(["lnk_01arz3ndektsv4rrffq69g5fa3"]);
+    expect(second.value.data.map((row) => row.linkId)).toEqual([L3]);
     expect(second.value.nextCursor).toBeNull();
-    expect(store.queries[1]?.afterLinkId).toBe("lnk_01arz3ndektsv4rrffq69g5fa2");
+    expect(store.queries[1]?.afterLinkId).toBe(L2);
   });
 
   test("an empty window returns no rows and no cursor", async () => {
@@ -111,6 +112,33 @@ describe("click counts per link (API-045, WP-5.9)", () => {
     }
   });
 
+  test("refuses calendar dates that roll over and clock times out of range", async () => {
+    const deps = { clicks: new FakeClickReports(rows), clock };
+    const impossible = [
+      "2026-02-31T00:00:00Z",
+      "2026-04-31T00:00:00Z",
+      "2026-02-29T00:00:00Z",
+      "2026-13-01T00:00:00Z",
+      "2026-11-01T24:00:00Z",
+      "2026-11-01T10:60:00Z",
+      "2026-11-01T10:00:60Z",
+    ];
+    for (const from of impossible) {
+      expect(await listClickCounts(deps, { organizationId: orgA, from, to: window.to })).toEqual({
+        ok: false,
+        code: "VALIDATION_FAILED",
+      });
+    }
+  });
+
+  test("accepts a leap day", async () => {
+    const result = await listClickCounts(
+      { clicks: new FakeClickReports([]), clock },
+      { organizationId: orgA, from: "2028-02-29T00:00:00Z", to: "2028-03-01T00:00:00Z" },
+    );
+    expect(result.ok).toBe(true);
+  });
+
   test("refuses a page size outside 1 to the maximum, and a cursor that is not a link ID", async () => {
     const deps = { clicks: new FakeClickReports(rows), clock };
     const bad: Array<Record<string, unknown>> = [
@@ -132,39 +160,45 @@ describe("click counts per link (API-045, WP-5.9)", () => {
     }
   });
 
-  test("marks data stale when the newest click is older than the stale window and the window reaches past it", async () => {
-    const latest = new Date(now.getTime() - CLICK_DATA_STALE_AFTER_MS - 60_000);
+  test("marks data stale when clicks recorded in the last day arrived more than a day late and the window reaches that day", async () => {
     const result = await listClickCounts(
-      { clicks: new FakeClickReports(rows, latest), clock },
-      { organizationId: orgA, ...window },
+      { clicks: new FakeClickReports(rows, 2 * DAY), clock },
+      { organizationId: orgA, from: "2026-10-31T00:00:00.000Z", to: "2026-11-01T12:00:00.000Z" },
     );
     if (!result.ok) throw new Error("expected a page");
     expect(result.value.dataStale).toBe(true);
   });
 
-  test("does not mark data stale when the newest click is recent", async () => {
-    const latest = new Date(now.getTime() - 60_000);
+  test("a quiet organization with no recent clicks is not stale", async () => {
     const result = await listClickCounts(
-      { clicks: new FakeClickReports(rows, latest), clock },
+      { clicks: new FakeClickReports(rows, null), clock },
       { organizationId: orgA, ...window },
     );
     if (!result.ok) throw new Error("expected a page");
     expect(result.value.dataStale).toBe(false);
   });
 
-  test("does not mark data stale when the window ends before the newest click", async () => {
-    const latest = new Date("2026-10-15T00:00:00.000Z");
+  test("current ingestion is not stale, even for an organization that is quiet", async () => {
     const result = await listClickCounts(
-      { clicks: new FakeClickReports(rows, latest), clock },
+      { clicks: new FakeClickReports(rows, 30 * 1000), clock },
+      { organizationId: orgA, ...window },
+    );
+    if (!result.ok) throw new Error("expected a page");
+    expect(result.value.dataStale).toBe(false);
+  });
+
+  test("does not mark data stale when the window ends before the stale span", async () => {
+    const result = await listClickCounts(
+      { clicks: new FakeClickReports(rows, 2 * DAY), clock },
       { organizationId: orgA, from: "2026-09-01T00:00:00.000Z", to: "2026-10-01T00:00:00.000Z" },
     );
     if (!result.ok) throw new Error("expected a page");
     expect(result.value.dataStale).toBe(false);
   });
 
-  test("the freshness lookup is bounded to the widest window a report can ask for", async () => {
+  test("the delay lookup covers only the last stale span", async () => {
     const store = new FakeClickReports(rows);
     await listClickCounts({ clicks: store, clock }, { organizationId: orgA, ...window });
-    expect(store.lookbacks[0]?.getTime()).toBe(now.getTime() - 366 * 24 * 60 * 60 * 1000);
+    expect(store.sinces[0]?.getTime()).toBe(now.getTime() - DAY);
   });
 });

@@ -35,10 +35,10 @@ export class FakeClickReportStore implements ClickReportStore {
       .map(([linkId, clicks]) => ({ linkId, clicks }));
   }
 
-  async latestRecordedAt(organizationId: Id<"organization">, since: Date): Promise<Date | null> {
-    const recorded = this.clicks
+  async recordedDelayMs(organizationId: Id<"organization">, since: Date): Promise<number | null> {
+    const delays = this.clicks
       .filter((click) => this.owners.get(click.linkId) === organizationId && click.recordedAt >= since)
-      .map((click) => click.recordedAt.getTime());
-    return recorded.length === 0 ? null : new Date(Math.max(...recorded));
+      .map((click) => click.recordedAt.getTime() - click.occurredAt.getTime());
+    return delays.length === 0 ? null : Math.max(...delays);
   }
 }

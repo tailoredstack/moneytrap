@@ -41,14 +41,15 @@ describe("FakeClickReportStore (WP-5.9 port fake)", () => {
     expect(second.map((row) => row.linkId)).toEqual([linkB]);
   });
 
-  test("latestRecordedAt reads only the organization's links and is null with no clicks", async () => {
+  test("recordedDelayMs is the largest occurred-to-recorded gap of the organization's recent clicks, or null", async () => {
     const store = new FakeClickReportStore();
     store.seedLink(linkA, orgA);
     store.seedLink(linkForeign, orgB);
-    store.seedClick(linkA, new Date("2026-10-01T00:00:00.000Z"), new Date("2026-10-01T00:00:05.000Z"));
-    store.seedClick(linkForeign, new Date("2026-10-31T00:00:00.000Z"));
-    expect(await store.latestRecordedAt(orgA, from)).toEqual(new Date("2026-10-01T00:00:05.000Z"));
-    expect(await store.latestRecordedAt(orgB, from)).toEqual(new Date("2026-10-31T00:00:00.000Z"));
-    expect(await store.latestRecordedAt(orgA, new Date("2026-10-02T00:00:00.000Z"))).toBeNull();
+    store.seedClick(linkA, new Date("2026-10-31T00:00:00.000Z"), new Date("2026-10-31T00:00:05.000Z"));
+    store.seedClick(linkA, new Date("2026-10-30T00:00:00.000Z"), new Date("2026-10-31T06:00:00.000Z"));
+    store.seedClick(linkForeign, new Date("2026-10-30T00:00:00.000Z"), new Date("2026-11-01T00:00:00.000Z"));
+    expect(await store.recordedDelayMs(orgA, from)).toBe(30 * 60 * 60 * 1000);
+    expect(await store.recordedDelayMs(orgA, new Date("2026-11-01T00:00:00.000Z"))).toBeNull();
+    expect(await store.recordedDelayMs(orgB, from)).toBe(2 * 24 * 60 * 60 * 1000);
   });
 });

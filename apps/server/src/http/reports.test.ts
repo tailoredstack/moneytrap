@@ -19,13 +19,13 @@ function principalFrom(headers: Headers): Promise<Principal | null> {
 
 class RecordingStore implements ClickReportStore {
   queries: ClickCountQuery[] = [];
-  constructor(private readonly latest: Date | null = new Date("2026-11-01T11:59:00.000Z")) {}
+  constructor(private readonly delayMs: number | null = null) {}
   async countByLink(query: ClickCountQuery) {
     this.queries.push(query);
     return [{ linkId: "lnk_a", clicks: 4 }];
   }
-  async latestRecordedAt(_organizationId: Id<"organization">, since: Date) {
-    return this.latest !== null && this.latest >= since ? this.latest : null;
+  async recordedDelayMs() {
+    return this.delayMs;
   }
 }
 
@@ -52,7 +52,7 @@ describe("GET /api/organizations/:organizationId/reports/clicks (API-045, WP-5.9
   });
 
   test("data_stale is true when the newest click is over a day older than as_of and the window reaches past it", async () => {
-    const { server } = app(new RecordingStore(new Date("2026-10-30T08:00:00.000Z")));
+    const { server } = app(new RecordingStore(2 * 24 * 60 * 60 * 1000));
     const response = await server.handle(new Request(url(orgA), { headers: { "x-role": "owner" } }));
     expect(await response.json()).toMatchObject({ data_stale: true });
   });
