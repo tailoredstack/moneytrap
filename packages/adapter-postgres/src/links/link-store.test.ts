@@ -241,22 +241,25 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
 
   test("a suspension that commits while the write waits is refused, and nothing is written (CT-006)", async () => {
     const holder: PoolClient = await pool.connect();
+    const store = createLinkStore(db);
+    let pending: Promise<boolean> | null = null;
     try {
       await holder.query("begin");
       // The suspension holds the property row until it commits, as its UPDATE does in the property store.
       await holder.query("update properties set status = 'suspended' where id = $1", [propertyId]);
 
-      const store = createLinkStore(db);
-      const pending = store.insert({
+      pending = store.insert({
         record: record(),
         audit: audit("aud_1"),
         event: event("evt_1", 1),
         precondition: allowed,
       });
-      // Commit only once the insert is queued behind the suspension's lock, so the refusal is not a race.
+      // Commit only once this insert is queued behind the suspension's lock, so the refusal is not a race. The probe
+      // matches the gate's read of the property row, not any lock waiter in the database.
       for (let waited = 0; ; waited += 25) {
         const waiting = await pool.query(
-          "select count(*)::int as n from pg_stat_activity where wait_event_type = 'Lock' and datname = current_database()",
+          `select count(*)::int as n from pg_stat_activity
+            where wait_event_type = 'Lock' and datname = current_database() and query like 'select status from properties%'`,
         );
         if (waiting.rows[0].n > 0) break;
         if (waited > 5000) throw new Error("insert never waited on the property lock");
@@ -268,9 +271,11 @@ describeWithDatabase("link store (WP-5.13, DM-040)", () => {
       expect(await linkRows()).toEqual([]);
       expect(await counts()).toEqual({ audits: 0, events: 0 });
     } finally {
-      // A rollback after a commit is a no-op, so this also releases the lock if the test threw before committing.
+      // A rollback after a commit is a no-op. On a timeout it releases the lock, so the pending insert can finish and
+      // is not left running after the schema is dropped.
       await holder.query("rollback").catch(() => undefined);
       holder.release();
+      await pending?.catch(() => undefined);
     }
   });
 
