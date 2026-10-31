@@ -17,12 +17,15 @@ export class FakePublisherReviewStore implements PublisherReviewStore {
     return this.records.find((record) => record.publisher.id === id) ?? null;
   }
 
-  async recordDecision(write: ReviewDecisionWrite): Promise<void> {
+  async recordDecision(write: ReviewDecisionWrite): Promise<boolean> {
+    const current = this.records.find((record) => record.publisher.id === write.publisher.id);
+    if (current?.publisher.status !== write.expectedStatus) return false;
     const staged = { publisher: { ...write.publisher }, audit: { ...write.audit } };
     if (this.failAudit) throw new Error("audit write failed");
     this.records = this.records.map((record) =>
       record.publisher.id === staged.publisher.id ? { ...record, publisher: staged.publisher } : record,
     );
     this.audits.push(staged.audit);
+    return true;
   }
 }
