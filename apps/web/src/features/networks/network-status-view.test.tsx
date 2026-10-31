@@ -60,6 +60,12 @@ describe("NetworkStatusView (UI-026, UI-076, TP-W4-029, TP-W4-030)", () => {
     expect(html).toMatch(/<button[^>]*>Retry sync<\/button>/);
   });
 
+  test("a rejected credential tells a publisher to ask ops, not to rotate it themselves", () => {
+    const html = renderToStaticMarkup(<NetworkStatusView state={ready({ health: "not_authorized" })} />);
+    expect(html).toContain("Ask your operations team to check it.");
+    expect(html).not.toContain("must rotate it");
+  });
+
   test("publishers see neither the credential panel nor the retry control", () => {
     const html = renderToStaticMarkup(<NetworkStatusView state={ready()} />);
     expect(html).not.toContain("Credential:");
