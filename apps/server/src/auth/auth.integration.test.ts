@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { migrate, migrationProvider } from "@moneytrap/adapter-postgres";
 import type { NotificationMessage, Notifier } from "@moneytrap/app";
+import { createEmailVerificationToken } from "better-auth/api";
 import { Elysia } from "elysia";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
@@ -118,6 +119,55 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
     const second = await verifyLink(token);
 
     expect(second.status).toBeGreaterThanOrEqual(400);
+  });
+
+  test("TP-W2-010: an equivalent base64url spelling of a used token is rejected too", async () => {
+    await signUp(VALID_PASSWORD);
+    const token = tokenFromSentEmail();
+    await verifyLink(token);
+    const [header, payload, signature] = token.split(".");
+
+    const respelled = await verifyLink(`${header}.${payload}.${signature}=`);
+
+    expect(respelled.status).toBeGreaterThanOrEqual(400);
+  });
+
+  test("a rejected verification request does not consume a valid link", async () => {
+    await signUp(VALID_PASSWORD);
+    const token = tokenFromSentEmail();
+    const [header, payload, signature] = token.split(".");
+    const tampered = `${header}.${payload}.${signature?.slice(0, -2)}${signature?.endsWith("AA") ? "BB" : "AA"}`;
+    const rejected = await verifyLink(tampered);
+    expect(rejected.status).toBeGreaterThanOrEqual(400);
+
+    const retry = await verifyLink(token);
+
+    expect(retry.status).toBe(200);
+  });
+
+  test("an expired verification token is rejected and leaves the user unverified", async () => {
+    await signUp(VALID_PASSWORD);
+    const expired = await createEmailVerificationToken(
+      "test-secret-at-least-32-characters-long",
+      "ada@example.test",
+      undefined,
+      -60,
+    );
+
+    const response = await verifyLink(expired);
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    const { rows } = await sql<{ emailVerified: boolean }>`select "emailVerified" from "user"`.execute(db);
+    expect(rows).toEqual([{ emailVerified: false }]);
+  });
+
+  test("simultaneous requests with one valid link let exactly one succeed", async () => {
+    await signUp(VALID_PASSWORD);
+    const token = tokenFromSentEmail();
+
+    const responses = await Promise.all([verifyLink(token), verifyLink(token), verifyLink(token)]);
+
+    expect(responses.map((response) => response.status).filter((status) => status === 200)).toHaveLength(1);
   });
 
   test("TP-W2-007/008: a known and an unknown email get the same sign-up response", async () => {
