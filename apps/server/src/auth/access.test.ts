@@ -26,4 +26,14 @@ describe("TP-W2-032 Better Auth access control matches the domain role map", () 
     expect(roles.editor.authorize({ invitation: ["create"] }).success).toBe(false);
     expect(roles.viewer.authorize({ member: ["update"] }).success).toBe(false);
   });
+
+  // The catalog has no role-change, direct-add, or organization-delete operation, so Better Auth must deny them
+  // to every role. Members join through invitation acceptance (API-020), not a direct add.
+  test("operations with no catalog endpoint are denied to every role", () => {
+    for (const role of ROLES) {
+      expect(roles[role].authorize({ member: ["update"] }).success).toBe(false);
+      expect(roles[role].authorize({ member: ["create"] }).success).toBe(false);
+      expect(roles[role].authorize({ organization: ["delete"] }).success).toBe(false);
+    }
+  });
 });
