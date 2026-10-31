@@ -13,7 +13,7 @@ const fileExtension = /\.[a-z0-9]+$/i;
 export function serveWebAsset(pathname: string, assets: WebAssets = webAssets): Response | undefined {
   const exact = assets[pathname];
   if (exact) return fileResponse(exact, pathname.startsWith(hashedPrefix));
-  if (fileExtension.test(pathname)) return undefined;
+  if (pathname.startsWith(hashedPrefix) || fileExtension.test(pathname)) return undefined;
   const shell = assets["/"];
   return shell ? fileResponse(shell, false) : undefined;
 }

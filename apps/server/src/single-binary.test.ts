@@ -79,6 +79,10 @@ test("compiled binary serves the API, the web shell, and hashed assets", async (
   expect(route.status).toBe(200);
   expect(await route.text()).toContain('<div id="root"></div>');
 
+  const missingAsset = await fetch(`${base}/assets/no-such-bundle`);
+  expect(missingAsset.status).toBe(404);
+  expect(await missingAsset.text()).not.toContain('<div id="root"></div>');
+
   const unknownApi = await fetch(`${base}/api/unknown`);
   expect(unknownApi.status).toBe(404);
   expect(unknownApi.headers.get("content-type")).not.toContain("text/html");
