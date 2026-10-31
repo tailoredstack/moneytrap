@@ -24,6 +24,12 @@ export function KybFormView({
   const [current, setCurrent] = useState<KybValues>(values);
   const errors = validateKyb(current);
   const invalid = Object.keys(errors).length > 0;
+  // A disabled-looking Submit must say what is missing, so the reason is linked to it for screen reader users.
+  const missing = [
+    errors.legalName ? "legal name" : undefined,
+    errors.country ? "country" : undefined,
+    errors.businessType ? "business type" : undefined,
+  ].filter((name): name is string => name !== undefined);
   const [attempted, setAttempted] = useState(false);
   const shown = submitAttempted || attempted ? errors : {};
   const legalNameRef = useRef<HTMLInputElement>(null);
@@ -116,9 +122,19 @@ export function KybFormView({
         />
         <span className="block text-muted-foreground">Stored securely; we keep a reference only.</span>
       </label>
-      <Button type="submit" aria-disabled={invalid || undefined} disabled={submitting}>
+      <Button
+        type="submit"
+        aria-disabled={invalid || undefined}
+        aria-describedby={invalid ? "kyb-submit-hint" : undefined}
+        disabled={submitting}
+      >
         {submitting ? "Submitting…" : "Submit for review"}
       </Button>
+      {invalid ? (
+        <p id="kyb-submit-hint" className="text-muted-foreground">
+          Still needed: {missing.join(", ")}.
+        </p>
+      ) : null}
     </form>
   );
 }

@@ -286,6 +286,13 @@ describe("WP-X.5 focus on error and on open", () => {
     expect(document.activeElement?.id).not.toBe("step-up-code");
   });
 
+  test("KYB: while invalid, the submit button says what is still needed", () => {
+    const container = render(<KybFormView values={emptyKyb} />);
+    const submit = container.querySelector('button[type="submit"]') as HTMLButtonElement;
+    const described = document.getElementById(submit.getAttribute("aria-describedby") ?? "");
+    expect(described?.textContent).toBe("Still needed: legal name, country, business type.");
+  });
+
   test("KYB: the submit button stays reachable by keyboard and points at the first problem", () => {
     const container = render(<KybFormView values={emptyKyb} />);
     const submit = container.querySelector('button[type="submit"]') as HTMLButtonElement;
