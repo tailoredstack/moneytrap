@@ -48,6 +48,7 @@ export function RegisterScreen() {
     <RegisterView
       status={view.status}
       email={view.email}
+      invalidField={view.invalidField}
       message={view.message}
       onSubmit={async ({ email, password }) => {
         // Field checks run first, so the first bad field is known without a server round trip.
