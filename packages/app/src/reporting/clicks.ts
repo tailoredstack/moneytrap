@@ -6,8 +6,9 @@ export const DEFAULT_CLICK_PAGE_SIZE = 50;
 export const MAX_CLICK_PAGE_SIZE = 200;
 // A window may not exceed this, so one request cannot scan an unbounded history.
 export const MAX_CLICK_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
-// Clicks are ingested asynchronously, so the newest one can trail the redirect by a while. When the newest recorded
-// click of the organization is older than this and the window reaches past it, the counts may be incomplete.
+// Clicks are ingested asynchronously. Ingestion is behind when clicks recorded in the last day reached the store more than
+// this long after they happened, and the window reaches back into that day. The counts may then be incomplete. The
+// check sees only clicks that were recorded: a consumer that has stopped records nothing, so it cannot be detected here.
 export const CLICK_DATA_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export interface ClickReportDeps {
@@ -59,20 +60,29 @@ export async function listClickCounts(deps: ClickReportDeps, input: ClickReportI
   const data = fetched.slice(0, limit);
   const nextCursor = hasMore ? (data.at(-1)?.linkId ?? null) : null;
 
-  // A freshness check only needs clicks from the widest window a report can ask for.
-  const since = new Date(asOf.getTime() - MAX_CLICK_WINDOW_MS);
-  const latest = await deps.clicks.latestRecordedAt(input.organizationId, since);
-  const dataStale =
-    latest !== null && asOf.getTime() - latest.getTime() > CLICK_DATA_STALE_AFTER_MS && to.getTime() > latest.getTime();
+  // Only clicks recorded in the last stale window bear on freshness. An organization with no recent clicks is not stale.
+  const since = new Date(asOf.getTime() - CLICK_DATA_STALE_AFTER_MS);
+  const delayMs = await deps.clicks.recordedDelayMs(input.organizationId, since);
+  const dataStale = delayMs !== null && delayMs > CLICK_DATA_STALE_AFTER_MS && to.getTime() > since.getTime();
 
   return { ok: true, value: { data, nextCursor, asOf, dataStale } };
 }
 
 // Only ISO-8601 instants with a time part. Date.parse also reads loose forms such as "1" or "Nov 1 2026".
-const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+const ISO_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
 
 function parseInstant(value: unknown): Date | null {
-  if (typeof value !== "string" || !ISO_INSTANT.test(value)) return null;
+  if (typeof value !== "string") return null;
+  const match = ISO_INSTANT.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second = "0"] = match as unknown as string[];
+  const y = Number(year);
+  const mo = Number(month);
+  const d = Number(day);
+  // Date.UTC rolls 2026-02-31 over to March, so the calendar parts must read back unchanged.
+  const calendar = new Date(Date.UTC(y, mo - 1, d));
+  if (calendar.getUTCFullYear() !== y || calendar.getUTCMonth() !== mo - 1 || calendar.getUTCDate() !== d) return null;
+  if (Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }

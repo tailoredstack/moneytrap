@@ -21,6 +21,7 @@ export interface ClickCountRow {
 export interface ClickReportStore {
   // Links in ascending ID order. A link with no clicks in the window is not returned.
   countByLink(query: ClickCountQuery): Promise<readonly ClickCountRow[]>;
-  // The most recent time a click of this organization's links was recorded at or after `since`, or null when there is none.
-  latestRecordedAt(organizationId: Id<"organization">, since: Date): Promise<Date | null>;
+  // The largest gap, in milliseconds, between a click occurring and its being recorded, over this organization's clicks
+  // recorded at or after `since`. Null when none were recorded in that span. A large gap means ingestion ran late.
+  recordedDelayMs(organizationId: Id<"organization">, since: Date): Promise<number | null>;
 }

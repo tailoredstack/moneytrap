@@ -16,7 +16,7 @@ const clock = { now: () => new Date("2026-10-31T12:00:00Z") };
 const ids = { next: () => "x" } as never;
 // Reports are wired with inert stores: these tests only check that the route exists and declares its guard.
 const reports = {
-  clicks: { countByLink: async () => [], latestRecordedAt: async () => null },
+  clicks: { countByLink: async () => [], recordedDelayMs: async () => null },
   clock,
   principal: async () => null,
 };

@@ -21,16 +21,16 @@ export function createClickReportStore(db: Kysely<unknown>): ClickReportStore {
       return result.rows.map((row) => ({ linkId: row.link_id, clicks: row.clicks }));
     },
 
-    // Looks back at most lookbackDays, the widest window a report can ask for, so the freshness check does not read the
-    // organization's whole history on every page.
-    async latestRecordedAt(organizationId, lookback): Promise<Date | null> {
-      const result = await sql<{ latest: Date | null }>`
-        select max(c.recorded_at) as latest
+    // Reads the largest recording delay among clicks recorded at or after `since`. Only the recent span is scanned.
+    async recordedDelayMs(organizationId, since): Promise<number | null> {
+      const result = await sql<{ delay_ms: string | null }>`
+        select max(extract(epoch from (c.recorded_at - c.occurred_at)) * 1000) as delay_ms
         from clicks c
         join links l on l.id = c.link_id
         where l.organization_id = ${organizationId}
-          and c.recorded_at >= ${lookback}`.execute(db);
-      return result.rows[0]?.latest ?? null;
+          and c.recorded_at >= ${since}`.execute(db);
+      const delay = result.rows[0]?.delay_ms;
+      return delay === null || delay === undefined ? null : Number(delay);
     },
   };
 }

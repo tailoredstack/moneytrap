@@ -90,25 +90,24 @@ describeWithDatabase("click report store (TP-W5-036, WP-5.9)", () => {
     expect(second.map((row) => row.linkId)).toEqual(["lnk_c"]);
   });
 
-  test("latestRecordedAt ignores clicks recorded before the lookback, and reads only the organization's links", async () => {
-    await seedLink("lnk_old", orgA);
-    await seedClick("c0", "lnk_old", new Date("2025-01-01T00:00:00.000Z"), new Date("2025-01-01T00:00:00.000Z"));
-    const store = createClickReportStore(db);
-    expect(await store.latestRecordedAt(orgA, new Date("2026-01-01T00:00:00.000Z"))).toBeNull();
-  });
-
-  test("latestRecordedAt reads the newest recorded click of the organization's links, or null", async () => {
+  test("recordedDelayMs is the largest occurred-to-recorded gap of the organization's clicks recorded since the cutoff", async () => {
     await seedLink("lnk_a", orgA);
     await seedLink("lnk_foreign", orgB);
-    const newest = new Date("2026-10-25T12:00:00.000Z");
-    await seedClick("c1", "lnk_a", new Date("2026-10-01T00:00:00.000Z"), new Date("2026-10-01T00:00:01.000Z"));
-    await seedClick("c2", "lnk_a", newest, newest);
-    await seedClick("c3", "lnk_foreign", new Date("2026-10-31T00:00:00.000Z"), new Date("2026-10-31T00:00:00.000Z"));
-
+    await seedClick("c1", "lnk_a", new Date("2026-10-21T00:00:00.000Z"), new Date("2026-10-21T00:00:01.000Z"));
+    await seedClick("c2", "lnk_a", new Date("2026-10-22T00:00:00.000Z"), new Date("2026-10-24T00:00:00.000Z"));
+    await seedClick("c3", "lnk_foreign", new Date("2026-10-20T00:00:00.000Z"), new Date("2026-10-24T04:00:00.000Z"));
     const store = createClickReportStore(db);
-    const since = new Date("2026-01-01T00:00:00.000Z");
-    expect(await store.latestRecordedAt(orgA, since)).toEqual(newest);
-    expect(await store.latestRecordedAt(orgB, since)).toEqual(new Date("2026-10-31T00:00:00.000Z"));
-    expect(await store.latestRecordedAt("org_01crz3ndektsv4rrffq69g5fav" as Id<"organization">, since)).toBeNull();
+
+    expect(await store.recordedDelayMs(orgA, new Date("2026-10-20T00:00:00.000Z"))).toBe(48 * 60 * 60 * 1000);
+    expect(await store.recordedDelayMs(orgB, new Date("2026-10-20T00:00:00.000Z"))).toBe(100 * 60 * 60 * 1000);
+  });
+
+  test("recordedDelayMs ignores clicks recorded before the cutoff and is null when there are none", async () => {
+    await seedLink("lnk_a", orgA);
+    await seedClick("c1", "lnk_a", new Date("2026-10-22T00:00:00.000Z"), new Date("2026-10-24T00:00:00.000Z"));
+    const store = createClickReportStore(db);
+
+    expect(await store.recordedDelayMs(orgA, new Date("2026-10-24T12:00:00.000Z"))).toBeNull();
+    expect(await store.recordedDelayMs("org_01crz3ndektsv4rrffq69g5fav" as Id<"organization">, new Date(0))).toBeNull();
   });
 });
