@@ -263,10 +263,10 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
         values (${id}, ${orgId}, ${propertyId}, ${programId}, 1, 'deny', '["unknown"]'::jsonb, '[]'::jsonb,
           ${JSON.stringify(allowed)}::jsonb, ${`hash-${id}`}, ${now}, ${seq}, ${sourceRevision})`.execute(db);
 
-    await expect(insertWith("eld_mixed_a", 1, null)).rejects.toThrow();
-    await expect(insertWith("eld_mixed_b", null, "r1")).rejects.toThrow();
+    await expect(insertWith("eld_mixed_a", 1, null)).rejects.toThrow("eligibility_decisions_revision_pair_ck");
+    await expect(insertWith("eld_mixed_b", null, "r1")).rejects.toThrow("eligibility_decisions_revision_pair_ck");
     // Revision 1 of this program has source revision r1. Pairing it with any other source revision is refused.
-    await expect(insertWith("eld_wrong_source", 1, "r9")).rejects.toThrow();
+    await expect(insertWith("eld_wrong_source", 1, "r9")).rejects.toThrow("eligibility_decisions_revision_fk");
     await insertWith("eld_ok", 1, "r1");
     expect(await countRows("eligibility_decisions")).toBe(1);
   });
