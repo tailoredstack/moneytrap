@@ -4,6 +4,7 @@ import type { ClickObservation } from "@moneytrap/app/src/ports/click-store";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
 import { migrate } from "../migrate";
+import { consumeOnce } from "../outbox/inbox";
 import { createClickStore } from "./click-store";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -64,6 +65,23 @@ describeWithDatabase("click store (TP-W5-032 to TP-W5-035, DM-030, WP-5.8)", () 
     await recordClick(store, click("click:a", occurredAt));
     await recordClick(store, click("click:b", later));
     expect((await rows()).map((r) => r.dedup_key)).toEqual(["click:a", "click:b"]);
+  });
+
+  test("a consumer that crashes after the click write, then is redelivered, leaves one row (TP-W5-035, WP-1.7)", async () => {
+    const store = (tx: Parameters<typeof createClickStore>[0]) => createClickStore(tx);
+    const deliver = (crash: boolean) =>
+      consumeOnce(db, "click-ingest", "evt_click_1", async (tx) => {
+        await recordClick(store(tx), click("click:replayed"));
+        if (crash) throw new Error("crash after click write");
+      });
+
+    // The crash rolls back the inbox row and the click together, so the redelivery is not skipped as processed.
+    await expect(deliver(true)).rejects.toThrow("crash after click write");
+    expect(await rows()).toEqual([]);
+
+    expect(await deliver(false)).toBe(true);
+    expect(await deliver(false)).toBe(false);
+    expect((await rows()).map((r) => r.dedup_key)).toEqual(["click:replayed"]);
   });
 
   test("concurrent emits of one click write one row", async () => {
