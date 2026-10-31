@@ -72,5 +72,10 @@ describeWithDatabase("migrate", () => {
   test("the default provider runs cleanly on an empty database, twice", async () => {
     await migrate(db);
     await migrate(db);
+    // The static set is empty until WP-1.5, but Kysely still creates its bookkeeping table.
+    const { rows } = await pool.query<{ exists: boolean }>(`select to_regclass($1) is not null as exists`, [
+      `${schema}.kysely_migration`,
+    ]);
+    expect(rows[0]?.exists).toBe(true);
   });
 });
