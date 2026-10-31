@@ -53,6 +53,18 @@ describe("Better Auth config (Blueprint §7)", () => {
     expect(sent).toEqual([{ kind: "verify", to: "ada@example.test", url: "https://x.test/verify?token=t" }]);
   });
 
+  test("disabling MFA is a sensitive action: sessions must be fresh within the step-up window (TP-W2-019)", () => {
+    const { options } = setup();
+
+    expect(options.session?.freshAge).toBe(900);
+  });
+
+  test("the two-factor plugin is enabled so TOTP enrollment and backup codes are available (TP-W2-017, TP-W2-018)", () => {
+    const { options } = setup();
+
+    expect(options.plugins?.some((p) => p.id === "two-factor")).toBe(true);
+  });
+
   test("verification links expire after one hour, set explicitly rather than left to the default", () => {
     const { options } = setup();
 
