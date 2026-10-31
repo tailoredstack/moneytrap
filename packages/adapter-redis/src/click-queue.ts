@@ -10,8 +10,9 @@ export interface ClickJob {
 }
 
 // BullMQ on ioredis, the same client the outbox queue uses (ADR-004). The job id is the dedup key, so a click enqueued
-// twice while its job is still queued adds one job. Completed jobs are removed, so the queue does not grow without bound.
-// The consumer still dedupes through the click store's primary key.
+// twice while its job is still queued adds one job. Completed jobs are removed at once, and failed jobs are capped at the
+// last 1000 for inspection, so the queue does not grow without bound. The consumer still dedupes through the click
+// store's primary key.
 export function createClickQueue(connection: IORedis, queueName = "clicks"): ClickQueue & { close(): Promise<void> } {
   const queue = new Queue<ClickJob>(queueName, { connection });
   return {
@@ -21,7 +22,7 @@ export function createClickQueue(connection: IORedis, queueName = "clicks"): Cli
         linkId: click.linkId,
         occurredAt: click.occurredAt.toISOString(),
       };
-      await queue.add("click", job, { jobId: click.dedupKey, removeOnComplete: true });
+      await queue.add("click", job, { jobId: click.dedupKey, removeOnComplete: true, removeOnFail: { count: 1000 } });
     },
     async close() {
       await queue.close();
