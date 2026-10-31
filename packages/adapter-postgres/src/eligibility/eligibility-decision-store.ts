@@ -5,6 +5,7 @@ import {
   type EligibilityDecision,
   type EligibilityInput,
   evaluateEligibility,
+  type ProgramFactPayload,
   type RuleCheck,
 } from "@moneytrap/domain";
 import { type Kysely, type RawBuilder, sql, type Transaction } from "kysely";
@@ -39,7 +40,9 @@ export interface EligibilityDecisionWrite {
   organizationId: string;
   propertyId: string;
   programId: string;
-  input: EligibilityInput;
+  // The program facts are not supplied by the caller. They are read from the program's latest stored source revision,
+  // inside the same transaction, so the decision rests on what the catalog actually holds.
+  input: Omit<EligibilityInput, "program">;
   actor: { type: string; id: string };
   occurredAt: Date;
 }
@@ -121,10 +124,15 @@ function sortKeys(value: unknown): unknown {
 
 // The policy tests list fields with `some`, so their order never changes a decision. The hash sorts them, so the same set
 // in another order is the same evaluation. The stored inputs keep the order they arrived in.
+// Country codes and channel names compare without case or surrounding space (see the policy's normalise), so the hash
+// does the same. Duplicates are dropped for the same reason: the policy only asks whether a value is listed.
 function hashEvaluation(policyVersion: number, inputs: EligibilityInput): string {
-  const set = (values: unknown) => (Array.isArray(values) ? [...values].sort() : values);
+  const text = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : value);
+  const set = (values: unknown) => (Array.isArray(values) ? [...new Set(values.map(text))].sort() : values);
   const keyed = {
     ...inputs,
+    geography: text(inputs.geography),
+    channel: text(inputs.channel),
     program: { ...inputs.program, countries: set(inputs.program?.countries), channels: set(inputs.program?.channels) },
     contract: {
       ...inputs.contract,
@@ -171,16 +179,29 @@ async function selectOne(
 export function createEligibilityDecisionStore(db: Kysely<unknown>): EligibilityDecisionStore {
   return {
     async record(write) {
-      const inputs = storedShape(write.input);
-      const evaluation = evaluateEligibility(inputs);
-      const result = outcomeOf(evaluation);
-      const inputHash = hashEvaluation(evaluation.policyVersion, inputs);
-
       return withTx(db, async (tx) => {
         // The property must belong to the organization the decision is written for. Foreign keys check only existence.
         const owned = await sql`select 1 from properties where id = ${write.propertyId}
           and organization_id = ${write.organizationId}`.execute(tx);
         if (owned.rows.length === 0) throw new Error("eligibility: property is not in the organization");
+
+        // Program facts come from the latest stored revision. A program with no revision has unknown approval, so the
+        // policy denies it rather than reading a gap as allow.
+        const facts = await sql<{ payload: ProgramFactPayload }>`select r.payload from programs p
+          join program_revisions r on r.program_id = p.id and r.revision_seq = p.current_revision_seq
+          where p.id = ${write.programId}`.execute(tx);
+        const payload = facts.rows[0]?.payload;
+        const inputs = storedShape({
+          ...write.input,
+          program: {
+            approval: payload?.approval ?? null,
+            countries: payload?.countries ?? [],
+            channels: payload?.channels ?? [],
+          },
+        });
+        const evaluation = evaluateEligibility(inputs);
+        const result = outcomeOf(evaluation);
+        const inputHash = hashEvaluation(evaluation.policyVersion, inputs);
 
         const inserted = await sql<DecisionRow>`insert into eligibility_decisions
           (id, organization_id, property_id, program_id, policy_version, decision, reasons, checks, inputs, input_hash,
@@ -228,6 +249,9 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
       const stored = await selectOne(db, sql`organization_id = ${organizationId} and id = ${id}`);
       if (!stored) return null;
       if (stored.policyVersion !== ELIGIBILITY_POLICY_VERSION) return "policy_unavailable";
+
+      // A row whose inputs no longer hash to its stored key was altered after it was written.
+      if (hashEvaluation(stored.policyVersion, stored.inputs) !== stored.inputHash) return "mismatch";
 
       const replayed = outcomeOf(evaluateEligibility(stored.inputs));
       const same =

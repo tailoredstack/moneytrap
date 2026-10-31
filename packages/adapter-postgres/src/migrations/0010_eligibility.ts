@@ -7,13 +7,18 @@ import type { Migration } from "kysely/migration";
 // (TP-W4-022), so earlier decisions stay reproducible.
 export const eligibility: Migration = {
   async up(db: Kysely<unknown>) {
+    // The target of the organization-matched foreign key below. id is already unique, so this adds no new uniqueness.
+    await sql`alter table properties add constraint properties_id_organization_uq unique (id, organization_id)`.execute(
+      db,
+    );
+
     await db.schema
       .createTable("eligibility_decisions")
       .addColumn("id", "text", (column) => column.primaryKey())
       .addColumn("organization_id", "text", (column) =>
         column.notNull().references("organizations.id").onDelete("cascade"),
       )
-      .addColumn("property_id", "text", (column) => column.notNull().references("properties.id").onDelete("cascade"))
+      .addColumn("property_id", "text", (column) => column.notNull())
       .addColumn("program_id", "text", (column) => column.notNull().references("programs.id").onDelete("cascade"))
       .addColumn("policy_version", "integer", (column) => column.notNull())
       .addColumn("decision", "text", (column) => column.notNull().check(sql`decision in ('allow', 'deny')`))
@@ -30,10 +35,20 @@ export const eligibility: Migration = {
         "policy_version",
         "input_hash",
       ])
+      // A decision can only name a property of its own organization. The pair is the target, so the database enforces
+      // what the store checks before it writes.
+      .addForeignKeyConstraint(
+        "eligibility_decisions_property_org_fk",
+        ["property_id", "organization_id"],
+        "properties",
+        ["id", "organization_id"],
+        (constraint) => constraint.onDelete("cascade"),
+      )
       .execute();
   },
 
   async down(db: Kysely<unknown>) {
     await db.schema.dropTable("eligibility_decisions").ifExists().execute();
+    await sql`alter table properties drop constraint properties_id_organization_uq`.execute(db);
   },
 };

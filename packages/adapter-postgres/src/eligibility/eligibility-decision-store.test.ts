@@ -27,6 +27,11 @@ const allowed: EligibilityInput = {
 
 const denied: EligibilityInput = { ...allowed, geography: "FR" };
 
+// The program facts the store reads from the seeded source revision (GB only, web only) replace the caller's program block.
+function storedInputs(input: EligibilityInput): EligibilityInput {
+  return { ...input, program: { approval: "approved", countries: ["GB"], channels: ["web"] } };
+}
+
 describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => {
   let pool: Pool;
   let db: Kysely<unknown>;
@@ -119,12 +124,12 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     expect(result.decision.decision).toBe("deny");
     expect(result.decision.policyVersion).toBe(1);
     expect(result.decision.reasons).toEqual(["geography"]);
-    expect(result.decision.inputs).toEqual(denied);
+    expect(result.decision.inputs).toEqual(storedInputs(denied));
     expect(result.decision.checks.find((check) => check.reason === "geography")?.passed).toBe(false);
 
     const stored = await store.find(orgId, result.decision.id);
     expect(stored?.reasons).toEqual(["geography"]);
-    expect(stored?.inputs).toEqual(denied);
+    expect(stored?.inputs).toEqual(storedInputs(denied));
   });
 
   test("the same inputs twice give an identical decision and no duplicate row (TP-W4-023)", async () => {
@@ -210,7 +215,6 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     const store = createEligibilityDecisionStore(db);
     const reordered: EligibilityInput = {
       ...allowed,
-      program: { ...allowed.program, countries: ["IE", "GB"] },
       contract: { ...allowed.contract, countries: ["IE", "GB"] },
     };
     await store.record(writeFor(allowed));
@@ -218,6 +222,42 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
 
     expect(second.outcome).toBe("existing");
     expect(await countRows("eligibility_decisions")).toBe(1);
+  });
+
+  test("a program with no stored source revision is denied as unknown, not allowed", async () => {
+    // A program row exists but has never had a revision, so there are no facts to decide on.
+    await sql`insert into programs (id, network_advertiser_id, external_id, current_revision_seq, created_at, updated_at)
+      values ('prg_bare', 'nad_elig_one', 'prg-bare', 0, ${now}, ${now})`.execute(db);
+
+    const store = createEligibilityDecisionStore(db);
+    const result = await store.record({ ...writeFor(allowed), programId: "prg_bare" });
+
+    expect(result.decision.decision).toBe("deny");
+    expect(result.decision.reasons).toContain("unknown");
+  });
+
+  test("letter case and repeated values do not create a second row", async () => {
+    const store = createEligibilityDecisionStore(db);
+    await store.record(writeFor(allowed));
+    const shouted: EligibilityInput = {
+      ...allowed,
+      geography: "gb",
+      contract: { ...allowed.contract, countries: ["gb", "GB", "IE"] },
+    };
+    const second = await store.record(writeFor(shouted));
+
+    expect(second.outcome).toBe("existing");
+    expect(await countRows("eligibility_decisions")).toBe(1);
+  });
+
+  test("replay reports a mismatch when the stored inputs no longer hash to the stored key", async () => {
+    const store = createEligibilityDecisionStore(db);
+    const { decision } = await store.record(writeFor(allowed));
+    // Edit the inputs, leaving checks and the key alone. The recomputed hash differs from the stored key.
+    await sql`update eligibility_decisions set inputs = jsonb_set(inputs, '{geography}', '"FR"')
+      where id = ${decision.id}`.execute(db);
+
+    expect(await store.replay(orgId, decision.id)).toBe("mismatch");
   });
 
   test("the decision and its audit row commit together (no partial write)", async () => {
