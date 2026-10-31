@@ -199,9 +199,12 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
           reasons, checks, inputs, input_hash, evaluated_at)
         values (${id}, ${orgId}, ${propertyId}, ${programId}, ${policyVersion}, 'allow', '[]'::jsonb, '[]'::jsonb,
           '{}'::jsonb, ${`hash-${id}`}, ${now})`.execute(db);
-    // Same evaluated_at. The version-2 row has the id that sorts first, so only the policy version puts the version-1 row first.
+    // Same evaluated_at. Within version 1, id orders eld_b before eld_z, though eld_z is inserted first, so dropping the id
+    // key leaves insertion order and fails. Version 2 (eld_a) sorts first by id but must come last, so dropping the
+    // version key also fails.
     await insertDecision("eld_a", 2);
     await insertDecision("eld_z", 1);
+    await insertDecision("eld_b", 1);
     // The migration adds its scope key and table, so the test removes both to run it as on a database before 0015.
     await sql`drop table eligibility_evaluations`.execute(db);
     await sql`alter table eligibility_decisions drop constraint eligibility_decisions_scope_uq`.execute(db);
@@ -210,7 +213,7 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
     const ordered = await sql<{
       decision_id: string;
     }>`select decision_id from eligibility_evaluations order by seq`.execute(db);
-    expect(ordered.rows.map((row) => row.decision_id)).toEqual(["eld_z", "eld_a"]);
+    expect(ordered.rows.map((row) => row.decision_id)).toEqual(["eld_b", "eld_z", "eld_a"]);
 
     // If down were missing, the table would still exist and the check below would fail.
     await eligibilityEvaluations.down?.(db);
