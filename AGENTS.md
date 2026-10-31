@@ -21,8 +21,6 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Packages that share a file or port do not run in parallel. Hot files include `packages/adapter-postgres/src/migrations/index.ts` and the `contracts/` package. The later package waits until the earlier one merges, then rebases before it merges.
 - Match each Linear issue to its WP ID, and put the WP ID in the issue title, so the match is unambiguous.
 - Before launching, read the package's done-when criteria against its test plan. If they need persistence or other work outside the listed "Depends on", that work is a dependency too. Fix the plan or Linear first, or hold the package.
-- When two packages claim the same migration file or path, split the file by owner: one file per package with its own sequence number, and the later package lists the earlier one in "Depends on". Update the plan row and the Linear blocked-by relation in the same change. Example: WP-2.2 owns `0002_better_auth.ts`, and WP-2.12 owns `0003_identity.ts` with a foreign key to Better Auth's `user` table, so WP-2.12 depends on WP-2.2.
-- When the plan changes mid-wave, notify every running thread on the affected packages with the change and the path it should use. Threads that are waiting keep their PR watched.
 - Move each Linear issue to In Progress before starting it, so no one else picks it up.
 
 **2. Start an isolated branch**
