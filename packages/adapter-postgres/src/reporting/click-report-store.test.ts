@@ -110,4 +110,10 @@ describeWithDatabase("click report store (TP-W5-036, WP-5.9)", () => {
     expect(await store.recordedDelayMs(orgA, new Date("2026-10-24T12:00:00.000Z"))).toBeNull();
     expect(await store.recordedDelayMs("org_01crz3ndektsv4rrffq69g5fav" as Id<"organization">, new Date(0))).toBeNull();
   });
+
+  test("the freshness scan has an index on recorded_at (migration 0017)", async () => {
+    const result = await sql<{ indexname: string }>`
+      select indexname from pg_indexes where schemaname = current_schema() and tablename = 'clicks'`.execute(db);
+    expect(result.rows.map((row) => row.indexname)).toContain("clicks_recorded_idx");
+  });
 });

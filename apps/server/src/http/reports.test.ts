@@ -51,7 +51,7 @@ describe("GET /api/organizations/:organizationId/reports/clicks (API-045, WP-5.9
     expect(store.queries[0]?.organizationId).toBe(orgA);
   });
 
-  test("data_stale is true when the newest click is over a day older than as_of and the window reaches past it", async () => {
+  test("data_stale is true when clicks recorded in the last day arrived more than a day late and the window reaches that day", async () => {
     const { server } = app(new RecordingStore(2 * 24 * 60 * 60 * 1000));
     const response = await server.handle(new Request(url(orgA), { headers: { "x-role": "owner" } }));
     expect(await response.json()).toMatchObject({ data_stale: true });

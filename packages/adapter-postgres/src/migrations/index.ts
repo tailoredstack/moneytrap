@@ -18,6 +18,7 @@ import { riskFlags } from "./0013_risk_flags";
 import { links } from "./0014_links";
 import { eligibilityEvaluations } from "./0015_eligibility_evaluations";
 import { linkBulkJobs } from "./0016_link_bulk_jobs";
+import { clicksRecorded } from "./0017_clicks_recorded";
 
 // Every migration is imported here statically so the compiled binary carries the set and
 // reads no files at runtime (ADR-003). Add new entries in filename order.
@@ -41,6 +42,7 @@ const migrations: Record<string, Migration> = {
   "0014_links": links,
   "0015_eligibility_evaluations": eligibilityEvaluations,
   "0016_link_bulk_jobs": linkBulkJobs,
+  "0017_clicks_recorded": clicksRecorded,
 };
 
 export const migrationProvider: MigrationProvider = {
