@@ -338,10 +338,12 @@ describeWithDatabase("[M1] identity conformance", () => {
         await post("/api/auth/organization/create", { name: "Org A", slug: "org-a" }, adaSession),
       );
       const outsiderSession = await signUpVerified(OUTSIDER);
-      await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession);
+      const outsiderOrg = await json<{ slug: string }>(
+        await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession),
+      );
 
       const mixed = await get(
-        `/api/auth/organization/get-full-organization?organizationId=${adaOrg.id}&organizationSlug=org-b`,
+        `/api/auth/organization/get-full-organization?organizationId=${adaOrg.id}&organizationSlug=${outsiderOrg.slug}`,
         adaSession,
       );
       const missing = await get(
@@ -356,9 +358,11 @@ describeWithDatabase("[M1] identity conformance", () => {
     test("slug availability answers the same for a taken slug as for a free one", async () => {
       const adaSession = await signUpVerified(ADA);
       const outsiderSession = await signUpVerified(OUTSIDER);
-      await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession);
+      const outsiderOrg = await json<{ slug: string }>(
+        await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession),
+      );
 
-      const taken = await post("/api/auth/organization/check-slug", { slug: "org-b" }, adaSession);
+      const taken = await post("/api/auth/organization/check-slug", { slug: outsiderOrg.slug }, adaSession);
       const free = await post("/api/auth/organization/check-slug", { slug: "org-free" }, adaSession);
 
       expect(taken.status).toBe(free.status);
@@ -368,13 +372,50 @@ describeWithDatabase("[M1] identity conformance", () => {
     test("creating an organization with another organization's slug succeeds and reveals nothing about it", async () => {
       const adaSession = await signUpVerified(ADA);
       const outsiderSession = await signUpVerified(OUTSIDER);
-      await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession);
+      const outsiderOrg = await json<{ slug: string }>(
+        await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession),
+      );
 
-      const created = await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, adaSession);
+      const created = await post(
+        "/api/auth/organization/create",
+        { name: "Org B", slug: outsiderOrg.slug },
+        adaSession,
+      );
       const body = await json<{ slug?: string }>(created);
 
       expect(created.status).toBe(200);
-      expect(body.slug).not.toBe("org-b");
+      expect(body.slug).not.toBe(outsiderOrg.slug);
+    });
+
+    test("an invitation ID from another organization answers like a missing one", async () => {
+      const ownerSession = await signUpVerified(ADA);
+      const outsiderSession = await signUpVerified(OUTSIDER);
+      await signUpVerified(GRACE);
+      const org = await json<{ id: string }>(
+        await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession),
+      );
+      const invitation = await json<{ id: string }>(
+        await post(
+          "/api/auth/organization/invite-member",
+          { email: GRACE, role: "member", organizationId: org.id },
+          outsiderSession,
+        ),
+      );
+
+      const foreign = await post(
+        "/api/auth/organization/accept-invitation",
+        { invitationId: invitation.id },
+        ownerSession,
+      );
+      const missing = await post(
+        "/api/auth/organization/accept-invitation",
+        { invitationId: "inv_missing" },
+        ownerSession,
+      );
+
+      expect(foreign.status).toBe(missing.status);
+      expect(await bodyOf(foreign)).toEqual(await bodyOf(missing));
+      expect(await membershipCount(org.id, ADA)).toBe(0);
     });
 
     test("a member leaving an organization gets a success and loses the membership", async () => {

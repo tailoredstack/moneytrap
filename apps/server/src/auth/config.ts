@@ -184,6 +184,33 @@ async function refuseForeignOrganization(ctx: AuthContext, db: Kysely<any>): Pro
   }
 }
 
+// Invitation routes name an invitation by ID. Only the invitee (by email) and members of its organization may act on
+// it. Anyone else gets the not-found answer, the same as for a missing invitation, so an ID reveals nothing (CT-005).
+const INVITATION_ROUTES = new Set([
+  "/organization/accept-invitation",
+  "/organization/reject-invitation",
+  "/organization/cancel-invitation",
+  "/organization/get-invitation",
+]);
+// biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
+async function refuseForeignInvitation(ctx: AuthContext, db: Kysely<any>): Promise<void> {
+  if (!INVITATION_ROUTES.has(ctx.path ?? "")) return;
+  const session = await getSessionFromCtx(ctx);
+  const input = { ...ctx.query, ...(isRecord(ctx.body) ? ctx.body : {}) };
+  const invitationId = typeof input.invitationId === "string" ? input.invitationId : input.id;
+  const invitation = await sql<{ organizationId: string; email: string }>`
+    select "organizationId", "email" from "invitation" where "id" = ${String(invitationId ?? "")}`.execute(db);
+  const row = invitation.rows[0];
+  const refuse = () => new APIError("NOT_FOUND", { code: "RESOURCE_NOT_FOUND", message: "Resource not found" });
+  if (!session || !row) throw refuse();
+  if (row.email === session.user.email) return;
+  const member =
+    await sql`select 1 from "member" where "organizationId" = ${row.organizationId} and "userId" = ${session.user.id}`.execute(
+      db,
+    );
+  if (member.rows.length === 0) throw refuse();
+}
+
 // Slugs are chosen by the server, so a create never reveals whether a slug is taken (CT-005). The client's slug is
 // replaced with the name's slug plus a random suffix, which keeps creates from colliding. Updates cannot change the
 // slug, and a request that tries is refused with the generic validation failure.
@@ -280,6 +307,7 @@ export function authOptions({
       before: createAuthMiddleware(async (ctx) => {
         await refuseIfSpent(rateLimitCounter, ctx.path, ctx.body ?? {}, limits);
         await refuseForeignOrganization(ctx, db);
+        await refuseForeignInvitation(ctx, db);
         const organizationBody = organizationBodyFor(ctx);
         if (organizationBody) return organizationBody;
         return claimVerificationLink(ctx, db);
