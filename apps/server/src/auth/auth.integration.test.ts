@@ -318,10 +318,12 @@ describeWithDatabase("Better Auth against Postgres (TP-W2-004, TP-W2-005)", () =
     await signUp(VALID_PASSWORD);
     await verifyLink(tokenFromSentEmail());
     const headers = await signedInHeaders();
-    await enrollTotp(headers);
+    const { secret } = await enrollTotp(headers);
+    // A code that differs from the current valid one, so the control cannot pass by coincidence.
+    const wrongCode = String((Number(totpCode(secret)) + 1) % 1_000_000).padStart(6, "0");
 
     const wrong = await twoFactor().verifyTOTP({
-      body: { code: "000000" },
+      body: { code: wrongCode },
       headers,
       asResponse: true,
     });
