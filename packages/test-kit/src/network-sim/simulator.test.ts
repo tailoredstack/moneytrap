@@ -45,10 +45,11 @@ describe("RecordedNetworkSimulator (WP-4.2)", () => {
     const simulator = new RecordedNetworkSimulator("clean-catalog");
 
     const first = await simulator.listTransactions({ ...range, cursor: null });
-    const second = await simulator.listTransactions({ ...range, cursor: "2" });
+    const cursor = first.ok ? first.value.nextCursor : null;
+    const second = await simulator.listTransactions({ ...range, cursor });
 
     expect(first.ok && first.value.items.map((item) => item.sourceId)).toEqual(["txn-1", "txn-2"]);
-    expect(first.ok && first.value.nextCursor).toBe("2");
+    expect(first.ok && first.value.nextCursor).not.toBeNull();
     expect(second.ok && second.value.items.map((item) => item.sourceId)).toEqual(["txn-3"]);
     expect(second.ok && second.value.nextCursor).toBeNull();
     expect(second.ok && second.value.watermark).toEqual(RECORDED_FIXTURES["clean-catalog"].watermark);
@@ -120,14 +121,14 @@ describe("RecordedNetworkSimulator (WP-4.2)", () => {
     const firstPage = await simulator.discoverPrograms({ ...input, cursor: null });
     expect(firstPage.ok).toBe(true);
     const resumePoint = firstPage.ok ? firstPage.value.nextCursor : null;
-    expect(resumePoint).toBe("1");
+    expect(resumePoint).not.toBeNull();
 
     const failed = await simulator.discoverPrograms({ ...input, cursor: resumePoint });
     expect(failed).toEqual({ ok: false, failure: { state: "temporarily_unavailable", retryAfterSeconds: 30 } });
 
     const resumed = await simulator.discoverPrograms({ ...input, cursor: resumePoint });
     expect(resumed.ok && resumed.value.items.map((item) => item.sourceId)).toEqual(["prg-3"]);
-    expect(simulator.requests.map((request) => request.cursor)).toEqual([null, "1", "1"]);
+    expect(simulator.requests.map((request) => request.cursor)).toEqual([null, resumePoint, resumePoint]);
   });
 
   test("tracking links are created only for a program the network reports as approved", async () => {
@@ -159,6 +160,54 @@ describe("RecordedNetworkSimulator (WP-4.2)", () => {
     const simulator = new RecordedNetworkSimulator("clean-catalog");
 
     await expect(simulator.listTransactions({ ...range, cursor: "next-page" })).rejects.toThrow(RangeError);
+  });
+
+  test("a fabricated numeric cursor is refused instead of skipping records", async () => {
+    const simulator = new RecordedNetworkSimulator("clean-catalog");
+
+    await expect(simulator.listTransactions({ ...range, cursor: "1" })).rejects.toThrow(RangeError);
+    await expect(simulator.listTransactions({ ...range, cursor: "99999999999999999999999" })).rejects.toThrow(
+      RangeError,
+    );
+  });
+
+  test("a cursor issued for one operation or query is refused by another", async () => {
+    const simulator = new RecordedNetworkSimulator("clean-catalog");
+    const first = await simulator.listTransactions({ ...range, cursor: null });
+    const cursor = first.ok ? first.value.nextCursor : null;
+
+    await expect(simulator.listAdjustments({ ...range, cursor })).rejects.toThrow(RangeError);
+    await expect(
+      simulator.listTransactions({ from: range.from, to: new Date("2026-10-15T00:00:00.000Z"), cursor }),
+    ).rejects.toThrow(RangeError);
+    await expect(simulator.discoverPrograms({ advertiserSourceId: "adv-100", cursor })).rejects.toThrow(RangeError);
+  });
+
+  test("mutating a returned response does not change later answers from the same or a new simulator", async () => {
+    const simulator = new RecordedNetworkSimulator("clean-catalog");
+    const input = { ...range, cursor: null };
+
+    const first = await simulator.listTransactions(input);
+    if (!first.ok) throw new Error("expected a page");
+    first.value.watermark.setTime(0);
+    first.value.items[0] = { ...first.value.items[0], sourceId: "tampered" } as (typeof first.value.items)[0];
+
+    const repeat = await simulator.listTransactions(input);
+    const fresh = await new RecordedNetworkSimulator("clean-catalog").listTransactions(input);
+    expect(repeat).toEqual(fresh);
+    expect(repeat.ok && repeat.value.items[0]?.sourceId).toBe("txn-1");
+    expect(repeat.ok && repeat.value.watermark).toEqual(RECORDED_FIXTURES["clean-catalog"].watermark);
+  });
+
+  test("mutating a returned capability profile does not change later validation answers", async () => {
+    const simulator = new RecordedNetworkSimulator("clean-catalog");
+
+    const first = await simulator.validateConnection();
+    if (!first.ok) throw new Error("expected a profile");
+    (first.value.capabilities as Record<string, string>).list_adjustments = "unsupported";
+
+    const second = await simulator.validateConnection();
+    expect(second.ok && second.value.capabilities.list_adjustments).toBe("supported");
   });
 
   test("an unknown fixture name is rejected", () => {
