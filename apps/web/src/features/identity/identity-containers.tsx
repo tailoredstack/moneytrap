@@ -6,6 +6,7 @@ import { canManageMembers, inviteMember, rejectInvitation } from "../access/acce
 import { type InvitationState, InvitationView } from "../access/invitation-view";
 import { type Member, MembersView } from "../access/members-view";
 import { AccountSecurityView, type MfaSetup } from "./account-security-view";
+import { clearStepUpPending, markStepUpPending } from "./challenge-marker";
 import {
   acceptInvitation,
   enableTwoFactor,
@@ -66,8 +67,9 @@ export function LoginScreen({ returnTo }: { returnTo?: string | undefined }) {
         setView({ status: "submitting", email, retryAfterSeconds: null });
         const outcome = await signIn(authClient, { email, password });
         if (outcome.kind === "two-factor") {
+          markStepUpPending();
           await navigate({
-            href: `/step-up?challenge=1&mode=totp&returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`,
+            href: `/step-up?mode=totp&returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`,
           });
           return;
         }
@@ -92,6 +94,7 @@ export function StepUpScreen({ mode, returnTo }: { mode: StepUpMode; returnTo?: 
   }>({ status: "idle", wrongCount: 0, retryAfterSeconds: null });
   return (
     <StepUpView
+      returnTo={returnTo}
       status={view.status}
       mode={mode}
       wrongCount={view.wrongCount}
@@ -102,11 +105,13 @@ export function StepUpScreen({ mode, returnTo }: { mode: StepUpMode; returnTo?: 
         const outcome =
           mode === "recovery" ? await verifyRecoveryCode(authClient, code) : await verifyTotpCode(authClient, code);
         if (outcome.kind === "challenge-expired") {
+          clearStepUpPending();
           await navigate({ href: `/login?returnTo=${encodeURIComponent(`/step-up?mode=${mode}`)}` });
           return;
         }
         const next = stepUpViewState(outcome, view.wrongCount);
         if (!next) {
+          clearStepUpPending();
           await navigate({ href: safeReturnTo(returnTo) });
           return;
         }

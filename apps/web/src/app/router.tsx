@@ -8,6 +8,7 @@ import {
   type RouterHistory,
   redirect,
 } from "@tanstack/react-router";
+import { isStepUpPending } from "../features/identity/challenge-marker";
 import {
   AccountSecurityScreen,
   InvitationScreen,
@@ -79,13 +80,12 @@ const stepUpRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/step-up",
   validateSearch: (input: Record<string, unknown>) => ({
-    challenge: input.challenge === "1",
     mode: input.mode === "recovery" ? ("recovery" as const) : ("totp" as const),
     returnTo: optionalString(input, "returnTo"),
   }),
   // Without a sign-in waiting for a second factor, the code cannot be matched. Send the user to login first.
   beforeLoad: ({ search }) => {
-    const target = stepUpRedirect({ challenge: search.challenge, mode: search.mode });
+    const target = stepUpRedirect({ challenge: isStepUpPending(), mode: search.mode });
     if (target) throw redirect({ href: target });
   },
   component: function StepUp() {
