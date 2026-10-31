@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { RouteView } from "@moneytrap/app";
-import type { Id } from "@moneytrap/domain";
+import {
+  type RouteCache,
+  type RouteSource,
+  type RouteSourceRecord,
+  type RouteView,
+  readRouteView,
+} from "@moneytrap/app";
+import type { Id, Link } from "@moneytrap/domain";
 import IORedis from "ioredis";
 import { createRouteCache } from "./route-cache";
 
@@ -65,6 +71,42 @@ describeWithRedis("route cache", () => {
     await cache.put(token, view(1), loadedAt);
     // The stalled, older view must not be served.
     expect(await cache.get(token)).toBeNull();
+  });
+
+  test("a revoked route is denied within five seconds after a stalled allow write (ADR-007 gate)", async () => {
+    const cache = createRouteCache(connection);
+    const active: Link = {
+      id: linkId,
+      publisherId: "publisher_fixture" as Id<"publisher">,
+      propertyId: "property_fixture" as Id<"property">,
+      slug: "spring",
+      destinationUrl: "https://shop.example.com/spring",
+      status: "active",
+      version: 1,
+    };
+    let record: RouteSourceRecord = { link: active, eligible: true };
+    const source: RouteSource = {
+      async findByToken() {
+        return record;
+      },
+    };
+    // The first request reads the source while the link is active, then its cache write stalls past the bound.
+    const stalled: RouteCache = {
+      ...cache,
+      async put(key, value, loadedAt) {
+        await sleep(3100);
+        await cache.put(key, value, loadedAt);
+      },
+    };
+    const allowed = readRouteView({ cache: stalled, source }, token);
+    // The link is revoked while that write is stalled.
+    await sleep(50);
+    record = { link: { ...active, status: "revoked", version: 2 }, eligible: true };
+    const revokedAt = performance.now();
+    await allowed;
+    const denied = await readRouteView({ cache, source }, token);
+    expect(denied).toMatchObject({ kind: "found", view: { decision: "deny", state: "revoked", version: 2 } });
+    expect(performance.now() - revokedAt).toBeLessThan(5000);
   });
 
   test("a view loadedAt in the future is refused", async () => {
