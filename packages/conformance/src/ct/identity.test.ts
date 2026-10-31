@@ -365,6 +365,19 @@ describeWithDatabase("[M1] identity conformance", () => {
       expect(await bodyOf(taken)).toEqual(await bodyOf(free));
     });
 
+    test("creating an organization with a taken slug reveals neither the slug nor the other organization", async () => {
+      const adaSession = await signUpVerified(ADA);
+      const outsiderSession = await signUpVerified(OUTSIDER);
+      await post("/api/auth/organization/create", { name: "Org B", slug: "org-b" }, outsiderSession);
+
+      const taken = await post("/api/auth/organization/create", { name: "Ada Org", slug: "org-b" }, adaSession);
+      const text = await taken.text();
+
+      expect(taken.status).toBe(400);
+      expect(text).not.toContain("ALREADY_TAKEN");
+      expect(text).not.toContain("org-b");
+    });
+
     test("a member leaving an organization gets a success and loses the membership", async () => {
       const ownerSession = await signUpVerified(ADA);
       const inviteeSession = await signUpVerified(GRACE);
