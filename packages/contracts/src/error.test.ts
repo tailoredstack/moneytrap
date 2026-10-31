@@ -15,6 +15,14 @@ describe("error envelope", () => {
     expect(Value.Check(ErrorEnvelopeSchema, body)).toBe(false);
   });
 
+  test("accepts the generic internal error used for unexpected failures", () => {
+    expect(
+      Value.Check(ErrorEnvelopeSchema, {
+        error: { code: "INTERNAL", message: "Internal server error", correlation_id: "req_1" },
+      }),
+    ).toBe(true);
+  });
+
   test("requires a message", () => {
     const body = { error: { code: "VALIDATION_FAILED", correlation_id: "req_1" } };
     expect(Value.Check(ErrorEnvelopeSchema, body)).toBe(false);

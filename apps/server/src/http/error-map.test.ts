@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { ErrorEnvelopeSchema } from "@moneytrap/contracts";
 import { ERROR_CODES } from "@moneytrap/domain";
+import { Value } from "@sinclair/typebox/value";
 import { ERROR_HTTP_STATUS, errorResponse } from "./error-map";
 
 describe("error HTTP map", () => {
@@ -35,15 +37,19 @@ describe("error HTTP map", () => {
   });
 
   test("unknown codes fall back to 500 with a generic body and no stack", () => {
-    const { status, body } = errorResponse("NOT_A_CODE");
+    const { status, body } = errorResponse("NOT_A_CODE", "req_1", "secret details");
     expect(status).toBe(500);
-    expect(body).toEqual({ error: { code: "INTERNAL" } });
+    expect(body).toEqual({ error: { code: "INTERNAL", message: "Internal server error", correlation_id: "req_1" } });
+    expect(Value.Check(ErrorEnvelopeSchema, body)).toBe(true);
     expect(JSON.stringify(body)).not.toContain("stack");
   });
 
   test("known codes return their status and the code string", () => {
-    const { status, body } = errorResponse("RESOURCE_NOT_FOUND");
+    const { status, body } = errorResponse("RESOURCE_NOT_FOUND", "req_2", "Resource not found");
     expect(status).toBe(404);
-    expect(body).toEqual({ error: { code: "RESOURCE_NOT_FOUND" } });
+    expect(body).toEqual({
+      error: { code: "RESOURCE_NOT_FOUND", message: "Resource not found", correlation_id: "req_2" },
+    });
+    expect(Value.Check(ErrorEnvelopeSchema, body)).toBe(true);
   });
 });

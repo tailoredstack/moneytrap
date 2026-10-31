@@ -4,6 +4,7 @@ import type { Migration, MigrationProvider } from "kysely/migration";
 import { Pool } from "pg";
 import { migrate } from "./migrate";
 import { migrationProvider } from "./migrations";
+import { platform } from "./migrations/0001_platform";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const describeWithDatabase = databaseUrl ? describe : describe.skip;
@@ -103,5 +104,33 @@ describeWithDatabase("migrate", () => {
     expect(await privilege("SELECT")).toBe(true);
     expect(await privilege("UPDATE")).toBe(false);
     expect(await privilege("DELETE")).toBe(false);
+  });
+
+  test("audit rows reject UPDATE, DELETE, and TRUNCATE even through the migration connection", async () => {
+    await migrate(db);
+    await pool.query(
+      `insert into audit_logs (id, actor_type, action, entity_type, entity_id, metadata, occurred_at)
+       values ($1, 'system', 'test', 'test', 'test', '{}', now())`,
+      ["audit-test"],
+    );
+    await expect(pool.query("update audit_logs set action = 'changed' where id = 'audit-test'")).rejects.toThrow();
+    await expect(pool.query("delete from audit_logs where id = 'audit-test'")).rejects.toThrow();
+    await expect(pool.query("truncate audit_logs")).rejects.toThrow();
+    const { rows } = await pool.query<{ action: string }>("select action from audit_logs where id = 'audit-test'");
+    expect(rows).toEqual([{ action: "test" }]);
+  });
+
+  test("an existing baseline gains the audit guard on upgrade", async () => {
+    await migrate(db, {
+      async getMigrations() {
+        return { "0001_platform": platform };
+      },
+    });
+    await migrate(db);
+    await pool.query(
+      `insert into audit_logs (id, actor_type, action, entity_type, entity_id, metadata, occurred_at)
+       values ('audit-upgrade', 'system', 'test', 'test', 'test', '{}', now())`,
+    );
+    await expect(pool.query("delete from audit_logs where id = 'audit-upgrade'")).rejects.toThrow();
   });
 });

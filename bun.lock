@@ -16,7 +16,9 @@
       "name": "@moneytrap/server",
       "version": "0.0.0",
       "dependencies": {
+        "@moneytrap/contracts": "workspace:*",
         "@moneytrap/domain": "workspace:*",
+        "@sinclair/typebox": "^0.34.52",
       },
     },
     "apps/web": {
