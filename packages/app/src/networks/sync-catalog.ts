@@ -165,10 +165,13 @@ function quarantineId(networkId: string, scope: SyncScope, reason: QuarantineRea
 // cannot pass that text through the sync result, log line, or error (TP-W4-007, CT-009).
 function typedFailure(failure: ConnectorFailure): ConnectorFailure {
   if (failure.state === "temporarily_unavailable") {
-    const retryAfterSeconds = typeof failure.retryAfterSeconds === "number" ? failure.retryAfterSeconds : null;
-    return { state: "temporarily_unavailable", retryAfterSeconds };
+    const { retryAfterSeconds } = failure;
+    const valid = typeof retryAfterSeconds === "number" && Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0;
+    return { state: "temporarily_unavailable", retryAfterSeconds: valid ? retryAfterSeconds : null };
   }
-  return { state: failure.state };
+  // An unrecognized state is treated as not_authorized, so an unexpected value is never passed through.
+  if (failure.state === "unsupported") return { state: "unsupported" };
+  return { state: "not_authorized" };
 }
 
 function emptyTally(): SyncTally {
