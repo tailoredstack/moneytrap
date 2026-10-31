@@ -56,7 +56,7 @@ export async function syncCatalog(deps: SyncDeps, input: { networkId: string }):
 
   // Credentials are checked first. A disabled credential stops the sync before any catalog write (TP-W4-002, CT-009).
   const connection = await connector.validateConnection();
-  if (!connection.ok) return { ok: false, failure: connection.failure };
+  if (!connection.ok) return { ok: false, failure: typedFailure(connection.failure) };
 
   const advertisers = emptyTally();
   const programs = emptyTally();
@@ -161,6 +161,15 @@ function quarantineId(networkId: string, scope: SyncScope, reason: QuarantineRea
   return `qtn_${digest.slice(0, 40)}`;
 }
 
+// Rebuilds the failure from its typed fields only. An adapter that attaches an upstream message or body to the failure
+// cannot pass that text through the sync result, log line, or error (TP-W4-007, CT-009).
+function typedFailure(failure: ConnectorFailure): ConnectorFailure {
+  if (failure.state === "temporarily_unavailable") {
+    return { state: "temporarily_unavailable", retryAfterSeconds: failure.retryAfterSeconds };
+  }
+  return { state: failure.state };
+}
+
 function emptyTally(): SyncTally {
   return { created: 0, revised: 0, unchanged: 0, quarantined: 0 };
 }
@@ -180,7 +189,7 @@ async function drain<T>(args: {
   let cursor = loaded.cursor;
   for (;;) {
     const page = await fetchPage(cursor);
-    if (!page.ok) return { ok: false, failure: page.failure };
+    if (!page.ok) return { ok: false, failure: typedFailure(page.failure) };
     const observedAt = clock.now();
     for (const item of page.value.items) await handle(item, observedAt);
     if (page.value.nextCursor === null) {
