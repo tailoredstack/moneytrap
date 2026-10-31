@@ -208,7 +208,15 @@ describeWithStores("auth rate limiting against Postgres and Redis (TP-W2-014, TP
   // Without trusted proxies, a client must not choose its own bucket by sending x-forwarded-for. The server replaces
   // the header with the socket peer address before Better Auth reads it. Requests here all come from 127.0.0.1.
   test("without trusted proxies, rotating x-forwarded-for does not open new per-IP buckets", async () => {
-    const auth = authWith(policyWith({ perIp: { max: 2, window: 600 } }));
+    const real = authWith(policyWith({ perIp: { max: 2, window: 600 } }));
+    // Records what Better Auth receives. Each request must carry the socket peer, not the client's header and not nothing.
+    const seen: Array<string | null> = [];
+    const auth = {
+      handler: (request: Request) => {
+        seen.push(request.headers.get("x-forwarded-for"));
+        return real.handler(request);
+      },
+    };
     const app = new Elysia().use(authRoutes(auth, { trustProxy: false })).listen({ port: 0, hostname: "127.0.0.1" });
     try {
       const url = `http://127.0.0.1:${app.server?.port}/api/auth/sign-in/email`;
@@ -223,6 +231,7 @@ describeWithStores("auth rate limiting against Postgres and Redis (TP-W2-014, TP
       }
 
       expect(statuses).toEqual([401, 401, 429]);
+      expect(seen).toEqual(["127.0.0.1", "127.0.0.1", "127.0.0.1"]);
     } finally {
       app.stop();
     }
