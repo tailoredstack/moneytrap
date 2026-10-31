@@ -33,8 +33,10 @@ export async function resolveRedirect(
   if (view.decision !== "allow") return { kind: "denied" };
 
   const click = { dedupKey: `redirect-${requestId}`, linkId: view.linkId, occurredAt: deps.clock.now() };
+  // The hook must not fail the redirect. A hook that throws is ignored here, so no rejection goes unhandled.
   void Promise.resolve()
     .then(() => deps.clicks.enqueue(click))
-    .catch(deps.onClickError);
+    .catch(deps.onClickError)
+    .catch(() => {});
   return { kind: "redirect", destination: view.destination };
 }
