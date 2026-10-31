@@ -47,6 +47,19 @@ export const eligibility: Migration = {
         ["id", "organization_id"],
         (constraint) => constraint.onDelete("cascade"),
       )
+      // A decision names a revision of its own program. With MATCH SIMPLE, the check is skipped while the revision is null.
+      .addForeignKeyConstraint(
+        "eligibility_decisions_revision_fk",
+        ["program_id", "program_revision_seq"],
+        "program_revisions",
+        ["program_id", "revision_seq"],
+        (constraint) => constraint.onDelete("cascade"),
+      )
+      // The revision number and its source revision are set together or not at all.
+      .addCheckConstraint(
+        "eligibility_decisions_revision_pair_ck",
+        sql`(program_revision_seq is null) = (source_revision is null)`,
+      )
       .execute();
   },
 
