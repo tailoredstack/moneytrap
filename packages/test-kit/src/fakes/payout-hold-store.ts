@@ -17,7 +17,7 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
     actor,
     occurredAt,
   }: {
-    hold: Omit<PayoutHold, "placedAt">;
+    hold: Omit<PayoutHold, "placedAt" | "releasedAt">;
     organizationId: string;
     actor: HoldActor;
     auditId: string;
@@ -29,7 +29,7 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
     // The same rules the table enforces: a hold moves a positive amount and states a reason.
     if (hold.amountMinor <= 0n) throw new Error("payout_holds: amount must be positive");
     if (hold.reason.trim().length === 0) throw new Error("payout_holds: reason is required");
-    this.holds.push({ ...hold, placedAt: occurredAt });
+    this.holds.push({ ...hold, placedAt: occurredAt, releasedAt: null });
     this.holdOrganization.set(hold.id, organizationId);
     this.audit.push({ action: "payout_hold_placed", entityId: hold.id, actor });
   }

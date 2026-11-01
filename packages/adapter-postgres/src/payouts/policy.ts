@@ -137,7 +137,7 @@ export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
 
         await sql`insert into payout_holds (id, publisher_id, currency, amount_minor, reason, expires_at, released_at, created_by, created_at)
           values (${hold.id}, ${hold.publisherId}, ${hold.currency}, ${hold.amountMinor.toString()}, ${hold.reason},
-            ${hold.expiresAt}, ${hold.releasedAt}, ${actor.id}, ${occurredAt})`.execute(tx);
+            ${hold.expiresAt}, null, ${actor.id}, ${occurredAt})`.execute(tx);
         await writeAudit(tx, {
           auditId,
           organizationId,
