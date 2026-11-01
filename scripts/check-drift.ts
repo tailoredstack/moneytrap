@@ -7,7 +7,7 @@
 //   changed) are run and must be green.
 //
 // The base is $BASE_SHA when CI sets it, else origin/main. The diff runs from the merge base to the working tree, so
-// it sees the same files in CI (clean tree) and before a commit. Usage: bun scripts/check-drift.ts [--skip-conformance]
+// it sees the same files in CI (clean tree) and before a commit, including untracked files. Usage: bun scripts/check-drift.ts [--skip-conformance]
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -19,7 +19,7 @@ export const CONTRACT_SRC_DIR = "packages/contracts/src/";
 export const CONTRACT_VERSION_FILE = "packages/contracts/package.json";
 export const CONFORMANCE_TEST_DIR = "packages/conformance/src/ct/";
 
-export const isSpecFile = (path: string) => path.startsWith(SPEC_DIR) && path.endsWith(".md");
+export const isSpecFile = (path: string) => path.startsWith(SPEC_DIR);
 export const isContractFile = (path: string) => path.startsWith(CONTRACT_SRC_DIR) && !path.endsWith(".test.ts");
 export const isConformanceTest = (path: string) => path.startsWith(CONFORMANCE_TEST_DIR) && path.endsWith(".test.ts");
 
@@ -63,7 +63,8 @@ function checkBump(label: string, files: string[], versionFile: string, versions
   if (versions.head === null) {
     return [`${label} changed (${shown}) but ${versionFile} has no readable version`];
   }
-  // A file that is new on the branch has no base version, so any head version stands.
+  // A version file that is new on the branch has no base, so any head version stands. A base file with no version
+  // line is read as "0" by the caller, so adding one counts as a bump.
   if (versions.base === null) return [];
   const order = compareVersions(versions.head, versions.base);
   if (order === null) {
@@ -141,9 +142,11 @@ export function collectDrift(root: string, baseRef: string): DriftReport {
     throw new Error(`cannot find a merge base with ${baseRef}; fetch it (fetch-depth 0) or set BASE_SHA`);
   }
   const base = mergeBase.out.trim();
-  const diff = git(root, ["diff", "--name-only", "--no-renames", base]);
-  if (!diff.ok) throw new Error(`git diff against ${base} failed`);
-  const changed = diff.out.split("\n").filter(Boolean);
+  // -z keeps non-ASCII paths unquoted. Untracked files count too, so a new spec file is seen before it is added.
+  const diff = git(root, ["diff", "--name-only", "-z", "--no-renames", base]);
+  const untracked = git(root, ["ls-files", "--others", "--exclude-standard", "-z"]);
+  if (!diff.ok || !untracked.ok) throw new Error(`git diff against ${base} failed`);
+  const changed = [...new Set([...diff.out.split("\0"), ...untracked.out.split("\0")].filter(Boolean))];
 
   const atBase = (path: string) => {
     const shown = git(root, ["show", `${base}:${path}`]);
@@ -157,11 +160,11 @@ export function collectDrift(root: string, baseRef: string): DriftReport {
   const errors = checkVersionDrift({
     changed,
     spec: {
-      base: specBase === null ? null : parseSpecVersion(specBase),
+      base: specBase === null ? null : (parseSpecVersion(specBase) ?? "0"),
       head: specHead === null ? null : parseSpecVersion(specHead),
     },
     contract: {
-      base: contractBase === null ? null : parseContractVersion(contractBase),
+      base: contractBase === null ? null : (parseContractVersion(contractBase) ?? "0"),
       head: contractHead === null ? null : parseContractVersion(contractHead),
     },
   });
