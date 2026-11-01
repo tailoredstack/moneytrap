@@ -6,6 +6,7 @@ export { FakeClickStore } from "./fakes/click-store";
 export { FakeConversionImportStore } from "./fakes/conversion-import-store";
 export { FakeConversionStatusStore } from "./fakes/conversion-status-store";
 export { FakeDnsResolver } from "./fakes/dns-resolver";
+export { FakeEarningsSource } from "./fakes/earnings-source";
 export { FakeIdGenerator } from "./fakes/id-generator";
 export { FakeIdempotencyStore } from "./fakes/idempotency-store";
 export { FakeNetworkAccountStore } from "./fakes/network-account-store";
