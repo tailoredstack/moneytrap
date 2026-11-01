@@ -61,9 +61,17 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Merge only when checks pass, no threads are open, and any required finance review has approved, using rebase-merge.
 - Unwatch the PR once it merges.
 - Set the Linear issue to Done.
+- Clean up the merged branch and worktree as described in step 8.
 - When the last package in a wave merges, the wave's exit gate in `docs/implementation/WAVES.md` must pass before the next wave starts.
 
-**8. Start the unblocked packages**
+**8. Clean up the merged branch and worktree**
+- Run this after the PR merges. Leave the main checkout's uncommitted changes untouched.
+- Delete the remote branch with `git push origin --delete <branch>`, only if the PR state is `MERGED` and no other open PR uses that branch.
+- Remove the branch's worktree with `git worktree remove <path>`, never `--force`, and delete the local branch with `git branch -D <branch>`, only if the PR is `MERGED` and the worktree has no uncommitted changes.
+- Never delete a branch with an open PR, a branch of a running thread, or a branch with uncommitted changes. Report each one instead.
+- End the step with `git worktree prune` and `git fetch --prune origin`.
+
+**9. Start the unblocked packages**
 - Check existing threads for duplicates before starting a package.
 - Re-run step 1 after each merge. Start every package that the merge has unblocked, each in its own thread.
 - Packages with no dependency between them merge in the order they become ready: the first one with a clean review and passing checks merges first. The package that merges second rebases onto updated `main`, reruns its checks, and reruns the full-diff review on the rebased head before it merges.
@@ -71,7 +79,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Every process or container a step starts must be stopped before the step ends, including on failure. Use a `finally` block or an equivalent trap.
 - Before ending a turn, list what this session started, such as Docker containers (`docker ps`), local servers, and background processes. Stop only what this session started. Leave anything you did not start.
 - Use a unique container name and a free port for each test run. Don't reuse a port that another process holds.
-- Remove temporary branches, worktrees, and probe files you created.
+- Remove temporary branches, worktrees, and probe files you created. Merged work-package branches and worktrees follow the rules in step 8.
 
 **Autonomy**
 - Work-package agents decide for themselves. They know the best practice for their package and choose the approach. They do not ask the user anything.
