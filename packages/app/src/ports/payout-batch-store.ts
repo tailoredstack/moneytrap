@@ -114,9 +114,11 @@ export interface BatchApproveInput {
 }
 
 // `approved`: the batch and every reserved payout moved to approved and one audit row was written, all together.
-// `refused`: the maker-checker rule or the state refused it, and nothing changed (see decideApproval).
+// `refused`: the maker-checker rule or the state refused it, and the batch is unchanged (see decideApproval). A refused
+// known-batch refusal is audited with its reason. A missing batch has no row to audit.
 // `insufficient_funds`: a publisher's available balance no longer covers what is held for it, for example after a
-// reversal, so the batch cannot be approved (TP-W7-014). Nothing changed; cancel the batch and prepare a new one.
+// reversal, so the batch cannot be approved (TP-W7-014). The batch is unchanged, and the blocked attempt is audited; cancel
+// the batch and prepare a new one.
 export type BatchApproveOutcome =
   | { outcome: "approved"; batch: PayoutBatchRecord }
   | { outcome: "refused"; reason: ApprovalRefusal }
@@ -135,7 +137,9 @@ export interface PayoutBatchStore {
   }): Promise<BatchCancelOutcome>;
   // Takes the batch row lock, so approving and cancelling the same batch cannot both succeed. It applies decideApproval to the
   // stored state and preparer, then locks the batch's publishers in id order and checks that what is held for each, across all
-  // open payouts, is still within the available balance, before it approves the payouts and writes the audit row.
+  // open payouts, is still within the available balance the caller supplied, before it approves the payouts and writes the
+  // audit row. That balance was read before the lock, so it is a snapshot (OZE-3285). Approval does not re-check the
+  // publisher's status or method, which dispatch must (WP-7.9); reserve checks them because it is the step that selects them.
   approve(input: BatchApproveInput): Promise<BatchApproveOutcome>;
   // Reads are scoped to the organization, so another tenant's batch is never returned.
   find(organizationId: Id<"organization">, batchId: Id<"payoutBatch">): Promise<PayoutBatchRecord | null>;

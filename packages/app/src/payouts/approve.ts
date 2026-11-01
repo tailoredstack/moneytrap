@@ -26,6 +26,9 @@ const REFUSALS: Record<ApprovalRefusal, Failure> = {
 // The balance read here is a snapshot, like the one at preparation. The store checks it against what is held for each
 // publisher under the lock, so a reversal since preparation stops the approval instead of paying out money that is gone
 // (TP-W7-014). The approval then holds the funds exactly as the reservation did; dispatch is WP-7.9.
+// Known gap: the balance is read before the lock, so a reversal that commits in between is not seen. No money moves at
+// approval, and preparation has the same window. Reading available inside the transaction needs a Postgres balance source,
+// which does not exist yet; it is tracked in OZE-3285 and must land before or with dispatch (WP-7.9).
 export async function approveBatch(
   ctx: Ctx,
   deps: ApproveBatchDeps,

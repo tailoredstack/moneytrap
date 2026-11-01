@@ -73,6 +73,14 @@ export const payoutBatchApproval: Migration = {
 
   // Restores the prepared/cancelled rules. It fails while an approved batch exists, because its rows cannot be put back.
   async down(db: Kysely<unknown>) {
+    // Approved rows cannot be put back into the old state checks, and approval history must not be dropped with the columns.
+    // Refusing here, before any change, leaves the schema as it was whether or not the migrator wraps the run in a transaction.
+    const approved = await sql<{
+      n: string;
+    }>`select count(*)::text as n from payout_batches where state = 'approved'`.execute(db);
+    if (approved.rows[0]?.n !== "0") {
+      throw new Error("0024_payout_batch_approval cannot roll back while approved payout batches exist");
+    }
     await sql`drop index if exists audit_logs_payout_batch_approved_uq`.execute(db);
     await sql`create or replace function payouts_guard() returns trigger language plpgsql as $$
       begin

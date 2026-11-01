@@ -378,11 +378,13 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
         outcome: "refused",
         reason: "already_approved",
       });
-      const audits =
-        await sql`select 1 from audit_logs where entity_id = ${batchId} and action = 'payout_batch.approved'`.execute(
-          world.db,
-        );
-      expect(audits.rows).toHaveLength(1);
+      const repeated = await sql<{ actor_id: string; metadata: Record<string, unknown> }>`
+        select actor_id, metadata from audit_logs where entity_id = ${batchId} and action = 'payout_batch.approval_denied'`.execute(
+        world.db,
+      );
+      expect(repeated.rows).toHaveLength(1);
+      expect(repeated.rows[0]?.actor_id).toBe(checkerId);
+      expect(repeated.rows[0]?.metadata.reason).toBe("already_approved");
 
       const second = await reserveOne(world, 2);
       await world.store.cancel({
@@ -395,6 +397,13 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
         outcome: "refused",
         reason: "cancelled",
       });
+      const cancelled = await sql<{ actor_id: string; metadata: Record<string, unknown> }>`
+        select actor_id, metadata from audit_logs where entity_id = ${second.batchId} and action = 'payout_batch.approval_denied'`.execute(
+        world.db,
+      );
+      expect(cancelled.rows).toHaveLength(1);
+      expect(cancelled.rows[0]?.actor_id).toBe(checkerId);
+      expect(cancelled.rows[0]?.metadata.reason).toBe("cancelled");
     });
   });
 
@@ -455,11 +464,13 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
         world.db,
       );
       expect(batch.rows[0]?.state).toBe("prepared");
-      const audits =
-        await sql`select 1 from audit_logs where entity_id = ${batchId} and action = 'payout_batch.approved'`.execute(
-          world.db,
-        );
-      expect(audits.rows).toHaveLength(0);
+      const audits = await sql<{ actor_id: string; metadata: Record<string, unknown> }>`
+        select actor_id, metadata from audit_logs where entity_id = ${batchId} and action = 'payout_batch.approval_denied'`.execute(
+        world.db,
+      );
+      expect(audits.rows).toHaveLength(1);
+      expect(audits.rows[0]?.actor_id).toBe(checkerId);
+      expect(audits.rows[0]?.metadata).toMatchObject({ reason: "insufficient_funds", attemptedBy: checkerId });
     });
   });
 
@@ -474,6 +485,24 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
         audit: { id: fixtureId("audit", 81), actor: { type: "user", id: userId }, occurredAt: now },
       });
       expect(outcome).toBe("approved");
+    });
+  });
+
+  test("migration 0026 refuses to roll back while an approved batch exists, and leaves the schema alone", async () => {
+    await withPostgres(async (world) => {
+      const { batchId } = await reserveOne(world);
+      await world.store.approve(approvalInput(batchId, checkerId, 82));
+      const { Migrator } = await import("kysely/migration");
+      const migrator = new Migrator({ db: world.db, provider: migrationProvider });
+      const down = await migrator.migrateDown();
+      expect(String(down.error)).toMatch(/cannot roll back while approved payout batches exist/);
+      const batch = await sql<{ state: string; approved_by: string }>`
+        select state, approved_by from payout_batches where id = ${batchId}`.execute(world.db);
+      expect(batch.rows[0]).toEqual({ state: "approved", approved_by: checkerId });
+      const index = await sql`select 1 from pg_indexes where indexname = 'audit_logs_payout_batch_approved_uq'`.execute(
+        world.db,
+      );
+      expect(index.rows).toHaveLength(1);
     });
   });
 

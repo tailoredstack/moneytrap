@@ -141,16 +141,14 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
     if (!batch || batch.organizationId !== input.organizationId) return { outcome: "not_found" };
     const decision = decideApproval({ state: batch.state, preparedBy: batch.createdBy, approver: input.approver });
     if (!decision.approved) {
-      // A refused self-approval is itself audited (CT-025). Other refusals change nothing and write nothing.
-      if (decision.reason === "self_approval") {
-        this.audit.push({
-          action: "payout_batch.approval_denied",
-          entityId: batch.id,
-          actor: input.audit.actor,
-          occurredAt: input.audit.occurredAt,
-          metadata: { preparedBy: batch.createdBy, attemptedBy: input.approver, reason: decision.reason },
-        });
-      }
+      // Every refusal for a known batch is auditable, including stale retries after cancellation or approval.
+      this.audit.push({
+        action: "payout_batch.approval_denied",
+        entityId: batch.id,
+        actor: input.audit.actor,
+        occurredAt: input.audit.occurredAt,
+        metadata: { preparedBy: batch.createdBy, attemptedBy: input.approver, reason: decision.reason },
+      });
       return { outcome: "refused", reason: decision.reason };
     }
 
@@ -161,16 +159,32 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
         return this.committed(publisherId, batch.currency) > available;
       })
       .sort();
-    if (short.length > 0) return { outcome: "insufficient_funds", publisherIds: short };
+    if (short.length > 0) {
+      this.audit.push({
+        action: "payout_batch.approval_denied",
+        entityId: batch.id,
+        actor: input.audit.actor,
+        occurredAt: input.audit.occurredAt,
+        metadata: {
+          preparedBy: batch.createdBy,
+          attemptedBy: input.approver,
+          reason: "insufficient_funds",
+          publisherIds: short.join(","),
+        },
+      });
+      return { outcome: "insufficient_funds", publisherIds: short };
+    }
 
     batch.state = "approved";
     batch.approvedBy = input.approver;
     batch.approvedAt = input.at;
     let total = 0n;
+    let count = 0;
     for (const payout of this.payouts) {
       if (payout.batchId === batch.id && payout.state === "reserved") {
         payout.state = "approved";
         total += payout.amountMinor;
+        count += 1;
       }
     }
     this.audit.push({
@@ -182,6 +196,8 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
         preparedBy: batch.createdBy,
         approvedBy: input.approver,
         approvedAt: input.at.toISOString(),
+        currency: batch.currency,
+        payoutCount: String(count),
         totalMinor: total.toString(),
       },
     });

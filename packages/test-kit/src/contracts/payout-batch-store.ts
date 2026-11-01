@@ -511,6 +511,25 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect((await h.world.store.find(h.world.organizationId, batch.id))?.state).toBe("approved");
         }));
 
+      test("approving while another batch reserves the same publisher never overbooks its funds", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          const first = ok(await h.prepare({ cap_minor: "4000" })).value.batch;
+          const [approved, second] = await Promise.all([h.approve(first.id), h.prepare()]);
+          expect(approved.ok).toBe(true);
+          const batches = [first, ...(second.ok ? [second.value.batch] : [])];
+          const current = (
+            await Promise.all(batches.map((batch) => h.world.store.find(h.world.organizationId, batch.id)))
+          ).filter((batch) => batch !== null);
+          const held = current
+            .flatMap((batch) => batch.lines)
+            .filter((line) => line.state !== "cancelled")
+            .reduce((sum, line) => sum + line.amountMinor, 0n);
+          // The approved 4000 and the second batch's 6000 together are exactly the available funds, never more.
+          expect(held).toBe(10_000n);
+          expect(current.find((batch) => batch.id === first.id)?.state).toBe("approved");
+        }));
+
       test("approving and cancelling at once leave exactly one of them in effect", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);

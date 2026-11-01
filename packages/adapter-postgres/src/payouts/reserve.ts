@@ -265,16 +265,14 @@ export function createPayoutBatchStore(db: Kysely<unknown>): PayoutBatchStore {
           approver,
         });
         if (!decision.approved) {
-          // A refused self-approval is kept in the audit log (CT-025). The other refusals write nothing.
-          if (decision.reason === "self_approval") {
-            await writeAudit(tx, {
-              organizationId,
-              audit,
-              action: "payout_batch.approval_denied",
-              batchId,
-              metadata: { preparedBy: row.created_by, attemptedBy: approver, reason: decision.reason },
-            });
-          }
+          // Every refusal for a known batch is auditable, including stale retries after cancellation or approval.
+          await writeAudit(tx, {
+            organizationId,
+            audit,
+            action: "payout_batch.approval_denied",
+            batchId,
+            metadata: { preparedBy: row.created_by, attemptedBy: approver, reason: decision.reason },
+          });
           return { outcome: "refused", reason: decision.reason };
         }
 
@@ -298,7 +296,22 @@ export function createPayoutBatchStore(db: Kysely<unknown>): PayoutBatchStore {
             if (BigInt(heldRow.committed) > available) short.push(heldRow.publisher_id as Id<"publisher">);
           }
         }
-        if (short.length > 0) return { outcome: "insufficient_funds", publisherIds: short.sort() };
+        if (short.length > 0) {
+          // The attempt is kept in the audit log: finance can see that an approval was stopped, and why.
+          await writeAudit(tx, {
+            organizationId,
+            audit,
+            action: "payout_batch.approval_denied",
+            batchId,
+            metadata: {
+              preparedBy: row.created_by,
+              attemptedBy: approver,
+              reason: "insufficient_funds",
+              publisherIds: short.sort(),
+            },
+          });
+          return { outcome: "insufficient_funds", publisherIds: short };
+        }
 
         await sql`update payout_batches set state = 'approved', approved_by = ${approver}, approved_at = ${at}
           where id = ${batchId}`.execute(tx);
