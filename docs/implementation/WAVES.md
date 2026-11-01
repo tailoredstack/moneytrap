@@ -183,3 +183,4 @@ The critical path in each wave is the schedule risk. Staff the critical path wit
 3. **Finance and auth reviewers are required** on any PR touching `domain/src/ledger`, `domain/src/payouts`, `domain/src/access`, or `app/src/identity`.
 4. **Conformance cases unlock, never relax.** A CT case that turns green stays green; a failing one blocks merges touching its area.
 5. **Early-start WPs** need the wave owner's agreement and must not change a port that the current wave is using.
+6. **Merged branches are cleaned up** by the owner of the merged PR, following [AGENTS.md](../../AGENTS.md) step 8.
