@@ -27,6 +27,14 @@ Catalog data from a network is versioned, quarantined when malformed, and never 
 | TP-W4-005 | Discover advertisers pagination | All pages consumed; freshness watermark stored | WP-4.6 |
 | TP-W4-006 | Discover programs with terms and countries | Normalized with source IDs and revisions | WP-4.5 |
 | TP-W4-007 | Secrets never in responses or logs | Scan of responses and logs finds none | WP-4.4 |
+| TP-W4-033 | Register account with adapter-declared typed credentials | Required fields validated; values sealed at rest; response contains only account metadata/status | WP-4.4a, API-111 |
+| TP-W4-034 | Register/rotate without ops permission | `403`; no account mutation; no submitted credential value in response or logs | WP-4.4a, API-111, API-112 |
+| TP-W4-035 | Rotate account credentials | Atomic replacement and audit event; response/logs contain no old or new values | WP-4.4a, API-112 |
+| TP-W4-036 | Read account or inspect credential status | Safe metadata/status only; no credential field/value in any read response | WP-4.4a |
+| TP-W4-037 | Test connection for stored account | Worker constructs adapter from stored account; returns adapter capability profile; no credential value in response/error/log | WP-4.4a, API-113 |
+| TP-W4-038 | Rakuten ordinary connection validation without `web_security_token` | Validation succeeds or reports actual access-token result; optional token is not required | WP-4.4a, API-113 |
+| TP-W4-039 | Invoke Rakuten Advanced Reports without optional token | Only Advanced Reports capability reports not configured/unavailable; ordinary capabilities and validation remain usable | WP-4.4a |
+| TP-W4-040 | Invoke Advanced Reports with `web_security_token` | Token is sealed, sent only to Advanced Reports as required; no response, error, diagnostic, or log contains it or derived auth material | WP-4.4a |
 
 ### 3.2 Catalog sync and quarantine
 

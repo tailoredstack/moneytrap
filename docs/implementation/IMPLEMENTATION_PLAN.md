@@ -13,7 +13,7 @@ Companion documents:
 
 ## 1. Conventions
 
-**Work package (WP) ID:** `WP-<wave>.<n>`, for example `WP-2.3`. Waves are numbered as in [WAVES.md](WAVES.md).
+**Work package (WP) ID:** `WP-<wave>.<n>` with lettered children allowed for scoped decomposition, for example `WP-4.4a`. Waves are numbered as in [WAVES.md](WAVES.md).
 
 **Lane:** a stream of work that one engineer or pair can own without blocking other lanes in the same wave. Lane letters are local to a wave (A, B, C, D, E).
 
@@ -134,6 +134,7 @@ Goal: approved properties see the programs they may promote, decided by a pure e
 | WP-4.2 | Recorded-fixture network simulator | A | 4.1, 1.12 | `kit/src/network-sim/` | Conformance CT-009, CT-012, CT-015 | Deterministic transactions, adjustments, malformed payloads, disabled credential |
 | WP-4.3 | Real connector adapter | A | 4.1, partner decision (Plan Q1, decided: ADR-013); Rakuten contract confirmation gates merge, not start | `packages/adapter-network-rakuten/` | §6.1; ADR-013 (supersedes ADR-012) | Passes the same adapter contract suite as the simulator |
 | WP-4.4 | Network account and credentials | A | 4.1, 1.5 | `pg/src/networks/`, `server/src/adapters/secret-box.ts` | §4.4; DM-016 | Credentials encrypted with key ID; never returned by any endpoint |
+| WP-4.4a | Network account registration, credential rotation, and connection test | A | 4.4 | `app/src/networks/`, `server/src/http/` | API-111 to API-113; TP-W4-033 to TP-W4-040; ADR-013 | Adapter-declared typed credential fields are sealed per account; ops-only register/rotate routes return safe account metadata; test-connection returns the adapter capability profile; workers construct connectors from stored accounts. Optional `web_security_token` is sealed and used only for Rakuten Advanced Reports (reportid 1, 2/22, 3/23); ordinary connection validation does not require it. No credential field, including access tokens and `web_security_token`, appears in reads, responses, errors, diagnostics, or logs. |
 | WP-4.5 | Advertiser and program source facts | B | 4.1, 1.5 | `domain/src/catalog/`, `pg/src/catalog/`, migration `0004_catalog.ts` | DM-019 to DM-022; §4.2 source revision | Source identity and revision kept; upserts create revisions |
 | WP-4.6 | Catalog sync job | B | 4.5, 1.7 | `app/src/networks/sync-catalog.ts`, `server/src/worker/sync.ts` | API-073, API-074; CT-015 | Cursor and freshness watermark; malformed payload quarantined, never approved |
 | WP-4.7 | Disabled credential and safe failure | B | 4.4, 4.6 | `app/src/networks/sync-catalog.ts` | CT-009 | Sync fails safely; previously approved programs are not newly approved |

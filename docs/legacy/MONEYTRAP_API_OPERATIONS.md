@@ -1272,6 +1272,36 @@ A conforming operation defines: principal and scope, preconditions, required inp
 
 ## Public contract lifecycle
 
+### API-111 — Register network account (admin)
+
+- **Suggested binding (optional):** `POST /v1/admin/network-accounts`
+- **Capability:** `admin`; **caller/security scope:** `admin:ops`.
+- **Input contract:** `{network_id,account_ref,credentials:<adapter-declared typed fields>}`. Adapter schema declares required fields and optional sealed fields, including Rakuten Advanced Reports `web_security_token`.
+- **Outcome contract:** `201 {data:{id,network_id,account_ref,credential_status}}`; credential values are never returned.
+- **Logical entities touched:** `network_accounts`, `audit_logs`.
+- **Expected domain event:** `network.account_registered`.
+- **Acceptance:** Ops-only; validate declared fields, seal secrets with key ID, and redact values from responses, errors, diagnostics, and logs. Optional `web_security_token` is scoped to Advanced Reports and is not required for ordinary connection validation.
+
+### API-112 — Rotate network account credentials (admin)
+
+- **Suggested binding (optional):** `PUT /v1/admin/network-accounts/{id}/credentials`
+- **Capability:** `admin`; **caller/security scope:** `admin:ops`.
+- **Input contract:** `{credentials:<adapter-declared typed fields>}`
+- **Outcome contract:** `200 {data:{id,credential_status,rotated_at}}`; values are never returned.
+- **Logical entities touched:** `network_accounts`, `audit_logs`.
+- **Expected domain event:** `network.account_credentials_rotated`.
+- **Acceptance:** Ops-only atomic replacement; audit rotation without values; no old/new secret appears in response, errors, diagnostics, or logs.
+
+### API-113 — Test network account connection (admin)
+
+- **Suggested binding (optional):** `POST /v1/admin/network-accounts/{id}/test-connection`
+- **Capability:** `admin`; **caller/security scope:** `admin:ops`.
+- **Input contract:** `none`; worker loads account and constructs adapter using stored, unsealed credentials.
+- **Outcome contract:** `200 {data:{connection_status,capabilities}}`; no credential values.
+- **Logical entities touched:** `network_accounts`.
+- **Expected domain event:** `none`.
+- **Acceptance:** Return adapter capability profile. Ordinary validation does not require optional `web_security_token`; Advanced Reports requires it only when that capability is invoked and reports safely unavailable/not configured when absent. Credentials and derived auth material never appear in results or logs.
+
 - Publish supported operations, capability flags, semantic types, privacy purposes, errors, and deprecation notice.
 - Additive changes are compatible; breaking state semantics or removing response meaning require version migration.
 - Consumer tests must validate both successful results and error/retry/authorization behavior.
