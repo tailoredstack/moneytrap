@@ -526,4 +526,32 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         values ('GBP', 2, 10000, ${new Date("2026-02-01T00:00:00.000Z")}, ${writeNow()}, ${orgId})`.execute(db),
     ).rejects.toThrow("effective date is in the past");
   });
+
+  test("a hold expiring at or before its placement is refused with a clear error", async () => {
+    const placedAt = writeNow();
+    await expect(
+      holds.place({
+        hold: {
+          id: "pho_pol_19",
+          publisherId,
+          currency: "GBP",
+          amountMinor: 1n,
+          reason: "review",
+          expiresAt: placedAt,
+        },
+        organizationId: orgId,
+        auditId: "aud_hold_26",
+        actor,
+        occurredAt: placedAt,
+      }),
+    ).rejects.toThrow("expiry must follow placement");
+  });
+
+  test("a hold's creator must be a known user", async () => {
+    const placedAt = writeNow();
+    await expect(
+      sql`insert into payout_holds (id, publisher_id, currency, amount_minor, reason, expires_at, released_at, created_by, created_at)
+        values ('pho_pol_20', ${publisherId}, 'GBP', 1, 'review', null, null, 'usr_missing', ${placedAt})`.execute(db),
+    ).rejects.toThrow(/foreign key/);
+  });
 });
