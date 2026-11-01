@@ -154,6 +154,8 @@ export function toBatchView(record: PayoutBatchRecord): PayoutBatchView {
 // same funds cannot reserve more than is available in total (TP-W7-012). The reservation key makes a re-run return the batch
 // it already made instead of reserving again (TP-W7-013). The balance read here is a snapshot: the approval step checks
 // available again before money moves (TP-W7-014, WP-7.8).
+// The period labels the batch for reporting and keys a re-run; it does not select funds. A publisher is paid everything
+// cleared and unreserved, whichever period it cleared in, so an amount left over from an earlier period is never stranded.
 export async function prepareBatch(
   ctx: Ctx,
   deps: PayoutBatchDeps,
