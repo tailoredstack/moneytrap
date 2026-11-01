@@ -1,4 +1,11 @@
 export { FakeClock } from "./clock";
+export {
+  type ConnectorContractAdapter,
+  type ConnectorContractData,
+  type ConnectorContractFixture,
+  type ConnectorContractScenario,
+  runNetworkConnectorContract,
+} from "./contracts/network-connector";
 export { FakeCatalogSyncStore } from "./fakes/catalog-sync-store";
 export { FakeClickQueue } from "./fakes/click-queue";
 export { FakeClickReportStore } from "./fakes/click-report-store";

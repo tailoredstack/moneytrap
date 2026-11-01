@@ -58,6 +58,17 @@
         "vite": "^8.3.5",
       },
     },
+    "packages/adapter-network-rakuten": {
+      "name": "@moneytrap/adapter-network-rakuten",
+      "version": "0.0.0",
+      "dependencies": {
+        "@moneytrap/app": "workspace:*",
+        "@moneytrap/domain": "workspace:*",
+      },
+      "devDependencies": {
+        "@moneytrap/test-kit": "workspace:*",
+      },
+    },
     "packages/adapter-notify": {
       "name": "@moneytrap/adapter-notify",
       "version": "0.0.0",
@@ -268,6 +279,8 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.6.0", "", {}, "sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
+
+    "@moneytrap/adapter-network-rakuten": ["@moneytrap/adapter-network-rakuten@workspace:packages/adapter-network-rakuten"],
 
     "@moneytrap/adapter-notify": ["@moneytrap/adapter-notify@workspace:packages/adapter-notify"],
 
