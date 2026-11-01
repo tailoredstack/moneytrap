@@ -286,8 +286,7 @@ describe("[M3] network conformance", () => {
       expect(decision.decision).toBe("allow");
     });
 
-    // The link half (a tracking link is created or resolved) needs the link create gate, which lands in WP-5.2.
-    test.todo("[M4] CT-010 offer not permitted in user country or channel: link created or resolved");
+    // The link half (a tracking link is created or resolved) is activated in links.test.ts, against the WP-5.2 link gate.
 
     test("TP-W4-021 allow only when every rule passes, across publisher, property, approval, contract, geography, channel, and consent", async () => {
       const { store, run } = harness();
