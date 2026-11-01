@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { PageParamsSchema, pageSchema } from "@moneytrap/contracts";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { decodeCursor, encodeCursor, PageParamsSchema, pageSchema } from "./pagination";
+import { decodeCursor, encodeCursor } from "./cursor";
 
 const KEY = "test-cursor-key";
 const ItemSchema = Type.Object({ id: Type.String() });
