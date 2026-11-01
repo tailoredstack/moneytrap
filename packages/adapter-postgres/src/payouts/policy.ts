@@ -81,8 +81,9 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
       return withTx(db, async (tx): Promise<PublishPolicyResult> => {
         // The publish time is bounded like a hold's time, so a publish cannot be backdated to change a past decision.
         // The lock is taken before any clock is read, so a publish that waited for it checks the clock as it is now.
+        // A time outside the window is a typed refusal, not an error, so a long wait is never reported as a crash.
         await sql`select pg_advisory_xact_lock(hashtext(${`payout_policy:${policy.currency}`}))`.execute(tx);
-        await refuseOutsideWriteClock(tx, occurredAt);
+        if (await writeClockViolation(tx, occurredAt)) return { outcome: "rejected", reason: "outside_write_clock" };
         const latest = await sql<PolicyRow>`select currency, version, minimum_minor, effective_from from payout_policies
           where currency = ${policy.currency} order by version desc limit 1`.execute(tx);
         const top = latest.rows[0];
@@ -136,15 +137,19 @@ const WRITE_CLOCK_TOLERANCE_MS = 1000;
 
 // The window is closed at both ends. A time later than the write clock plus the tolerance would hide a hold or a publish
 // until that time arrives, so it is refused too.
-async function refuseOutsideWriteClock(tx: Transaction<unknown>, at: Date): Promise<void> {
+// Reads the clock now and names the side of the window a time falls outside, or null when it is inside.
+async function writeClockViolation(tx: Transaction<unknown>, at: Date): Promise<"earlier" | "later" | null> {
   const clock = await sql<{ db_now: Date }>`select clock_timestamp() as db_now`.execute(tx);
   const now = clock.rows[0]?.db_now.getTime() ?? 0;
-  if (at.getTime() < now - WRITE_CLOCK_TOLERANCE_MS) {
-    throw new Error("payout_holds: timestamp is earlier than the write clock");
-  }
-  if (at.getTime() > now + WRITE_CLOCK_TOLERANCE_MS) {
-    throw new Error("payout_holds: timestamp is later than the write clock");
-  }
+  if (at.getTime() < now - WRITE_CLOCK_TOLERANCE_MS) return "earlier";
+  if (at.getTime() > now + WRITE_CLOCK_TOLERANCE_MS) return "later";
+  return null;
+}
+
+async function refuseOutsideWriteClock(tx: Transaction<unknown>, at: Date): Promise<void> {
+  const violation = await writeClockViolation(tx, at);
+  if (violation === "earlier") throw new Error("payout_holds: timestamp is earlier than the write clock");
+  if (violation === "later") throw new Error("payout_holds: timestamp is later than the write clock");
 }
 
 // A hold belongs to a publisher of the organization it is written for. Placing or releasing one for another organization

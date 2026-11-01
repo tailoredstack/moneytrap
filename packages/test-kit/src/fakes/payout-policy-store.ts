@@ -21,11 +21,12 @@ export class FakePayoutPolicyStore implements PayoutPolicyStore {
     actor: { type: string; id: string };
   }): Promise<PublishPolicyResult> {
     const now = this.writeClock().getTime();
-    if (occurredAt.getTime() < now - WRITE_CLOCK_TOLERANCE_MS) {
-      throw new Error("payout_policies: timestamp is earlier than the write clock");
-    }
-    if (occurredAt.getTime() > now + WRITE_CLOCK_TOLERANCE_MS) {
-      throw new Error("payout_policies: timestamp is later than the write clock");
+    // A time outside the window is a typed refusal, as the adapter returns it after taking the lock.
+    if (
+      occurredAt.getTime() < now - WRITE_CLOCK_TOLERANCE_MS ||
+      occurredAt.getTime() > now + WRITE_CLOCK_TOLERANCE_MS
+    ) {
+      return { outcome: "rejected", reason: "outside_write_clock" };
     }
     const sameCurrency = this.policies.filter((existing) => existing.currency === policy.currency);
     if (sameCurrency.some((existing) => existing.version === policy.version)) {
