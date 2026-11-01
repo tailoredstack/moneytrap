@@ -378,7 +378,20 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
-  test("a second approval and an approval after cancel write nothing (TP-W7-018, TP-W7-048)", async () => {
+  test("racing approvals of one batch write exactly one approval audit row (TP-W7-048)", async () => {
+    await withPostgres(async (world) => {
+      const { batchId } = await reserveOne(world);
+      const outcomes = await Promise.all(
+        Array.from({ length: 6 }, (_, i) => world.store.approve(approvalInput(batchId, checkerId, 90 + i))),
+      );
+      expect(outcomes.filter((outcome) => outcome.outcome === "approved")).toHaveLength(1);
+      const audits = await sql<{ n: string }>`select count(*)::text as n from audit_logs
+        where entity_id = ${batchId} and action = 'payout_batch.approved'`.execute(world.db);
+      expect(audits.rows[0]?.n).toBe("1");
+    });
+  });
+
+  test("a second approval and an approval after cancel write no second approval (TP-W7-018, TP-W7-048)", async () => {
     await withPostgres(async (world) => {
       const { batchId } = await reserveOne(world);
       await world.store.approve(approvalInput(batchId, checkerId, 72));
@@ -482,7 +495,7 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
-  test("an approved batch cannot be cancelled (TP-W7-050)", async () => {
+  test("an approved batch cannot be cancelled, and the refused cancel is audited (TP-W7-050)", async () => {
     await withPostgres(async (world) => {
       const { batchId } = await reserveOne(world);
       await world.store.approve(approvalInput(batchId, checkerId, 80));

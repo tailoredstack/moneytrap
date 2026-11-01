@@ -183,3 +183,55 @@ test("fake writes exactly one approval audit row when approvals race (TP-W7-048)
   expect(results.filter((result) => result.outcome === "approved")).toHaveLength(1);
   expect(store.audit.filter((row) => row.action === "payout_batch.approved")).toHaveLength(1);
 });
+
+test("fake audits a refused cancel of an approved batch (TP-W7-050)", async () => {
+  const store = new FakePayoutBatchStore();
+  const publisherId = fixtureId("publisher", 3);
+  const methodId = fixtureId("payoutMethod", 3);
+  store.publisherOrganization.set(publisherId, organizationId);
+  store.addMethod({ id: methodId, publisherId, currency: "GBP" });
+  const at = new Date("2026-11-02T09:30:00.000Z");
+  const batchId = fixtureId("payoutBatch", 3);
+  await store.reserve({
+    organizationId,
+    batchId,
+    reservationKey: "reservation-3",
+    currency: "GBP",
+    periodStart: new Date("2026-10-01T00:00:00.000Z"),
+    periodEnd: new Date("2026-10-31T00:00:00.000Z"),
+    capMinor: null,
+    policyVersion: 1,
+    createdBy: userId,
+    createdAt: at,
+    lines: [
+      {
+        payoutId: fixtureId("payout", 3),
+        publisherId,
+        methodId,
+        requestedMinor: 5_000n,
+        availableMinor: 5_000n,
+        minimumMinor: 1_000n,
+      },
+    ],
+    audit: { id: fixtureId("audit", 30), actor: { type: "user", id: userId }, occurredAt: at },
+  });
+  await store.approve({
+    organizationId,
+    batchId,
+    approver: checkerId,
+    at,
+    availability: [{ publisherId, availableMinor: 5_000n }],
+    audit: { id: fixtureId("audit", 31), actor: { type: "user", id: checkerId }, occurredAt: at },
+  });
+  const outcome = await store.cancel({
+    organizationId,
+    batchId,
+    at,
+    audit: { id: fixtureId("audit", 32), actor: { type: "user", id: userId }, occurredAt: at },
+  });
+  expect(outcome).toBe("approved");
+  expect(store.audit.filter((row) => row.action === "payout_batch.cancel_denied")).toMatchObject([
+    { entityId: batchId, metadata: { reason: "approved" } },
+  ]);
+  expect((await store.find(organizationId, batchId))?.state).toBe("approved");
+});
