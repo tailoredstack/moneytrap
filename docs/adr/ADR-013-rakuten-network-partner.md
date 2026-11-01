@@ -6,7 +6,7 @@
 
 ## Context
 
-ADR-012 kept WP-4.3 deferred until a network partner was contracted and sandbox access existed. It also required a follow-up ADR to name the network. Plan Q1 is now decided: the project owner reports that the team has signed up with Rakuten Advertising as the first affiliate network partner. ADR-012's revisit trigger asked for a contracted partner with sandbox access. Trigger status: met for WP-4.3 planning, on the reported signup and sandbox access. A production contract is not recorded here and stays undecided (see Decision).
+ADR-012 kept WP-4.3 deferred until a network partner was contracted and sandbox access existed. It also required a follow-up ADR to name the network. Plan Q1 is now decided: the project owner reports that the team has signed up with Rakuten Advertising as the first affiliate network partner. ADR-012's revisit trigger asked for a contracted partner with sandbox access. Trigger status: partly met. Sandbox and API access are reported. A signed contract is not recorded in this repo. The project owner must confirm the contract before WP-4.3 merges. Until then, WP-4.3 may be planned but its adapter is not merged.
 
 Rakuten Advertising is the network the team will build the first connector against. Its public developer documentation publishes an affiliate APIs section and a developer guide on trying them out (see Evidence). What those cover is not verified here. The team reports that sandbox and API access are available now. Building against a real sandbox lets WP-4.3 test real responses instead of guessing an API shape, which was the risk ADR-012 named.
 
