@@ -75,6 +75,15 @@ export function createCatalogSyncStore(db: Kysely<unknown>): CatalogSyncStore {
       return result.outcome;
     },
 
+    async invalidateProgramApproval(networkId, advertiserSourceId, sourceId) {
+      await sql`update program_revisions r set payload = jsonb_set(r.payload, '{approval}', 'null'::jsonb)
+        from programs p, network_advertisers a
+        where r.program_id = p.id and p.network_advertiser_id = a.id
+          and a.network_id = ${networkId} and a.external_id = ${advertiserSourceId}
+          and p.external_id = ${sourceId} and p.current_revision_seq = r.revision_seq
+          and r.payload->>'approval' is distinct from 'null'`.execute(db);
+    },
+
     async quarantine(write: QuarantineWrite) {
       // The payload is stored as its JSON text, not jsonb, so an escape that jsonb rejects cannot stall the sync.
       // A replayed write hits the primary key and emits nothing, so each held record raises one alert.

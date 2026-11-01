@@ -55,5 +55,6 @@ export interface CatalogSyncStore {
   upsertAdvertiser(write: AdvertiserWrite): Promise<FactOutcome>;
   // null when the advertiser has not been stored, so the program cannot be attached to it.
   upsertProgram(write: ProgramWrite): Promise<FactOutcome | null>;
+  invalidateProgramApproval(networkId: string, advertiserSourceId: string, sourceId: string): Promise<void>;
   quarantine(write: QuarantineWrite): Promise<void>;
 }

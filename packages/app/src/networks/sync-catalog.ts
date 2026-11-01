@@ -105,6 +105,8 @@ export async function syncCatalog(deps: SyncDeps, input: { networkId: string }):
       handle: async (item, observedAt) => {
         const checked = validateProgram(item);
         const quarantine = async (reason: QuarantineReason, sourceId: string | null) => {
+          if (reason === "invalid_approval" && sourceId !== null)
+            await store.invalidateProgramApproval(networkId, advertiserSourceId, sourceId);
           await store.quarantine({
             id: quarantineId(networkId, scope, reason, item),
             networkId,

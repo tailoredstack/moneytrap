@@ -134,6 +134,27 @@ describe("catalog sync (WP-4.6)", () => {
     expect(revisionsOf(store, "prg-1").at(-1)?.payload.approval).toBe("pending");
   });
 
+  test("a quarantined later approval revision fails closed and keeps source history", async () => {
+    const base = RECORDED_FIXTURES["clean-catalog"];
+    const { store, run } = harness();
+    await run(new RecordedNetworkSimulator("clean-catalog"));
+    const accepted = revisionsOf(store, "prg-1");
+    const revoked: RecordedFixture = {
+      ...base,
+      programs: base.programs.map((program) =>
+        program.sourceId === "prg-1" ? ({ ...program, revision: "2", approval: "revoked" } as never) : program,
+      ),
+    };
+
+    await run(new RecordedNetworkSimulator(revoked));
+
+    expect(revisionsOf(store, "prg-1")).toEqual(accepted);
+    expect(store.quarantined).toContainEqual(
+      expect.objectContaining({ sourceId: "prg-1", reason: "invalid_approval" }),
+    );
+    expect(store.programs.get(`${NETWORK}:adv-100:prg-1`)?.revisions.at(-1)?.payload.approval).toBeNull();
+  });
+
   test("TP-W4-013 an interrupted sync resumes from the saved cursor without duplicate revisions", async () => {
     const { store, run } = harness();
     // One simulator for both runs: its interrupt fires once, so the second run continues past it.
