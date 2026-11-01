@@ -81,6 +81,12 @@ export class FakeCatalogSyncStore implements CatalogSyncStore {
     if (this.quarantined.some((held) => held.id === write.id)) return;
     this.quarantined.push({ ...write });
   }
+
+  async invalidateProgramApproval(networkId: string, advertiserSourceId: string, sourceId: string): Promise<void> {
+    const fact = this.programs.get(`${networkId}:${advertiserSourceId}:${sourceId}`);
+    const latest = fact?.revisions.at(-1);
+    if (latest) latest.payload = { ...latest.payload, approval: null };
+  }
 }
 
 function cursorKey(networkId: string, scope: SyncScope): string {
