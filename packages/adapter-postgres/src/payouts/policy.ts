@@ -130,8 +130,8 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
 
 // A hold's placement and release times come from the caller, so the adapter bounds them against the database clock. A time
 // earlier than the write clock minus the tolerance is refused, so a hold cannot be placed or released retroactively.
-// Five minutes covers the gap between a caller reading its clock and the transaction starting (WP-7.6 review).
-const WRITE_CLOCK_TOLERANCE_MS = 5 * 60 * 1000;
+// One second covers the gap between a caller reading its clock and the transaction starting (WP-7.6 review).
+const WRITE_CLOCK_TOLERANCE_MS = 1000;
 
 // The window is closed at both ends. A time later than the write clock plus the tolerance would hide a hold or a publish
 // until that time arrives, so it is refused too.
@@ -186,11 +186,18 @@ export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
         if (placedAt && releasedAt.getTime() < placedAt.getTime()) {
           throw new Error("payout_holds: release precedes placement");
         }
-        const updated = await sql<{ id: string }>`update payout_holds set released_at = ${releasedAt}
+        const updated = await sql<{
+          id: string;
+          publisher_id: string;
+          currency: string;
+          amount_minor: string;
+        }>`update payout_holds
+          set released_at = ${releasedAt}
           where id = ${id} and released_at is null
             and publisher_id in (select id from publishers where organization_id = ${organizationId})
-          returning id`.execute(tx);
-        if (updated.rows.length === 0) return false;
+          returning id, publisher_id, currency, amount_minor`.execute(tx);
+        const released = updated.rows[0];
+        if (!released) return false;
 
         await writeAudit(tx, {
           auditId,
@@ -199,7 +206,11 @@ export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
           action: "payout_hold_released",
           entityType: "payout_hold",
           entityId: id,
-          metadata: {},
+          metadata: {
+            publisherId: released.publisher_id,
+            currency: released.currency,
+            amountMinor: released.amount_minor,
+          },
           occurredAt: releasedAt,
         });
         return true;

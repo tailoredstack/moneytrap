@@ -3,7 +3,7 @@ import type { CurrencyCode, PayoutPolicy } from "@moneytrap/domain";
 
 /** In-memory reference adapter for the payout policy store. It applies the same version rules as the Postgres adapter. */
 // Same bound as the Postgres adapter: a publish time earlier than the write clock less the tolerance is refused.
-const WRITE_CLOCK_TOLERANCE_MS = 5 * 60 * 1000;
+const WRITE_CLOCK_TOLERANCE_MS = 1000;
 
 export class FakePayoutPolicyStore implements PayoutPolicyStore {
   readonly policies: PayoutPolicy[] = [];

@@ -2,7 +2,7 @@ import type { HoldActor, PayoutHoldStore } from "@moneytrap/app/src/ports/payout
 import type { CurrencyCode, PayoutHold } from "@moneytrap/domain";
 
 // Same tolerance as the Postgres adapter (WRITE_CLOCK_TOLERANCE_MS).
-const WRITE_CLOCK_TOLERANCE_MS = 5 * 60 * 1000;
+const WRITE_CLOCK_TOLERANCE_MS = 1000;
 
 /**
  * In-memory reference adapter for the payout hold store. Like the Postgres adapter, it refuses a hold on a publisher of
@@ -29,13 +29,13 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
     auditId: string;
     occurredAt: Date;
   }) {
+    this.assertInWriteWindow(occurredAt);
     if (this.publisherOrganization.get(hold.publisherId) !== organizationId) {
       throw new Error("payout: publisher is not in the organization");
     }
     // The same rules the table enforces: a hold moves a positive amount and states a reason.
     if (hold.amountMinor <= 0n) throw new Error("payout_holds: amount must be positive");
     if (hold.reason.trim().length === 0) throw new Error("payout_holds: reason is required");
-    this.assertInWriteWindow(occurredAt);
     // The same rules the table enforces: a hold id is unique, and an expiry falls after placement.
     if (this.holds.some((existing) => existing.id === hold.id)) throw new Error("payout_holds: duplicate hold id");
     if (hold.expiresAt !== null && hold.expiresAt.getTime() <= occurredAt.getTime()) {
