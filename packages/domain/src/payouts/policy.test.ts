@@ -95,6 +95,12 @@ describe("evaluatePayout (TP-W7-009, TP-W7-010)", () => {
     expect(decision.holds.map((h) => h.reason)).toEqual(["chargeback review"]);
   });
 
+  test("a replay before a release instant still sees the hold as active", () => {
+    const releasedLater = hold({ releasedAt: new Date("2026-07-01T00:00:00.000Z") });
+    const decision = evaluatePayout({ policy: policy(), availableMinor: 9000n, holds: [releasedLater], at });
+    expect(decision).toMatchObject({ eligible: false, exclusions: ["held"] });
+  });
+
   test("a hold in another currency does not exclude the publisher", () => {
     const decision = evaluatePayout({
       policy: policy(),
