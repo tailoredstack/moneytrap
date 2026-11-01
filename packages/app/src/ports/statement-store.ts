@@ -18,10 +18,12 @@ export interface StatementRecord {
 // A closed period is final. recordClosed writes the statement only when the period has none, and returns false, writing
 // nothing, when a concurrent close already recorded it. Nothing updates or deletes a statement row.
 export interface StatementStore {
-  publisherForUser?(
+  listForOrganization?(userId: Id<"user"> | undefined, organizationId: Id<"organization">): Promise<StatementRecord[]>;
+  findForOrganization?(
     userId: Id<"user"> | undefined,
     organizationId: Id<"organization">,
-  ): Promise<Id<"publisher"> | null>;
+    statementId: Id<"statement">,
+  ): Promise<StatementRecord | null>;
   downloadUrl?(objectRef: string): Promise<string>;
   findClosed(
     publisherId: Id<"publisher">,

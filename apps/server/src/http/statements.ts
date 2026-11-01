@@ -1,5 +1,5 @@
-import { listStatements, type StatementStore } from "@moneytrap/app";
-import { parseId } from "@moneytrap/domain";
+import type { StatementStore } from "@moneytrap/app";
+import { type CurrencyCode, isCurrencyCode, parseId } from "@moneytrap/domain";
 import { Elysia } from "elysia";
 import { errorResponse } from "./error-map";
 import { guard, type PrincipalResolver } from "./guards/enforce";
@@ -23,39 +23,45 @@ export function statementRoutes(wiring?: StatementWiring) {
       const authenticated = await principal(request.headers);
       const organizationId = parseId("organization", params.organizationId);
       if (!organizationId) return fail(set, request, "VALIDATION_FAILED");
-      const publisherId = await store.publisherForUser?.(authenticated?.userId, organizationId);
-      if (!publisherId) return fail(set, request, authenticated ? "RESOURCE_NOT_FOUND" : "UNAUTHENTICATED");
-      const currencies = ["USD", "EUR", "GBP", "CAD", "AUD", "JPY", "KRW", "BHD"] as const;
-      if (query.currency && !currencies.includes(query.currency as (typeof currencies)[number]))
-        return fail(set, request, "VALIDATION_FAILED");
-      const currency = query.currency as (typeof currencies)[number] | undefined;
+      if (!authenticated) return fail(set, request, "UNAUTHENTICATED");
+      if (query.currency && !isCurrencyCode(query.currency)) return fail(set, request, "VALIDATION_FAILED");
+      const currency = query.currency as CurrencyCode | undefined;
       const year = number(query.year),
         month = number(query.month);
-      if ((query.year !== undefined && year === undefined) || (query.month !== undefined && month === undefined))
+      if (
+        (query.year !== undefined && (year === undefined || !Number.isInteger(year) || year < 1)) ||
+        (query.month !== undefined && (month === undefined || !Number.isInteger(month) || month < 1 || month > 12))
+      )
         return fail(set, request, "VALIDATION_FAILED");
-      const result = await listStatements(
-        { store },
-        {
-          publisherId,
-          ...(year === undefined ? {} : { year }),
-          ...(month === undefined ? {} : { month }),
-          ...(currency ? { currency } : {}),
-        },
-      );
-      if (!result.ok) return fail(set, request, result.code);
-      return { data: result.value.map(serialize) };
+      const records = await store.listForOrganization?.(authenticated.userId, organizationId);
+      if (!records) return fail(set, request, "INTERNAL");
+      return {
+        data: records
+          .filter(
+            (record) =>
+              (year === undefined || record.periodStart.getUTCFullYear() === year) &&
+              (month === undefined || record.periodStart.getUTCMonth() + 1 === month) &&
+              (currency === undefined || record.currency === currency),
+          )
+          .map(serialize),
+      };
     })
     .get(STATEMENT_PATH, guard(STATEMENT_KEY, principal), async ({ params, request, set }) => {
       const authenticated = await principal(request.headers);
       const organizationId = parseId("organization", (params as Record<string, string>).organizationId);
       if (!organizationId) return fail(set, request, "VALIDATION_FAILED");
-      const publisherId = await store.publisherForUser?.(authenticated?.userId, organizationId);
-      if (!publisherId) return fail(set, request, authenticated ? "RESOURCE_NOT_FOUND" : "UNAUTHENTICATED");
-      const record = (await store.list(publisherId)).find((item) => item.id === params.statementId);
+      if (!authenticated) return fail(set, request, "UNAUTHENTICATED");
+      const record = await store.findForOrganization?.(
+        authenticated.userId,
+        organizationId,
+        params.statementId as never,
+      );
       if (!record) return fail(set, request, "RESOURCE_NOT_FOUND");
+      const downloadUrl = await store.downloadUrl?.(record.objectRef);
+      if (!downloadUrl || !/^https:\/\//.test(downloadUrl)) return fail(set, request, "INTERNAL");
       return new Response(null, {
         status: 302,
-        headers: { location: (await store.downloadUrl?.(record.objectRef)) ?? `/v1/statements/${record.id}` },
+        headers: { location: downloadUrl },
       });
     });
 }
