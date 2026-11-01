@@ -3,8 +3,12 @@ export async function signStatementDownloadUrl(
   options: { baseUrl?: string | undefined; secret?: string | undefined; now: Date },
 ): Promise<string> {
   if (!options.baseUrl || !options.secret) throw new Error("statement download signing is not configured");
+  const segments = objectRef.split("/");
+  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new Error("invalid statement object reference");
+  }
   const expires = Math.floor(options.now.getTime() / 1000) + 300;
-  const path = objectRef.split("/").map(encodeURIComponent).join("/");
+  const path = segments.map(encodeURIComponent).join("/");
   const url = new URL(path, options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`);
   if (url.protocol !== "https:") throw new Error("statement object base URL must use HTTPS");
   const key = await crypto.subtle.importKey(

@@ -61,7 +61,7 @@ export function createStatementStore(
         (id, publisher_id, currency, period_start, period_end, revision, totals, content, content_hash, object_ref, created_at)
         values (${record.id}, ${record.publisherId}, ${record.currency}, ${record.periodStart}, ${record.periodEnd}, ${record.revision},
         ${JSON.stringify(record.content.totals)}::jsonb, ${JSON.stringify(record.content)}::jsonb, ${record.contentHash}, ${record.objectRef}, ${record.createdAt})
-        on conflict (publisher_id, currency, period_start, period_end, revision) do nothing returning id`.execute(db);
+        on conflict do nothing returning id`.execute(db);
       return rows.length > 0;
     },
     async list(publisherId) {

@@ -75,6 +75,14 @@ class InMemoryStatementStore implements StatementStore {
   async list(publisher: Id<"publisher">): Promise<StatementRecord[]> {
     return this.records.filter((record) => record.publisherId === publisher);
   }
+
+  async listForOrganization(): Promise<StatementRecord[]> {
+    return [];
+  }
+
+  async findForOrganization(): Promise<StatementRecord | null> {
+    return null;
+  }
 }
 
 class SequentialIds implements IdGenerator {

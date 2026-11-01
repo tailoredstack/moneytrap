@@ -34,8 +34,7 @@ export function statementRoutes(wiring?: StatementWiring) {
         (query.month !== undefined && (month === undefined || !Number.isInteger(month) || month < 1 || month > 12))
       )
         return fail(set, request, "VALIDATION_FAILED");
-      const records = await store.listForOrganization?.(authenticated.userId, organizationId);
-      if (!records) return fail(set, request, "INTERNAL");
+      const records = await store.listForOrganization(authenticated.userId, organizationId);
       return {
         data: records
           .filter(
@@ -52,11 +51,7 @@ export function statementRoutes(wiring?: StatementWiring) {
       const organizationId = parseId("organization", (params as Record<string, string>).organizationId);
       if (!organizationId) return fail(set, request, "VALIDATION_FAILED");
       if (!authenticated) return fail(set, request, "UNAUTHENTICATED");
-      const record = await store.findForOrganization?.(
-        authenticated.userId,
-        organizationId,
-        params.statementId as never,
-      );
+      const record = await store.findForOrganization(authenticated.userId, organizationId, params.statementId as never);
       if (!record) return fail(set, request, "RESOURCE_NOT_FOUND");
       const downloadUrl = await store.downloadUrl(record.objectRef);
       if (!/^https:\/\//.test(downloadUrl)) return fail(set, request, "INTERNAL");

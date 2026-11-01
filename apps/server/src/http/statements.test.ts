@@ -48,11 +48,19 @@ describe("statement API routes (TP-W6-049)", () => {
     const list = await app.handle(
       new Request(`http://localhost/v1/organizations/${organizationId}/statements?currency=USD`),
     );
+    const excludedByCurrency = await app.handle(
+      new Request(`http://localhost/v1/organizations/${organizationId}/statements?currency=EUR`),
+    );
+    const excludedByPeriod = await app.handle(
+      new Request(`http://localhost/v1/organizations/${organizationId}/statements?year=2025&month=10`),
+    );
     const detail = await app.handle(
       new Request(`http://localhost/v1/organizations/${organizationId}/statements/${record.id}/download`),
     );
     expect(list.status).toBe(200);
     expect((await list.json()).data[0].content_hash).toBe(record.contentHash);
+    expect((await excludedByCurrency.json()).data).toEqual([]);
+    expect((await excludedByPeriod.json()).data).toEqual([]);
     expect(detail.status).toBe(302);
     expect(detail.headers.get("location")).toBe(`https://files.example.test/${record.objectRef}`);
   });
