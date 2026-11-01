@@ -18,6 +18,7 @@ export { FakeRiskFlagStore } from "./fakes/risk-flag-store";
 export { FakeRouteCache } from "./fakes/route-cache";
 export { FakeRouteSource } from "./fakes/route-source";
 export { FakeSecretBox } from "./fakes/secret-box";
+export { FakeTransactionPullStore } from "./fakes/transaction-pull-store";
 export { FakeVerificationTokens } from "./fakes/verification-tokens";
 export { fixtureCtx } from "./fixtures/ctx";
 export { fixtureId } from "./fixtures/ids";
