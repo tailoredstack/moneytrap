@@ -28,6 +28,7 @@ interface HoldRow {
   reason: string;
   expires_at: Date | null;
   released_at: Date | null;
+  created_at: Date;
 }
 
 function toPolicy(row: PolicyRow): PayoutPolicy {
@@ -46,6 +47,7 @@ function toHold(row: HoldRow): PayoutHold {
     currency: row.currency,
     amountMinor: BigInt(row.amount_minor),
     reason: row.reason,
+    placedAt: row.created_at,
     expiresAt: row.expires_at,
     releasedAt: row.released_at,
   };
@@ -177,7 +179,7 @@ export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
 
     async listForPublisher(organizationId, publisherId, currency) {
       const result =
-        await sql<HoldRow>`select h.id, h.publisher_id, h.currency, h.amount_minor, h.reason, h.expires_at, h.released_at
+        await sql<HoldRow>`select h.id, h.publisher_id, h.currency, h.amount_minor, h.reason, h.expires_at, h.released_at, h.created_at
         from payout_holds h join publishers p on p.id = h.publisher_id
         where p.organization_id = ${organizationId} and h.publisher_id = ${publisherId} and h.currency = ${currency}
         order by h.created_at, h.id`.execute(db);

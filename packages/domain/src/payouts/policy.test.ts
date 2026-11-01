@@ -33,6 +33,7 @@ function hold(overrides: Partial<PayoutHold> = {}): PayoutHold {
     currency: "GBP",
     amountMinor: 1n,
     reason: "KYB review",
+    placedAt: new Date("2026-01-01T00:00:00.000Z"),
     expiresAt: null,
     releasedAt: null,
     ...overrides,
@@ -93,6 +94,12 @@ describe("evaluatePayout (TP-W7-009, TP-W7-010)", () => {
     });
     expect(decision).toMatchObject({ eligible: false, payableMinor: 0n, exclusions: ["held"] });
     expect(decision.holds.map((h) => h.reason)).toEqual(["chargeback review"]);
+  });
+
+  test("a replay before the hold was placed does not see it", () => {
+    const placedLater = hold({ placedAt: new Date("2026-07-01T00:00:00.000Z") });
+    const decision = evaluatePayout({ policy: policy(), availableMinor: 9000n, holds: [placedLater], at });
+    expect(decision).toMatchObject({ eligible: true, exclusions: [] });
   });
 
   test("a replay before a release instant still sees the hold as active", () => {

@@ -9,7 +9,8 @@ export interface HoldActor {
 // release of an unknown hold, changes nothing and returns false.
 export interface PayoutHoldStore {
   place(input: {
-    hold: PayoutHold;
+    // placedAt is the occurredAt of the write, so the stored hold always carries its placement time.
+    hold: Omit<PayoutHold, "placedAt">;
     organizationId: string;
     auditId: string;
     actor: HoldActor;

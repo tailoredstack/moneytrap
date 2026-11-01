@@ -18,6 +18,8 @@ export interface PayoutHold {
   currency: CurrencyCode;
   amountMinor: bigint;
   reason: string;
+  // When the hold was placed. A replay before this instant does not see the hold.
+  placedAt: Date;
   expiresAt: Date | null;
   releasedAt: Date | null;
 }
@@ -67,6 +69,7 @@ export function policyInEffect(
 // A hold stops paying out from its placement until it is released or its expiry passes. Both are exclusive, so a
 // replay at an instant before a release still sees the hold as it was then.
 export function isHoldActive(hold: PayoutHold, at: Date): boolean {
+  if (at.getTime() < hold.placedAt.getTime()) return false;
   if (hold.releasedAt !== null && hold.releasedAt.getTime() <= at.getTime()) return false;
   return hold.expiresAt === null || hold.expiresAt.getTime() > at.getTime();
 }
