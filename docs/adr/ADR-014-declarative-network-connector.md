@@ -19,14 +19,17 @@ The dashboard already has the pieces for accounts: WP-4.4 stores sealed credenti
 
 - Adapters stay code for now. The Rakuten adapter is the reference and is not replaced.
 - The direction to evaluate is one declarative connector engine in `packages/adapter-network-declarative/`. It implements `NetworkConnector` by running a network definition: auth, per-operation request and paging, field and status mappings, capability states, and the single https host the credential may be sent to. Logic a definition cannot express is a named hook in the engine, not a script in the definition.
-- A spike decides it. The spike builds the engine and a Rakuten definition and passes only if:
-  - the engine passes `runNetworkConnectorContract` for Rakuten, and
-  - against the same fake upstream, it returns the same results as the hand-written adapter for every contract case and every adapter-specific case (paging, windowing, failures, credential safety), and
-  - every hook it needs is network-neutral by name and contract, and the list of hooks is recorded.
+- A spike decides it. The spike builds the engine and a Rakuten definition and passes only if all of these hold:
+  - The engine passes `runNetworkConnectorContract` for Rakuten.
+  - Every test in `packages/adapter-network-rakuten/src/rakuten-connector.test.ts` that checks behavior (not the adapter's internals) runs unchanged against the engine, using the same fake upstream, and passes. The spike lists any test it excludes and why.
+  - No hook, hook parameter, or error text names Rakuten. Each hook is described by the API behavior it handles, for example "a date range limited to N days per request".
+  - The spike records the full list of hooks it needed.
+- A passing spike does not adopt the engine. It leads to a follow-up ADR that accepts or rejects the engine on the spike's results, and only an accepted engine gets work package rows in the plan. Until then nothing in this ADR changes how networks are added.
 - The engine enforces these rules for every definition. A definition cannot weaken them:
   - Every failure is a typed `ConnectorFailure`, and a partial result is never returned as complete.
-  - Money becomes `bigint` minor units through the currency exponent, with no float path (ADR-005).
-  - The credential is sent only to the host the definition declares, over https, and never reaches a result, error, diagnostic, or log.
+  - Money becomes `bigint` minor units through the currency exponent (ADR-005). A decimal string is parsed with `parseMoney`. A JSON number is converted at the currency exponent and refused if it does not round-trip, so it is never rounded.
+  - The credential, and any token made from it, is sent only to the one https host the definition declares. The host is fixed in the definition and never comes from account configuration or from a response. Redirects are refused. A paging link in a response is used only for its page value, never fetched as given. Plain http is allowed only for a loopback test server, as in the Rakuten adapter.
+  - The credential and tokens never reach a result, error, diagnostic, or log.
   - An operation the definition does not support fails as `unsupported`.
 - Definitions are reviewed files in the repo. A definition is used in production only after it passes the contract suite against recorded fixtures.
 - The dashboard manages accounts: register and rotate credentials, see connection health, and test a connection with `validateConnection`. This holds whether adapters are code or definitions. Its credential shape (a sealed object whose fields the adapter or definition declares, with `account_ref` as the network's account ID) is set when that work package is written.
