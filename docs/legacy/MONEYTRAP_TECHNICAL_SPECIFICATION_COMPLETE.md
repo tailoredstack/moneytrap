@@ -18,7 +18,7 @@
 
 ## Moneytrap — Implementation-Neutral Technical Specification
 
-**Version:** 2.0 (implementation-neutral baseline)  
+**Version:** 2.1 (implementation-neutral baseline)
 **Status:** Proposed product behavior contract; not a selected implementation
 
 **Precedence:** Where a companion contains legacy implementation details, this document governs. Suggested paths, status mappings, field names, and interaction mechanics are examples; observable behavior, security invariants and financial correctness govern conformance.  
