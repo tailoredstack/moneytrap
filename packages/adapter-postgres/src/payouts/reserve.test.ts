@@ -187,6 +187,38 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
+  test("the database refuses a payout whose reservation key differs from its batch or whose publisher is in another organization", async () => {
+    await withPostgres(async (world) => {
+      const { batchId } = await reserveOne(world);
+      const outsider = fixtureId("publisher", 2);
+      await sql`insert into publishers (id, legal_name, status, organization_id, created_at, updated_at)
+        values (${outsider}, 'Outsider', 'approved', ${otherOrganizationId}, ${now}, ${now})`.execute(world.db);
+      await sql`insert into payout_methods (id, publisher_id, provider, provider_account_ref, country, currency, state,
+        verified_at, created_at, updated_at)
+        values (${fixtureId("payoutMethod", 2)}, ${outsider}, 'simulator', 'acct_outsider', 'GB', 'GBP', 'active', ${now}, ${now}, ${now})`.execute(
+        world.db,
+      );
+      const insert = (reservationKey: string) =>
+        sql`insert into payouts (id, batch_id, publisher_id, method_id, currency, amount_minor, reservation_key,
+          idempotency_key, state, created_at)
+          values (${fixtureId("payout", 98)}, ${batchId}, ${outsider}, ${fixtureId("payoutMethod", 2)}, 'GBP', 100,
+            ${reservationKey}, ${crypto.randomUUID()}, 'reserved', ${now})`.execute(world.db);
+      await expect(insert("reservation-1")).rejects.toThrow(/not in the batch organization/);
+      await world.addPublisher({
+        organizationId,
+        publisherId: fixtureId("publisher", 3),
+        methodId: fixtureId("payoutMethod", 3),
+        currency: "GBP",
+      });
+      await expect(
+        sql`insert into payouts (id, batch_id, publisher_id, method_id, currency, amount_minor, reservation_key,
+          idempotency_key, state, created_at)
+          values (${fixtureId("payout", 97)}, ${batchId}, ${fixtureId("publisher", 3)}, ${fixtureId("payoutMethod", 3)}, 'GBP', 100,
+            'another-key-1', ${crypto.randomUUID()}, 'reserved', ${now})`.execute(world.db),
+      ).rejects.toThrow(/payouts_batch_key_fk/);
+    });
+  });
+
   test("a line whose method is disabled is skipped and the rest still reserve", async () => {
     await withPostgres(async (world) => {
       const a = fixtureId("publisher", 1);
