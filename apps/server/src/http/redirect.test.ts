@@ -3,6 +3,7 @@ import type { RouteCache, RouteSource, RouteSourceRecord } from "@moneytrap/app"
 import { createLink, type Id } from "@moneytrap/domain";
 import { FakeClickQueue } from "@moneytrap/test-kit";
 import { createApp } from "../app";
+import { serveWebAsset } from "../assets";
 import { apiRoutes } from "./routes";
 
 // Auth is replaced with a stub: these tests only exercise the redirect route.
@@ -120,8 +121,9 @@ describe("GET /r/:token (UC13, API-043)", () => {
     const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth));
     const response = await app.handle(new Request(`http://localhost/r/${TOKEN}`));
     // Without the route, the web shell catch-all answers the path. It must be neither a redirect nor one of the
-    // redirect's own answers, so no visitor can reach a destination through an unwired route.
-    expect(response.status).toBe(200);
+    // redirect's own answers, so no visitor can reach a destination through an unwired route. The catch-all serves the
+    // shell only when the web app was built into the manifest; otherwise it answers 404, as it does for any unknown path.
+    expect(response.status).toBe(serveWebAsset("/") ? 200 : 404);
     expect(response.headers.get("location")).toBeNull();
     expect(await response.text()).not.toBe("Gone");
   });
