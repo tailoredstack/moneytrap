@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "bun ../../scripts/setup-env.ts --secret",
     "dev": "bun ./build.ts --manifest-only && bun --watch src/index.ts",
     "typecheck": "bun ./build.ts --manifest-only && tsc -p tsconfig.json"
   },

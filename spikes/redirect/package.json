@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "setup": "bun ../../scripts/setup-env.ts",
     "typecheck": "tsc --noEmit",
     "verify": "bun verify.ts"
   },

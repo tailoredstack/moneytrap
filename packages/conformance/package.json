@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "bun ../../scripts/setup-env.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
