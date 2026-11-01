@@ -63,16 +63,34 @@ export const payoutBatchApproval: Migration = {
               old.reservation_key, old.idempotency_key, old.provider_ref, old.created_at)
           or (new.state = 'cancelled') <> (new.cancelled_at is not null)
         then raise exception 'payouts may only be cancelled or approved once'; end if;
-        -- A payout is approved only with its batch.
+        -- A payout is approved only with its batch, and cancelled only while its batch is still prepared: an approved batch
+        -- keeps its funds, so a cancel cannot free them.
         if new.state = 'approved' and not exists (select 1 from payout_batches b
           where b.id = new.batch_id and b.state = 'approved')
         then raise exception 'payouts: the batch is not approved'; end if;
+        if new.state = 'cancelled' and not exists (select 1 from payout_batches b
+          where b.id = new.batch_id and b.state = 'prepared')
+        then raise exception 'payouts: a payout is cancelled only while its batch is prepared'; end if;
         return new;
       end $$`.execute(db);
+
+    // A batch cannot be approved while any of its payouts is still reserved. The check runs at commit, so the approval and the
+    // payout updates can be made in one transaction in either order. Direct SQL that approves the batch alone is refused here.
+    await sql`create function payout_batches_approved_guard() returns trigger language plpgsql as $$
+      begin
+        if exists (select 1 from payouts p where p.batch_id = new.id and p.state = 'reserved')
+        then raise exception 'payout_batches: an approved batch still has reserved payouts'; end if;
+        return null;
+      end $$`.execute(db);
+    await sql`create constraint trigger payout_batches_approved_ct after update on payout_batches
+      deferrable initially deferred for each row when (new.state = 'approved')
+      execute function payout_batches_approved_guard()`.execute(db);
   },
 
   // Restores the prepared/cancelled rules. It fails while an approved batch exists, because its rows cannot be put back.
   async down(db: Kysely<unknown>) {
+    await sql`drop trigger if exists payout_batches_approved_ct on payout_batches`.execute(db);
+    await sql`drop function if exists payout_batches_approved_guard() cascade`.execute(db);
     // Approved rows cannot be put back into the old state checks, and approval history must not be dropped with the columns.
     // Refusing here, before any change, leaves the schema as it was whether or not the migrator wraps the run in a transaction.
     const approved = await sql<{
