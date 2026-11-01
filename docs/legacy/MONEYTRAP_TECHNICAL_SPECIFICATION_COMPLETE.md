@@ -18,7 +18,7 @@
 
 ## Moneytrap — Implementation-Neutral Technical Specification
 
-**Version:** 2.1 (implementation-neutral baseline)
+**Version:** 2.2 (implementation-neutral baseline)
 
 **Change note:** 2.1 adds the network-account API operations API-111–API-113; see the API operation catalog.
 
