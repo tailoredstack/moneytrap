@@ -13,6 +13,14 @@ bun scripts/check-docs.ts
 
 Exit 0 means every relative link resolves, every UC/API/DM/UI/CT/WP/TP reference points at a defined ID, and no ID is defined twice. Run it after every docs change. Do not mark docs work done while it fails.
 
+## Spec drift
+
+```
+bun run check:drift
+```
+
+Compares the branch against `$BASE_SHA` (or `origin/main`). A change under `docs/legacy/` needs a higher `**Version:**` in the technical specification. A non-test change in `packages/contracts/src` needs a higher `version` in `packages/contracts/package.json`. Conformance tests that name a changed CT row, and any changed conformance test, are run and must be green. A bump needs numeric parts (`2.1`, not `2.1-rc1`). Pass `--skip-conformance` to skip the test run.
+
 ## The feedback loop
 
 1. **Notice.** When a review, test failure, or your own edit fixes the same kind of mistake a second time, it is a pattern.

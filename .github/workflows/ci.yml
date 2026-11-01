@@ -32,6 +32,10 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
       - run: bun run check:docs
+      - name: Check spec drift
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bun run check:drift
       - run: bun run check:ports
       - run: bun run typecheck
       - run: bun run lint
