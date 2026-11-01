@@ -58,9 +58,10 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
     releasedAt: Date;
     auditId: string;
   }) {
+    // The window is checked first, as the adapter checks it before the lookup.
+    this.assertInWriteWindow(releasedAt);
     const hold = this.holds.find((existing) => existing.id === id);
     if (!hold || hold.releasedAt !== null || this.holdOrganization.get(id) !== organizationId) return false;
-    this.assertInWriteWindow(releasedAt);
     if (releasedAt.getTime() < hold.placedAt.getTime()) throw new Error("payout_holds: release precedes placement");
     hold.releasedAt = releasedAt;
     this.audit.push({ action: "payout_hold_released", entityId: id, actor });
