@@ -35,7 +35,7 @@ jobs:
       - name: Check spec drift
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bun run check:drift
+        run: bun run check:drift --skip-conformance
       - run: bun run check:ports
       - run: bun run typecheck
       - run: bun run lint
@@ -97,6 +97,10 @@ jobs:
       - run: bun install -g @colbymchenry/codegraph@1.6.2
       - run: echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
       - run: codegraph init -i
+      - name: Check spec drift and touched conformance cases
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bun run check:drift
       - name: Run affected database tests
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
