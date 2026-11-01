@@ -368,4 +368,20 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       holds.release({ id: "pho_pol_10", organizationId: orgId, auditId: "aud_hold_16", actor, releasedAt: anHourAgo }),
     ).rejects.toThrow("earlier than the write clock");
   });
+
+  test("the table refuses a hold inserted already released or expiring before placement", async () => {
+    const placedAt = writeNow();
+    await expect(
+      sql`insert into payout_holds (id, publisher_id, currency, amount_minor, reason, expires_at, released_at, created_by, created_at)
+        values ('pho_pol_11', ${publisherId}, 'GBP', 1, 'review', null, ${placedAt}, ${actor.id}, ${placedAt})`.execute(
+        db,
+      ),
+    ).rejects.toThrow("may only be released after placement");
+    await expect(
+      sql`insert into payout_holds (id, publisher_id, currency, amount_minor, reason, expires_at, released_at, created_by, created_at)
+        values ('pho_pol_12', ${publisherId}, 'GBP', 1, 'review', ${new Date(placedAt.getTime() - 1000)}, null, ${actor.id}, ${placedAt})`.execute(
+        db,
+      ),
+    ).rejects.toThrow("payout_holds_expiry_ck");
+  });
 });

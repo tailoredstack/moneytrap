@@ -38,6 +38,11 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
     if (occurredAt.getTime() < this.writeClock().getTime() - WRITE_CLOCK_TOLERANCE_MS) {
       throw new Error("payout_holds: timestamp is earlier than the write clock");
     }
+    // The same rules the table enforces: a hold id is unique, and an expiry falls after placement.
+    if (this.holds.some((existing) => existing.id === hold.id)) throw new Error("payout_holds: duplicate hold id");
+    if (hold.expiresAt !== null && hold.expiresAt.getTime() <= occurredAt.getTime()) {
+      throw new Error("payout_holds_expiry_ck: expiry must follow placement");
+    }
     this.holds.push({ ...hold, placedAt: occurredAt, releasedAt: null });
     this.holdOrganization.set(hold.id, organizationId);
     this.audit.push({ action: "payout_hold_placed", entityId: hold.id, actor });
