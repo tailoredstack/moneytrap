@@ -150,7 +150,13 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
         /never deleted/,
       );
       await expect(sql`truncate payouts`.execute(world.db)).rejects.toThrow(/never deleted/);
-      await sql`update payouts set state = 'cancelled', cancelled_at = ${now} where id = ${payoutId}`.execute(world.db);
+      // A payout is cancelled only with its batch, in one transaction.
+      await world.db.transaction().execute(async (trx) => {
+        await sql`update payouts set state = 'cancelled', cancelled_at = ${now} where id = ${payoutId}`.execute(trx);
+        await sql`update payout_batches set state = 'cancelled', cancelled_at = ${now} where id = ${batchId}`.execute(
+          trx,
+        );
+      });
       await expect(
         sql`update payouts set state = 'reserved', cancelled_at = null where id = ${payoutId}`.execute(world.db),
       ).rejects.toThrow(/may only be cancelled or approved once/);
@@ -487,6 +493,10 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
         audit: { id: fixtureId("audit", 81), actor: { type: "user", id: userId }, occurredAt: now },
       });
       expect(outcome).toBe("approved");
+      // The refused cancel is audited, and the batch stays approved.
+      const denied = await sql<{ metadata: { reason: string } }>`select metadata from audit_logs
+        where entity_id = ${batchId} and action = 'payout_batch.cancel_denied'`.execute(world.db);
+      expect(denied.rows).toEqual([{ metadata: { reason: "approved" } }]);
     });
   });
 
@@ -527,6 +537,30 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
       await expect(sql`update payouts set state = 'approved' where id = ${payoutId}`.execute(world.db)).rejects.toThrow(
         /the batch is not approved/,
       );
+    });
+  });
+
+  test("direct SQL cannot insert an already approved batch without its approval audit row (TP-W7-051)", async () => {
+    await withPostgres(async (world) => {
+      await expect(
+        world.db.transaction().execute(async (trx) => {
+          await sql`insert into payout_batches (id, organization_id, reservation_key, currency, period_start, period_end, state,
+            policy_version, created_by, created_at, approved_by, approved_at)
+            values (${fixtureId("payoutBatch", 60)}, ${organizationId}, 'reservation-insert', 'GBP', ${now}, ${new Date("2026-11-30T00:00:00.000Z")},
+              'approved', 1, ${userId}, ${now}, ${checkerId}, ${now})`.execute(trx);
+        }),
+      ).rejects.toThrow(/needs its payout_batch.approved audit row/);
+    });
+  });
+
+  test("direct SQL cannot cancel a single payout while its batch stays prepared (TP-W7-051)", async () => {
+    await withPostgres(async (world) => {
+      const { payoutId } = await reserveOne(world);
+      await expect(
+        sql`update payouts set state = 'cancelled', cancelled_at = ${now} where id = ${payoutId}`.execute(world.db),
+      ).rejects.toThrow(/cancelled payout needs its batch cancelled/);
+      const payout = await sql<{ state: string }>`select state from payouts where id = ${payoutId}`.execute(world.db);
+      expect(payout.rows[0]?.state).toBe("reserved");
     });
   });
 

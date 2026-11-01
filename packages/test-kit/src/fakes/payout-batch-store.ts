@@ -129,7 +129,16 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
     const batch = this.batches.get(input.batchId);
     if (!batch || batch.organizationId !== input.organizationId) return "not_found";
     if (batch.state === "cancelled") return "already_cancelled";
-    if (batch.state === "approved") return "approved";
+    if (batch.state === "approved") {
+      this.audit.push({
+        action: "payout_batch.cancel_denied",
+        entityId: batch.id,
+        actor: input.audit.actor,
+        occurredAt: input.audit.occurredAt,
+        metadata: { reason: "approved" },
+      });
+      return "approved";
+    }
     batch.state = "cancelled";
     for (const payout of this.payouts) if (payout.batchId === batch.id) payout.state = "cancelled";
     this.audit.push({ action: "payout_batch.cancelled", entityId: batch.id, actor: input.audit.actor });

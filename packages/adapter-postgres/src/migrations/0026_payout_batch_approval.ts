@@ -86,9 +86,23 @@ export const payoutBatchApproval: Migration = {
         then raise exception 'payout_batches: an approved batch needs its payout_batch.approved audit row'; end if;
         return null;
       end $$`.execute(db);
-    await sql`create constraint trigger payout_batches_approved_ct after update on payout_batches
+    // Insert as well as update: a batch written already approved still needs its approval audit row.
+    await sql`create constraint trigger payout_batches_approved_ct after insert or update on payout_batches
       deferrable initially deferred for each row when (new.state = 'approved')
       execute function payout_batches_approved_guard()`.execute(db);
+
+    // A payout is cancelled only together with its batch. A single payout cancelled in SQL would free its funds with no batch
+    // cancel and no audit row. The batch cancel cancels its payouts and the batch in one transaction, so the check at commit
+    // sees both.
+    await sql`create function payouts_cancelled_guard() returns trigger language plpgsql as $$
+      begin
+        if not exists (select 1 from payout_batches b where b.id = new.batch_id and b.state = 'cancelled')
+        then raise exception 'payouts: a cancelled payout needs its batch cancelled in the same transaction'; end if;
+        return null;
+      end $$`.execute(db);
+    await sql`create constraint trigger payouts_cancelled_ct after update on payouts
+      deferrable initially deferred for each row when (new.state = 'cancelled')
+      execute function payouts_cancelled_guard()`.execute(db);
 
     // A cancelled batch cannot leave reserved payouts behind: their funds would stay held with no batch to release them. The
     // app cancels the payouts and the batch in one transaction, so the check at commit sees both.
@@ -117,6 +131,8 @@ export const payoutBatchApproval: Migration = {
     await sql`drop function if exists payout_batches_approved_guard() cascade`.execute(db);
     await sql`drop trigger if exists payout_batches_cancelled_ct on payout_batches`.execute(db);
     await sql`drop function if exists payout_batches_cancelled_guard() cascade`.execute(db);
+    await sql`drop trigger if exists payouts_cancelled_ct on payouts`.execute(db);
+    await sql`drop function if exists payouts_cancelled_guard() cascade`.execute(db);
     await sql`drop index if exists audit_logs_payout_batch_approved_uq`.execute(db);
     await sql`create or replace function payouts_guard() returns trigger language plpgsql as $$
       begin

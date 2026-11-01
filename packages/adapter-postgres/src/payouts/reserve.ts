@@ -230,7 +230,17 @@ export function createPayoutBatchStore(db: Kysely<unknown>): PayoutBatchStore {
         const batch = found.rows[0];
         if (!batch) return "not_found";
         if (batch.state === "cancelled") return "already_cancelled";
-        if (batch.state === "approved") return "approved";
+        if (batch.state === "approved") {
+          // A refused cancel of an approved batch is audited too: the funds it holds are still held.
+          await writeAudit(tx, {
+            organizationId,
+            audit,
+            action: "payout_batch.cancel_denied",
+            batchId,
+            metadata: { reason: "approved" },
+          });
+          return "approved";
+        }
 
         const freed = await sql<{ amount_minor: string }>`update payouts set state = 'cancelled', cancelled_at = ${at}
           where batch_id = ${batchId} and state = 'reserved' returning amount_minor`.execute(tx);
