@@ -85,6 +85,37 @@ describe("RakutenConnector access token (Rakuten access-token guide)", () => {
     expect(upstream.state.tokenCalls).toBe(2);
   });
 
+  test("a late 401 for an old token does not drop the token that replaced it", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let apiCalls = 0;
+    const { connector, upstream } = setup({
+      wrap: (inner) => async (url, init) => {
+        if (new URL(url).pathname !== "/v2/advertisers") return inner(url, init);
+        apiCalls += 1;
+        const call = apiCalls;
+        // Call 1 primes the token. Calls 2 and 3 start together with it revoked. Call 3's 401 is held back until call 2
+        // has replaced the token and finished its retry (call 4), so the 401 reaches the client late.
+        if (call === 3) await gate;
+        const response = await inner(url, init);
+        if (call === 4) release();
+        return response;
+      },
+    });
+    await connector.discoverAdvertisers({ cursor: null });
+    upstream.state.validTokens.clear();
+
+    const results = await Promise.all([
+      connector.discoverAdvertisers({ cursor: null }),
+      connector.discoverAdvertisers({ cursor: null }),
+    ]);
+
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(upstream.state.tokenCalls).toBe(2);
+  });
+
   test("a 401 that survives a new token is not_authorized", async () => {
     const { connector } = setup({
       wrap: (inner) => async (url, init) => {
@@ -184,6 +215,22 @@ describe("RakutenConnector upstream failures", () => {
     const result = await connector.discoverAdvertisers({ cursor: null });
 
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("RakutenConnector next links", () => {
+  test("a next link with no page number is refused instead of being read as page 0", async () => {
+    const { connector } = setup({
+      wrap: (inner) => async (url, init) => {
+        const response = await inner(url, init);
+        if (new URL(url).pathname !== "/v2/advertisers") return response;
+        const body = (await response.json()) as { _metadata: { _links: Record<string, string> } };
+        body._metadata._links.next = "/v2/advertisers?limit=2";
+        return new Response(JSON.stringify(body), { status: 200 });
+      },
+    });
+
+    expect((await connector.discoverAdvertisers({ cursor: null })).ok).toBe(false);
   });
 });
 
@@ -295,6 +342,41 @@ describe("RakutenConnector catalog", () => {
     const result = await connector.discoverPrograms({ advertiserSourceId: "100", cursor: null });
 
     expect(result.ok && result.value.items[0]?.approval).toBeNull();
+  });
+
+  test("a page of offers that disappears part way fails the call instead of returning partial terms", async () => {
+    const { connector } = setup({
+      wrap: (inner) => async (url, init) => {
+        const target = new URL(url);
+        if (target.pathname !== "/v1/offers") return inner(url, init);
+        if (target.searchParams.has("page")) return new Response("{}", { status: 404 });
+        const response = await inner(url, init);
+        const body = (await response.json()) as { _metadata: Record<string, unknown> };
+        body._metadata = { page: 0, _links: { next: "/v1/offers?page=1" } };
+        return new Response(JSON.stringify(body), { status: 200 });
+      },
+    });
+
+    const result = await connector.discoverPrograms({ advertiserSourceId: "100", cursor: null });
+
+    expect(result).toEqual({ ok: false, failure: { state: "temporarily_unavailable", retryAfterSeconds: null } });
+  });
+
+  test("an offer with no group offer ID fails the call instead of ordering unpredictably", async () => {
+    const { connector, diagnostics } = setup({
+      wrap: (inner) => async (url, init) => {
+        const response = await inner(url, init);
+        if (new URL(url).pathname !== "/v1/offers") return response;
+        const body = (await response.json()) as { offers: Array<Record<string, unknown>> };
+        for (const offer of body.offers) delete offer.goid;
+        return new Response(JSON.stringify(body), { status: 200 });
+      },
+    });
+
+    const result = await connector.discoverPrograms({ advertiserSourceId: "100", cursor: null });
+
+    expect(result.ok).toBe(false);
+    expect(diagnostics).toEqual([{ operation: "discover_programs", kind: "malformed_body" }]);
   });
 
   test("a program's revision changes when its terms change", async () => {
@@ -444,6 +526,23 @@ describe("RakutenConnector transactions (Events API)", () => {
     expect(diagnostics).toEqual([{ operation: "list_transactions", kind: "unsupported_currency" }]);
   });
 
+  test("an amount with more fraction digits than the currency has fails the page instead of being rounded", async () => {
+    const { connector, diagnostics } = setup({
+      wrap: (inner) => async (url, init) => {
+        const response = await inner(url, init);
+        if (new URL(url).pathname !== "/events/1.0/transactions") return response;
+        const rows = (await response.json()) as Array<{ commissions: number }>;
+        if (rows[0]) rows[0].commissions = 0.285;
+        return new Response(JSON.stringify(rows), { status: 200 });
+      },
+    });
+
+    const result = await connector.listTransactions({ ...range, cursor: null });
+
+    expect(result.ok).toBe(false);
+    expect(diagnostics).toEqual([{ operation: "list_transactions", kind: "malformed_body" }]);
+  });
+
   test("a cursor for a different range is refused", async () => {
     const { connector } = setup();
     const first = await connector.listTransactions({ ...range, cursor: null });
@@ -467,6 +566,16 @@ describe("RakutenConnector configuration", () => {
     } catch (error) {
       expect(String(error)).not.toContain(FAKE_CLIENT_ID);
     }
+  });
+
+  test("a base URL that would send the credential over plain http is refused, except for a local test server", () => {
+    const build = (baseUrl: string) => () =>
+      new RakutenConnector({ ...base, clientId: "a", clientSecret: "b", baseUrl });
+
+    expect(build("http://api.example.test")).toThrow("baseUrl must use https");
+    expect(build("not a url")).toThrow("baseUrl must be a URL");
+    expect(build("https://api.example.test/")).not.toThrow();
+    expect(build("http://localhost:8080")).not.toThrow();
   });
 
   test("a page size outside Rakuten's 1 to 200 is refused", () => {

@@ -1,5 +1,5 @@
 import { FakeClock, runNetworkConnectorContract } from "@moneytrap/test-kit";
-import { createFakeRakuten, FAKE_ACCOUNT_ID, FAKE_CLIENT_ID, FAKE_CLIENT_SECRET } from "./fake-rakuten";
+import { createFakeRakuten, FAKE_ACCOUNT_ID, FAKE_CLIENT_ID, FAKE_CLIENT_SECRET, FAKE_TOKEN_KEY } from "./fake-rakuten";
 import { RakutenConnector } from "./rakuten-connector";
 
 const NOW = "2026-11-01T00:00:00.000Z";
@@ -27,7 +27,13 @@ runNetworkConnectorContract([
         fetch: upstream.fetch,
         pageSize: 2,
       });
-      return { connector, secrets: [FAKE_CLIENT_ID, FAKE_CLIENT_SECRET] };
+      return {
+        connector,
+        // The base64 token key is what travels as Bearer on the token request, and the access tokens are the ones issued.
+        get secrets() {
+          return [FAKE_CLIENT_ID, FAKE_CLIENT_SECRET, FAKE_TOKEN_KEY, ...upstream.state.validTokens];
+        },
+      };
     },
   },
 ]);
