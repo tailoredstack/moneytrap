@@ -132,7 +132,7 @@ Goal: approved properties see the programs they may promote, decided by a pure e
 |---|---|---|---|---|---|---|
 | WP-4.1 | Connector port and capability profile | A | 1.2 | `app/src/ports/network-connector.ts`, `domain/src/networks/capability.ts` | §6.1 | Each operation in §6.1 typed; capability states `unsupported`, `temporarily_unavailable`, `not_authorized` |
 | WP-4.2 | Recorded-fixture network simulator | A | 4.1, 1.12 | `kit/src/network-sim/` | Conformance CT-009, CT-012, CT-015 | Deterministic transactions, adjustments, malformed payloads, disabled credential |
-| WP-4.3 | Real connector adapter | A | 4.1, partner decision (Plan Q1) | `packages/adapter-network-<name>/` | §6.1; ADR-012 (new) | Passes the same adapter contract suite as the simulator |
+| WP-4.3 | Real connector adapter | A | 4.1, partner decision (Plan Q1, decided: ADR-013) | `packages/adapter-network-rakuten/` | §6.1; ADR-013 (supersedes ADR-012) | Passes the same adapter contract suite as the simulator |
 | WP-4.4 | Network account and credentials | A | 4.1, 1.5 | `pg/src/networks/`, `server/src/adapters/secret-box.ts` | §4.4; DM-016 | Credentials encrypted with key ID; never returned by any endpoint |
 | WP-4.5 | Advertiser and program source facts | B | 4.1, 1.5 | `domain/src/catalog/`, `pg/src/catalog/`, migration `0004_catalog.ts` | DM-019 to DM-022; §4.2 source revision | Source identity and revision kept; upserts create revisions |
 | WP-4.6 | Catalog sync job | B | 4.5, 1.7 | `app/src/networks/sync-catalog.ts`, `server/src/worker/sync.ts` | API-073, API-074; CT-015 | Cursor and freshness watermark; malformed payload quarantined, never approved |
@@ -237,7 +237,7 @@ Goal: opted-in publishers get consent-aware, policy-controlled link rewriting wi
 
 | WP | Title | Lane | Depends on | Package / path | Spec refs | Done when |
 |---|---|---|---|---|---|---|
-| WP-9.0 | Legal and consent gate | — | — | `docs/adr/ADR-013-optimize-consent.md` | Plan M8; R6 | Signed decision with target markets and CMP plan |
+| WP-9.0 | Legal and consent gate | — | — | `docs/adr/` file for Optimize consent, under the next free number (ADR-013 is taken by Rakuten) | Plan M8; R6 | Signed decision with target markets and CMP plan |
 | WP-9.1 | Consent configuration and CMP adapter | A | 9.0 | `domain/src/optimize/consent.ts`, `server/src/adapters/cmp/` | DM-062; UC27; UI-071 | Denied or unknown consent blocks any rewrite |
 | WP-9.2 | Rewrite enforcement | A | 9.1, 5.4 | `domain/src/optimize/rewrite-gate.ts` | UC27; CT (Optimize) | All gates pass before rewrite; default-off |
 | WP-9.3 | Installation: SDK, wizard, health | B | 9.0, 1.14 | `packages/sdk-web/`, `web/src/features/optimize-install/` | DM-064; UC26; UI-068, UI-070 | Installation state machine disabled → configured → eligible → enabled → suspended/disabled |
