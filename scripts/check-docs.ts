@@ -47,7 +47,7 @@ for (const f of files.filter(isLegacy)) {
 // Work packages: each WP is one table row in the implementation plan.
 const planPath = join(docsDir, "implementation", "IMPLEMENTATION_PLAN.md");
 const wpSeen = new Map<string, number>();
-for (const m of read(planPath).matchAll(/^\| (WP-[\w]+\.\d+) \|/gm)) {
+for (const m of read(planPath).matchAll(/^\| (WP-[\w]+\.\d+[a-z]?) \|/gm)) {
   wpSeen.set(m[1], (wpSeen.get(m[1]) ?? 0) + 1);
 }
 for (const [id, n] of wpSeen) {
