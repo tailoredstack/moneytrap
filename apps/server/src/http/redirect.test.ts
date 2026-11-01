@@ -16,7 +16,11 @@ const ids = { next: () => "x" } as never;
 const TOKEN = "lnk_01arz3ndektsv4rrffq69g5fav";
 const DESTINATION = "https://shop.example.com/spring";
 
-function record(overrides: Partial<RouteSourceRecord["link"]> = {}, eligible = true): RouteSourceRecord {
+function record(
+  overrides: Partial<RouteSourceRecord["link"]> = {},
+  eligible = true,
+  allowedHosts: readonly string[] = ["shop.example.com"],
+): RouteSourceRecord {
   const created = createLink({
     id: TOKEN as Id<"link">,
     publisherId: "pub_1" as Id<"publisher">,
@@ -26,7 +30,7 @@ function record(overrides: Partial<RouteSourceRecord["link"]> = {}, eligible = t
     allowedHosts: ["shop.example.com"],
   });
   if (!created.ok) throw new Error("fixture link is invalid");
-  return { link: { ...created.value, status: "active", version: 2, ...overrides }, eligible };
+  return { link: { ...created.value, status: "active", version: 2, ...overrides }, eligible, allowedHosts };
 }
 
 // No view is cached, so every request reads the source: the answers depend only on what the source says.
@@ -79,6 +83,7 @@ describe("GET /r/:token (UC13, API-043)", () => {
     ["revoked", record({ status: "revoked" })],
     ["paused", record({ status: "paused" })],
     ["ineligible", record({}, false)],
+    ["host no longer on the allow-list", record({}, true, ["other.example.com"])],
     ["unknown token", null],
   ])("410 for a %s link, with no Location and no click", async (_name, source) => {
     const { app, clicks } = setup(source);

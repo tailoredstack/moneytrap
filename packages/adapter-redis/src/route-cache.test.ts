@@ -38,6 +38,7 @@ describeWithRedis("route cache", () => {
       destination: "https://shop.example.com/spring",
       state: "active",
       eligible: true,
+      allowedHosts: ["shop.example.com"],
       decision: "allow",
       version,
     };
@@ -84,7 +85,7 @@ describeWithRedis("route cache", () => {
       status: "active",
       version: 1,
     };
-    let record: RouteSourceRecord = { link: active, eligible: true };
+    let record: RouteSourceRecord = { link: active, eligible: true, allowedHosts: ["shop.example.com"] };
     // Resolves once the first request has read the source, so the revocation lands after that read and before its write.
     let sourceRead!: () => void;
     const readSeen = new Promise<void>((resolve) => {
@@ -110,7 +111,7 @@ describeWithRedis("route cache", () => {
     };
     const allowed = readRouteView({ cache: stalled, source }, token);
     await readSeen;
-    record = { link: { ...active, status: "revoked", version: 2 }, eligible: true };
+    record = { link: { ...active, status: "revoked", version: 2 }, eligible: true, allowedHosts: ["shop.example.com"] };
     const revokedAt = performance.now();
     expect((await allowed).kind).toBe("found");
     await landed;

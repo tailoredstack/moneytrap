@@ -12,6 +12,7 @@ function view(version = 1): RouteView {
     destination: "https://shop.example.com/spring",
     state: "active",
     eligible: true,
+    allowedHosts: ["shop.example.com"],
     decision: "allow",
     version,
   };

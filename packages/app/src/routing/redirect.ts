@@ -1,3 +1,4 @@
+import { validateDestination } from "@moneytrap/domain";
 import type { ClickQueue } from "../ports/click-queue";
 import type { Clock } from "../ports/clock";
 import type { RouteCache } from "../ports/route-cache";
@@ -18,9 +19,11 @@ export type RedirectResolution =
   | { kind: "denied" | "missing" | "unavailable" };
 
 // Decides one visitor redirect (UC13, ADR-007). The route view decides: only an allow decision redirects, so a revoked,
-// paused, or ineligible link is denied, and an unknown token is missing. The click is enqueued after the decision and is
-// not awaited, so the response never waits on the queue. The request ID is the click's dedup key, so a redelivered job
-// cannot record a second click. A client retry is a new request and so a new click; click counts are best-effort (ADR-007).
+// paused, or ineligible link is denied, and an unknown token is missing. The destination is re-checked against the
+// allow-list here, at redirect time, because a cached allow may predate a host removal (WP-5.7). A destination that fails
+// the check is denied, so the check fails closed. The click is enqueued after the decision and is not awaited, so the
+// response never waits on the queue. The request ID is the click's dedup key, so a redelivered job cannot record a second
+// click. A client retry is a new request and so a new click; click counts are best-effort (ADR-007).
 export async function resolveRedirect(
   deps: RedirectDeps,
   token: string,
@@ -31,6 +34,7 @@ export async function resolveRedirect(
   if (result.kind === "missing") return { kind: "missing" };
   const { view } = result;
   if (view.decision !== "allow") return { kind: "denied" };
+  if (!validateDestination(view.destination, view.allowedHosts).ok) return { kind: "denied" };
 
   const click = { dedupKey: `redirect-${requestId}`, linkId: view.linkId, occurredAt: deps.clock.now() };
   // The hook must not fail the redirect. A hook that throws is ignored here, so no rejection goes unhandled.

@@ -51,6 +51,8 @@ export function createRouteCache(connection: IORedis): RouteCache {
         destination: stored.destination,
         state: stored.state,
         eligible: stored.eligible,
+        // An entry written before the allow-list was cached has none, so it allows no destination (fail closed).
+        allowedHosts: stored.allowedHosts ?? [],
         decision: stored.decision,
         version: stored.version,
       };

@@ -5,9 +5,10 @@ import type { ClickObservation } from "../ports/click-store";
 import type { RouteCache } from "../ports/route-cache";
 import type { RouteSource, RouteSourceRecord } from "../ports/route-source";
 import { type RedirectDeps, resolveRedirect } from "./redirect";
-import type { RouteView } from "./route-view";
+import { buildRouteView, type RouteView } from "./route-view";
 
 const TOKEN = "lnk_1";
+const HOSTS = ["shop.example.com"];
 const NOW = new Date("2026-11-01T10:00:00.000Z");
 
 function link(overrides: Partial<Link> = {}): Link {
@@ -76,7 +77,7 @@ async function settle(): Promise<void> {
 
 describe("resolveRedirect (UC13, ADR-007)", () => {
   test("redirects an active, eligible link to its destination and enqueues one click", async () => {
-    const { deps, enqueued } = setup({ link: link(), eligible: true });
+    const { deps, enqueued } = setup({ link: link(), eligible: true, allowedHosts: HOSTS });
     const result = await resolveRedirect(deps, TOKEN, "req-1");
     await settle();
 
@@ -85,7 +86,7 @@ describe("resolveRedirect (UC13, ADR-007)", () => {
   });
 
   test("serves a repeat request from the cache without a source read", async () => {
-    const { deps, reads } = setup({ link: link(), eligible: true });
+    const { deps, reads } = setup({ link: link(), eligible: true, allowedHosts: HOSTS });
     await resolveRedirect(deps, TOKEN, "req-1");
     await settle();
 
@@ -102,11 +103,40 @@ describe("resolveRedirect (UC13, ADR-007)", () => {
     ["draft", { status: "draft" as const }, true],
     ["ineligible", {}, false],
   ])("denies a %s link and enqueues no click", async (_name, overrides, eligible) => {
-    const { deps, enqueued } = setup({ link: link(overrides), eligible });
+    const { deps, enqueued } = setup({ link: link(overrides), eligible, allowedHosts: HOSTS });
     const result = await resolveRedirect(deps, TOKEN, "req-1");
     await settle();
 
     expect(result).toEqual({ kind: "denied" });
+    expect(enqueued).toEqual([]);
+  });
+
+  test("denies a destination whose host left the allow-list, and enqueues no click (WP-5.7, CT-011)", async () => {
+    const { deps, enqueued } = setup({ link: link(), eligible: true, allowedHosts: ["other.example.com"] });
+    expect(await resolveRedirect(deps, TOKEN, "req-1")).toEqual({ kind: "denied" });
+    await settle();
+    expect(enqueued).toEqual([]);
+  });
+
+  test("denies every destination when the program has no allow-list (fails closed)", async () => {
+    const { deps, enqueued } = setup({ link: link(), eligible: true, allowedHosts: [] });
+    expect(await resolveRedirect(deps, TOKEN, "req-1")).toEqual({ kind: "denied" });
+    await settle();
+    expect(enqueued).toEqual([]);
+  });
+
+  test("re-checks the destination on a cache hit, so a cached allow that is now unlisted is refused", async () => {
+    const { deps, reads, enqueued } = setup({ link: link(), eligible: true, allowedHosts: HOSTS });
+    const stale: RouteView = {
+      ...buildRouteView(link(), true, HOSTS),
+      destination: "https://evil.example.com/spring",
+      allowedHosts: ["shop.example.com"],
+    };
+    await deps.cache.put(TOKEN, stale, 1_000_000);
+
+    expect(await resolveRedirect(deps, TOKEN, "req-1")).toEqual({ kind: "denied" });
+    await settle();
+    expect(reads).toEqual([]);
     expect(enqueued).toEqual([]);
   });
 
@@ -125,7 +155,7 @@ describe("resolveRedirect (UC13, ADR-007)", () => {
   });
 
   test("a throwing error hook does not fail the redirect or leave a rejection unhandled", async () => {
-    const { deps, clicks } = setup({ link: link(), eligible: true });
+    const { deps, clicks } = setup({ link: link(), eligible: true, allowedHosts: HOSTS });
     clicks.failure = new Error("queue down");
     deps.onClickError = () => {
       throw new Error("hook broke");
@@ -138,7 +168,7 @@ describe("resolveRedirect (UC13, ADR-007)", () => {
   });
 
   test("still redirects when the queue rejects, and reports the error", async () => {
-    const { deps, clicks, errors } = setup({ link: link(), eligible: true });
+    const { deps, clicks, errors } = setup({ link: link(), eligible: true, allowedHosts: HOSTS });
     clicks.failure = new Error("queue down");
 
     const result = await resolveRedirect(deps, TOKEN, "req-1");

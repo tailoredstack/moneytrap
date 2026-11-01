@@ -764,7 +764,7 @@ describe("route cache invalidation (ADR-007)", () => {
     const source: RouteSource = {
       async findByToken() {
         const row = links.rows.get(linkId);
-        return row ? { link: row.link, eligible: true } : null;
+        return row ? { link: row.link, eligible: true, allowedHosts: ["shop.example.com"] } : null;
       },
     };
     const warm = await readRouteView({ cache: routeCache, source }, token);

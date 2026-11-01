@@ -57,7 +57,7 @@ function fakeSource(record: RouteSourceRecord | null | "throw") {
 describe("readRouteView cache outage", () => {
   test("skips the cache clock after a failed cache read, so an outage costs one deadline", async () => {
     const { cache, calls } = fakeCache({ get: "throw" });
-    const { source } = fakeSource({ link: link(), eligible: true });
+    const { source } = fakeSource({ link: link(), eligible: true, allowedHosts: HOSTS });
     const result = await readRouteView({ cache, source }, "lnk_1");
     expect(result.kind).toBe("found");
     expect(calls).toEqual(["get"]);
@@ -66,33 +66,39 @@ describe("readRouteView cache outage", () => {
 
 describe("buildRouteView", () => {
   test("allows an active link with an eligible property and program", () => {
-    expect(buildRouteView(link(), true)).toEqual({
+    expect(buildRouteView(link(), true, HOSTS)).toEqual({
       linkId: "link_1" as Id<"link">,
       destination: "https://shop.example.com/spring",
       state: "active",
       eligible: true,
+      allowedHosts: HOSTS,
       decision: "allow",
       version: 2,
     });
   });
 
+  test("denies an active, eligible link whose destination host is no longer on the allow-list (WP-5.7)", () => {
+    expect(buildRouteView(link(), true, ["other.example.com"]).decision).toBe("deny");
+    expect(buildRouteView(link(), true, []).decision).toBe("deny");
+  });
+
   test("denies an active link that is not eligible", () => {
-    expect(buildRouteView(link(), false).decision).toBe("deny");
+    expect(buildRouteView(link(), false, HOSTS).decision).toBe("deny");
   });
 
   test("denies paused and revoked links even when eligible", () => {
-    expect(buildRouteView(link({ status: "paused" }), true).decision).toBe("deny");
-    expect(buildRouteView(link({ status: "revoked" }), true).decision).toBe("deny");
+    expect(buildRouteView(link({ status: "paused" }), true, HOSTS).decision).toBe("deny");
+    expect(buildRouteView(link({ status: "revoked" }), true, HOSTS).decision).toBe("deny");
   });
 
   test("carries the link version so the cache can check it", () => {
-    expect(buildRouteView(link({ version: 7 }), true).version).toBe(7);
+    expect(buildRouteView(link({ version: 7 }), true, HOSTS).version).toBe(7);
   });
 });
 
 describe("readRouteView", () => {
   test("answers from a fresh cache entry without reading the source", async () => {
-    const cached = buildRouteView(link(), true);
+    const cached = buildRouteView(link(), true, HOSTS);
     const calls: string[] = [];
     const cache: RouteCache = {
       async readServerTime() {
@@ -131,7 +137,7 @@ describe("readRouteView", () => {
     const source: RouteSource = {
       async findByToken() {
         order.push("source");
-        return { link: link(), eligible: true };
+        return { link: link(), eligible: true, allowedHosts: HOSTS };
       },
     };
     const result = await readRouteView({ cache, source }, "tok");
@@ -141,7 +147,7 @@ describe("readRouteView", () => {
 
   test("reads the source when the cache throws, and still answers", async () => {
     const { cache } = fakeCache({ get: "throw" });
-    const { source, calls } = fakeSource({ link: link(), eligible: true });
+    const { source, calls } = fakeSource({ link: link(), eligible: true, allowedHosts: HOSTS });
     const result = await readRouteView({ cache, source }, "tok");
     expect(result.kind).toBe("found");
     expect(calls).toEqual(["source"]);
@@ -149,7 +155,7 @@ describe("readRouteView", () => {
 
   test("answers without storing when the cache clock is unavailable", async () => {
     const { cache, calls: cacheCalls } = fakeCache({ time: "throw" });
-    const { source } = fakeSource({ link: link(), eligible: true });
+    const { source } = fakeSource({ link: link(), eligible: true, allowedHosts: HOSTS });
     const result = await readRouteView({ cache, source }, "tok");
     expect(result.kind).toBe("found");
     expect(cacheCalls).not.toContain("put");
@@ -168,7 +174,7 @@ describe("readRouteView", () => {
       },
       async publishVersion() {},
     };
-    const { source } = fakeSource({ link: link(), eligible: true });
+    const { source } = fakeSource({ link: link(), eligible: true, allowedHosts: HOSTS });
     const result = await readRouteView({ cache: throwing, source }, "tok");
     expect(result.kind).toBe("found");
   });
@@ -180,7 +186,7 @@ describe("readRouteView", () => {
       async put() {},
       async publishVersion() {},
     };
-    const { source } = fakeSource({ link: link(), eligible: true });
+    const { source } = fakeSource({ link: link(), eligible: true, allowedHosts: HOSTS });
     const started = performance.now();
     const result = await readRouteView({ cache: hanging, source }, "tok");
     expect(result.kind).toBe("found");
@@ -189,7 +195,7 @@ describe("readRouteView", () => {
 
   test("answers when the cache write fails", async () => {
     const { cache } = fakeCache({ put: "throw" });
-    const { source } = fakeSource({ link: link(), eligible: true });
+    const { source } = fakeSource({ link: link(), eligible: true, allowedHosts: HOSTS });
     const result = await readRouteView({ cache, source }, "tok");
     expect(result.kind).toBe("found");
   });
