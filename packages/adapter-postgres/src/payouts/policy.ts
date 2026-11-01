@@ -80,7 +80,7 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
     async publish({ policy, auditId, organizationId, actor, occurredAt }) {
       return withTx(db, async (tx): Promise<PublishPolicyResult> => {
         // The publish time is bounded like a hold's time, so a publish cannot be backdated to change a past decision.
-        await refuseBackdated(tx, occurredAt);
+        await refuseOutsideWriteClock(tx, occurredAt);
         await sql`select pg_advisory_xact_lock(hashtext(${`payout_policy:${policy.currency}`}))`.execute(tx);
         const latest = await sql<PolicyRow>`select currency, version, minimum_minor, effective_from from payout_policies
           where currency = ${policy.currency} order by version desc limit 1`.execute(tx);
@@ -132,11 +132,16 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
 // Five minutes covers the gap between a caller reading its clock and the transaction starting (WP-7.6 review).
 const WRITE_CLOCK_TOLERANCE_MS = 5 * 60 * 1000;
 
-async function refuseBackdated(tx: Transaction<unknown>, at: Date): Promise<void> {
+// The window is closed at both ends. A time later than the write clock plus the tolerance would hide a hold or a publish
+// until that time arrives, so it is refused too.
+async function refuseOutsideWriteClock(tx: Transaction<unknown>, at: Date): Promise<void> {
   const clock = await sql<{ db_now: Date }>`select now() as db_now`.execute(tx);
-  const floor = clock.rows[0]?.db_now.getTime() ?? 0;
-  if (at.getTime() < floor - WRITE_CLOCK_TOLERANCE_MS) {
+  const now = clock.rows[0]?.db_now.getTime() ?? 0;
+  if (at.getTime() < now - WRITE_CLOCK_TOLERANCE_MS) {
     throw new Error("payout_holds: timestamp is earlier than the write clock");
+  }
+  if (at.getTime() > now + WRITE_CLOCK_TOLERANCE_MS) {
+    throw new Error("payout_holds: timestamp is later than the write clock");
   }
 }
 
@@ -146,7 +151,7 @@ export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
   return {
     async place({ hold, organizationId, auditId, actor, occurredAt }) {
       await withTx(db, async (tx) => {
-        await refuseBackdated(tx, occurredAt);
+        await refuseOutsideWriteClock(tx, occurredAt);
         const owned = await sql`select 1 from publishers where id = ${hold.publisherId}
           and organization_id = ${organizationId} for share`.execute(tx);
         if (owned.rows.length === 0) throw new Error("payout: publisher is not in the organization");
@@ -173,7 +178,7 @@ export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
 
     async release({ id, organizationId, auditId, actor, releasedAt }) {
       return withTx(db, async (tx) => {
-        await refuseBackdated(tx, releasedAt);
+        await refuseOutsideWriteClock(tx, releasedAt);
         const updated = await sql<{ id: string }>`update payout_holds set released_at = ${releasedAt}
           where id = ${id} and released_at is null
             and publisher_id in (select id from publishers where organization_id = ${organizationId})

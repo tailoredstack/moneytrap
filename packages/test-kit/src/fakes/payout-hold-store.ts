@@ -35,9 +35,7 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
     // The same rules the table enforces: a hold moves a positive amount and states a reason.
     if (hold.amountMinor <= 0n) throw new Error("payout_holds: amount must be positive");
     if (hold.reason.trim().length === 0) throw new Error("payout_holds: reason is required");
-    if (occurredAt.getTime() < this.writeClock().getTime() - WRITE_CLOCK_TOLERANCE_MS) {
-      throw new Error("payout_holds: timestamp is earlier than the write clock");
-    }
+    this.assertInWriteWindow(occurredAt);
     // The same rules the table enforces: a hold id is unique, and an expiry falls after placement.
     if (this.holds.some((existing) => existing.id === hold.id)) throw new Error("payout_holds: duplicate hold id");
     if (hold.expiresAt !== null && hold.expiresAt.getTime() <= occurredAt.getTime()) {
@@ -62,13 +60,20 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
   }) {
     const hold = this.holds.find((existing) => existing.id === id);
     if (!hold || hold.releasedAt !== null || this.holdOrganization.get(id) !== organizationId) return false;
-    if (releasedAt.getTime() < this.writeClock().getTime() - WRITE_CLOCK_TOLERANCE_MS) {
-      throw new Error("payout_holds: timestamp is earlier than the write clock");
-    }
+    this.assertInWriteWindow(releasedAt);
     if (releasedAt.getTime() < hold.placedAt.getTime()) throw new Error("payout_holds: release precedes placement");
     hold.releasedAt = releasedAt;
     this.audit.push({ action: "payout_hold_released", entityId: id, actor });
     return true;
+  }
+
+  // Mirrors the adapter's window: a time more than the tolerance either side of the write clock is refused.
+  private assertInWriteWindow(at: Date): void {
+    const now = this.writeClock().getTime();
+    if (at.getTime() < now - WRITE_CLOCK_TOLERANCE_MS)
+      throw new Error("payout_holds: timestamp is earlier than the write clock");
+    if (at.getTime() > now + WRITE_CLOCK_TOLERANCE_MS)
+      throw new Error("payout_holds: timestamp is later than the write clock");
   }
 
   async listForPublisher(organizationId: string, publisherId: string, currency: CurrencyCode): Promise<PayoutHold[]> {
