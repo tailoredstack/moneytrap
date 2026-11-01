@@ -91,7 +91,8 @@ function primary(links: FakeLinkStore): RouteSource {
       const row = links.rows.get(token);
       if (!row) return null;
       const decision = await links.latestEligibility(row.organizationId, row.link.propertyId, row.programId);
-      return { link: row.link, eligible: decision?.decision === "allow" };
+      const allowedHosts = await links.allowedHosts(row.organizationId, row.programId);
+      return { link: row.link, eligible: decision?.decision === "allow", allowedHosts };
     },
   };
 }
