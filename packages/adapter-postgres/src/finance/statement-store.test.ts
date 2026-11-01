@@ -64,11 +64,53 @@ describeWithDatabase("statement Postgres store contract (TP-W6-048)", () => {
     const original = await store.findClosed(first.publisherId, first.currency, first.periodStart, first.periodEnd);
     expect(original).toEqual(first);
     expect(await store.recordClosed(changed)).toBe(false);
+    expect(
+      await store.recordClosed({ ...changed, id: `stm_${crypto.randomUUID()}` as StatementRecord["id"], revision: 2 }),
+    ).toBe(false);
     expect(await store.findClosed(first.publisherId, first.currency, first.periodStart, first.periodEnd)).toEqual(
       original,
     );
     expect(await store.list(first.publisherId)).toEqual([first]);
     expect(await store.list("pub_missing" as StatementRecord["publisherId"])).toEqual([]);
+  });
+  test("organization reads include every publisher but require matching membership and scope", async () => {
+    const userA = `usr_${crypto.randomUUID()}`,
+      userB = `usr_${crypto.randomUUID()}`;
+    const orgA = `org_${crypto.randomUUID()}`,
+      orgB = `org_${crypto.randomUUID()}`;
+    await sql`insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt") values
+      (${userA}, 'A', ${`${userA}@example.test`}, true, now(), now()), (${userB}, 'B', ${`${userB}@example.test`}, true, now(), now())`.execute(
+      db,
+    );
+    await sql`insert into organizations (id, name, country, base_currency, status, created_by, created_at, updated_at) values
+      (${orgA}, 'A', 'US', 'USD', 'active', 'usr_statements', now(), now()), (${orgB}, 'B', 'US', 'USD', 'active', 'usr_statements', now(), now())`.execute(
+      db,
+    );
+    await sql`insert into memberships (organization_id, user_id, role) values (${orgA}, ${userA}, 'owner'), (${orgB}, ${userB}, 'owner')`.execute(
+      db,
+    );
+    const pubA1 = `pub_${crypto.randomUUID()}`,
+      pubA2 = `pub_${crypto.randomUUID()}`,
+      pubB = `pub_${crypto.randomUUID()}`;
+    await sql`insert into publishers (id, legal_name, status, organization_id, created_at, updated_at) values
+      (${pubA1}, 'A1', 'approved', ${orgA}, now(), now()), (${pubA2}, 'A2', 'approved', ${orgA}, now(), now()), (${pubB}, 'B', 'approved', ${orgB}, now(), now())`.execute(
+      db,
+    );
+    const store = createStatementStore(db);
+    const a1 = makeRecord(pubA1, "11"),
+      a2 = makeRecord(pubA2, "22"),
+      b = makeRecord(pubB, "33");
+    await store.recordClosed(a1);
+    await store.recordClosed(a2);
+    await store.recordClosed(b);
+    expect((await store.listForOrganization(userA as never, orgA as never)).map((row) => row.id).sort()).toEqual(
+      [a1.id, a2.id].sort(),
+    );
+    expect(await store.listForOrganization(userA as never, orgB as never)).toEqual([]);
+    expect(await store.listForOrganization("usr_nonmember" as never, orgA as never)).toEqual([]);
+    expect(await store.findForOrganization(userA as never, orgA as never, a2.id)).toEqual(a2);
+    expect(await store.findForOrganization(userA as never, orgA as never, b.id)).toBeNull();
+    expect(await store.findForOrganization(userB as never, orgB as never, b.id)).toEqual(b);
   });
   test("regenerating a closed period after source changes leaves the Postgres record immutable (TP-W6-048)", async () => {
     const publisherId = `pub_${crypto.randomUUID()}` as Id<"publisher">;

@@ -21,4 +21,11 @@ describe("statement download URL signer", () => {
       signStatementDownloadUrl("a", { baseUrl: "http://objects.test", secret: "secret", now: new Date() }),
     ).rejects.toThrow("must use HTTPS");
   });
+  test("rejects dot-segment and empty object reference segments", async () => {
+    for (const objectRef of ["../private.json", "statements/../private.json", "statements//one.json", "./one.json"]) {
+      await expect(
+        signStatementDownloadUrl(objectRef, { baseUrl: "https://objects.test/", secret: "secret", now: new Date() }),
+      ).rejects.toThrow("invalid statement object reference");
+    }
+  });
 });

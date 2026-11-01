@@ -44,6 +44,8 @@ describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
         } as never,
         {
           store: {
+            listForOrganization: async () => [],
+            findForOrganization: async () => null,
             list: async () => [],
             findClosed: async () => null,
             recordClosed: async () => false,
@@ -90,6 +92,8 @@ describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
         } as never,
         {
           store: {
+            listForOrganization: async () => [],
+            findForOrganization: async () => null,
             list: async () => [],
             findClosed: async () => null,
             recordClosed: async () => false,
