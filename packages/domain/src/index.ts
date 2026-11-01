@@ -6,6 +6,8 @@ export * from "./conversions/source-fact";
 export * from "./eligibility/policy";
 export * from "./errors/codes";
 export * from "./ids/ids";
+export { type Allocation, allocate } from "./ledger/allocate";
+export { createShareRule, type ShareRule } from "./ledger/share-rule";
 export * from "./links/destination";
 export * from "./links/link";
 export type { CurrencyCode } from "./money/iso4217";

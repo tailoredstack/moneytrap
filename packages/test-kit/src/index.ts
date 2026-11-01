@@ -14,6 +14,7 @@ export { FakeNotifier } from "./fakes/notifier";
 export { FakePayoutProvider } from "./fakes/payout-provider";
 export { FakePropertyReviewStore } from "./fakes/property-review-store";
 export { FakePropertyStore } from "./fakes/property-store";
+export { FakePublisherBalanceSource } from "./fakes/publisher-balance-source";
 export { FakePublisherReviewStore } from "./fakes/publisher-review-store";
 export { FakeRiskFlagStore } from "./fakes/risk-flag-store";
 export { FakeRouteCache } from "./fakes/route-cache";
