@@ -53,7 +53,12 @@ export function statementRoutes(wiring?: StatementWiring) {
       if (!authenticated) return fail(set, request, "UNAUTHENTICATED");
       const record = await store.findForOrganization(authenticated.userId, organizationId, params.statementId as never);
       if (!record) return fail(set, request, "RESOURCE_NOT_FOUND");
-      const downloadUrl = await store.downloadUrl(record.objectRef);
+      let downloadUrl: string;
+      try {
+        downloadUrl = await store.downloadUrl(record.objectRef);
+      } catch {
+        return fail(set, request, "INTERNAL");
+      }
       if (!/^https:\/\//.test(downloadUrl)) return fail(set, request, "INTERNAL");
       return new Response(null, {
         status: 302,
@@ -74,7 +79,6 @@ function serialize(record: Awaited<ReturnType<StatementStore["list"]>>[number]) 
     period_end: record.periodEnd.toISOString(),
     revision: record.revision,
     content_hash: record.contentHash,
-    object_ref: record.objectRef,
     content: record.content,
     created_at: record.createdAt.toISOString(),
   };

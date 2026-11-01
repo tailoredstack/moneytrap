@@ -58,7 +58,9 @@ describe("statement API routes (TP-W6-049)", () => {
       new Request(`http://localhost/v1/organizations/${organizationId}/statements/${record.id}/download`),
     );
     expect(list.status).toBe(200);
-    expect((await list.json()).data[0].content_hash).toBe(record.contentHash);
+    const listBody = await list.json();
+    expect(listBody.data[0].content_hash).toBe(record.contentHash);
+    expect(listBody.data[0]).not.toHaveProperty("object_ref");
     expect((await excludedByCurrency.json()).data).toEqual([]);
     expect((await excludedByPeriod.json()).data).toEqual([]);
     expect(detail.status).toBe(302);
@@ -101,6 +103,28 @@ describe("statement API routes (TP-W6-049)", () => {
       new Request(`http://localhost/v1/organizations/${organizationId}/statements/${record.id}/download`),
     );
     expect(response.status).toBe(403);
+  });
+  test("maps an unavailable download signer to the internal error envelope", async () => {
+    const app = createApp({ clock: { now: () => new Date() }, ids: { next: () => "x" } as never, readiness: [] }).use(
+      apiRoutes(auth, undefined, undefined, undefined, undefined, undefined, {
+        store: {
+          findClosed: async () => null,
+          recordClosed: async () => false,
+          list: async () => [],
+          listForOrganization: async () => [],
+          findForOrganization: async () => record as never,
+          downloadUrl: async () => {
+            throw new Error("statement download URL signer is not configured");
+          },
+        },
+        principal: async () => ({ userId: "u", memberships: [{ organizationId, role: "owner" }] }) as never,
+      }),
+    );
+    const response = await app.handle(
+      new Request(`http://localhost/v1/organizations/${organizationId}/statements/${record.id}/download`),
+    );
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({ error: { code: "INTERNAL" } });
   });
   test("rejects malformed filters and unsupported currencies", async () => {
     const store = new FakeStatementStore();
