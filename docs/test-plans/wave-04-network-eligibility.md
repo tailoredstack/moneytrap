@@ -80,7 +80,7 @@ Catalog data from a network is versioned, quarantined when malformed, and never 
 
 ## 4. Exit criteria
 
-- Contract suite green on simulator; real Rakuten adapter (ADR-013) passes the same suite. If the Rakuten sandbox cannot support the suite, scope falls back to the simulator (ADR-013 Fallback).
+- Contract suite green on simulator; real Rakuten adapter (ADR-013) passes the same suite. If the Rakuten sandbox cannot support the suite, scope falls back to the simulator, and a new network decision is recorded in a follow-up ADR (ADR-013 Fallback).
 - Seven simulated days of sync: no silent approvals; every malformed payload quarantined (Project plan M3 gate).
 - Eligibility property tests green with at least 10,000 generated cases per run.
 
