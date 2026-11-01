@@ -21,6 +21,8 @@ It is safe to run again. Each step prints `skipped` when it is already done:
 
 Then start the server and the web app with `bun run dev`.
 
+The web dev server proxies `/api` to the server on `PORT` (default 3000, read from `apps/server/.env`). Open the app on the web dev server's port, not the server's, so the `/api` calls and the Better Auth session reach the server.
+
 The steps can also run on their own. `bun run db:migrate` reads `DATABASE_URL` from the root `.env`, and `bun run seed` inserts the dev rows. The seed is idempotent, so a second run inserts nothing and does not reset the password.
 
 To set up one package by hand, run its `setup` script (for example `bun run setup` in `apps/server`). `apps/web` has no `setup` script because it needs no one-time work.
