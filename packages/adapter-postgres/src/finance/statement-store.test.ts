@@ -69,7 +69,7 @@ describeWithDatabase("statement Postgres store contract (TP-W6-048)", () => {
     ).toBe(false);
     await expect(
       store.recordClosed({ ...changed, id: first.id, periodStart: new Date("2026-10-02T00:00:00.000Z") }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/statements_pkey/);
     expect(await store.findClosed(first.publisherId, first.currency, first.periodStart, first.periodEnd)).toEqual(
       original,
     );
