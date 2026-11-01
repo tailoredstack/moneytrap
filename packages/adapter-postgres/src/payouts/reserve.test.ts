@@ -203,7 +203,7 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
           idempotency_key, state, created_at)
           values (${fixtureId("payout", 98)}, ${batchId}, ${outsider}, ${fixtureId("payoutMethod", 2)}, 'GBP', 100,
             ${reservationKey}, ${crypto.randomUUID()}, 'reserved', ${now})`.execute(world.db);
-      await expect(insert("reservation-1")).rejects.toThrow(/not in the batch organization/);
+      await expect(insert("reservation-1")).rejects.toThrow(/not prepared or the publisher is not in its organization/);
       await world.addPublisher({
         organizationId,
         publisherId: fixtureId("publisher", 3),
@@ -216,6 +216,42 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
           values (${fixtureId("payout", 97)}, ${batchId}, ${fixtureId("publisher", 3)}, ${fixtureId("payoutMethod", 3)}, 'GBP', 100,
             'another-key-1', ${crypto.randomUUID()}, 'reserved', ${now})`.execute(world.db),
       ).rejects.toThrow(/payouts_batch_key_fk/);
+    });
+  });
+
+  test("the database refuses a second batch with the same reservation key in one organization, and a payout in a cancelled batch", async () => {
+    await withPostgres(async (world) => {
+      const { batchId } = await reserveOne(world);
+      const insertBatch = (id: string, organization: string) =>
+        sql`insert into payout_batches (id, organization_id, reservation_key, currency, period_start, period_end, state,
+          policy_version, created_by, created_at)
+          values (${id}, ${organization}, 'reservation-1', 'GBP', ${new Date("2026-10-01T00:00:00.000Z")},
+            ${new Date("2026-10-31T00:00:00.000Z")}, 'prepared', 1, ${userId}, ${now})`.execute(world.db);
+      await expect(insertBatch(fixtureId("payoutBatch", 50), organizationId)).rejects.toThrow(
+        /payout_batches_reservation_key_uq/,
+      );
+      // The same key in another organization is a different reservation.
+      await insertBatch(fixtureId("payoutBatch", 51), otherOrganizationId);
+
+      await world.store.cancel({
+        organizationId,
+        batchId,
+        at: now,
+        audit: { id: fixtureId("audit", 60), actor: { type: "user", id: userId }, occurredAt: now },
+      });
+      const publisherId = fixtureId("publisher", 4);
+      await world.addPublisher({
+        organizationId,
+        publisherId,
+        methodId: fixtureId("payoutMethod", 4),
+        currency: "GBP",
+      });
+      await expect(
+        sql`insert into payouts (id, batch_id, publisher_id, method_id, currency, amount_minor, reservation_key,
+          idempotency_key, state, created_at)
+          values (${fixtureId("payout", 96)}, ${batchId}, ${publisherId}, ${fixtureId("payoutMethod", 4)}, 'GBP', 100,
+            'reservation-1', ${crypto.randomUUID()}, 'reserved', ${now})`.execute(world.db),
+      ).rejects.toThrow(/batch is not prepared/);
     });
   });
 
