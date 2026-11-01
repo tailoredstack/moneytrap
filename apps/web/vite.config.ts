@@ -1,9 +1,33 @@
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 
-export default defineConfig({
-  plugins: [tailwindcss()],
-  build: {
-    outDir: "dist",
-  },
+export default defineConfig(({ mode }) => {
+  // The server reads PORT from apps/server/.env (see its .env.example), so read it from there too. The shell
+  // environment wins, and the port falls back to 3000 as the server does.
+  const serverEnv = loadEnv(mode, fileURLToPath(new URL("../server", import.meta.url)), "PORT");
+  const target = `http://127.0.0.1:${serverEnv.PORT ?? 3000}`;
+
+  return {
+    plugins: [tailwindcss()],
+    build: {
+      outDir: "dist",
+    },
+    server: {
+      // Without this, Vite's SPA fallback answers /api/* with index.html. The app's session check then gets HTML.
+      proxy: {
+        "/api": {
+          target,
+          changeOrigin: true,
+          // Better Auth rejects a state-changing request whose Origin is not its baseURL. The browser sends the Vite
+          // origin, so the proxy rewrites it to the server's origin, the same one the server expects.
+          configure: (proxy) => {
+            proxy.on("proxyReq", (proxyReq) => {
+              if (proxyReq.getHeader("origin")) proxyReq.setHeader("origin", target);
+            });
+          },
+        },
+      },
+    },
+  };
 });
