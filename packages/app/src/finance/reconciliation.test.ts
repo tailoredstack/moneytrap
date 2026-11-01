@@ -17,8 +17,9 @@ const ctx = {
   actor: { type: "system", id: null },
 } satisfies Ctx;
 
-// The app package has no test-kit dependency, so the source is local. The fake in test-kit runs the same cases against the
-// same query (packages/test-kit/src/fakes/ledger-reconciliation-source.test.ts).
+// The app package has no test-kit dependency, so the source is local. The fake in test-kit is checked separately: it feeds
+// a balanced and an unbalanced ledger through the same query and keeps its stored ledger unchanged
+// (packages/test-kit/src/fakes/ledger-reconciliation-source.test.ts).
 class InMemoryLedger implements LedgerReconciliationSource {
   readonly accounts: ReconciliationAccount[] = [];
   readonly journals: ReconciliationJournal[] = [];
