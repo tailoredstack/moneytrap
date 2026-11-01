@@ -88,6 +88,19 @@ Imported conversions become correct, auditable publisher earnings. The ledger ba
 |---|---|---|---|
 | TP-W6-037 | CT-012, CT-016 to CT-018, CT-020 | Green | WP-6.13 |
 
+### 3.8 Ledger reconciliation job
+
+The job reads the ledger tables and checks them against the ledger's own invariants. It does not yet compare the ledger with the network report or the settlement receipts, because no stored link ties a journal to a conversion or a receipt; that comparison is tracked separately.
+
+| ID | Scenario | Expected | Refs |
+|---|---|---|---|
+| TP-W6-038 | Sandbox ledger: sales in three currencies, a reversal, an amount past 2^53 | Report is `clean`; control totals balance per currency; no finding | WP-X.3 |
+| TP-W6-039 | Journal written while the balance trigger was off: debits exceed credits | `journal_unbalanced` with the delta in minor units; gross variance per currency; exit code 1 | WP-X.3 |
+| TP-W6-040 | Reversal for a different amount, on other accounts, or with the original sides; reversal of a reversal; missing original | One finding per case; none is absorbed | WP-X.3, §5.1 invariant 4 |
+| TP-W6-041 | Journal with one posting; posting with zero amount; posting in a currency its account does not hold | A finding each | WP-X.3, DM-038 to DM-040 |
+| TP-W6-042 | Run the job twice, and run it with journals returned in another order | Same report; no row written in any table; one read-only transaction | WP-X.3 |
+| TP-W6-043 | Run the entry point as a process | Exit 0 clean, 1 on variance, 2 without `DATABASE_URL`; JSON report on stdout with string amounts | WP-X.3 |
+
 ## 4. Exit criteria
 
 - All TP-W6 green; property suites run ≥ 10,000 cases in nightly and ≥ 1,000 per PR.
