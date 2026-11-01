@@ -310,7 +310,10 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     await withPostgres(async (world) => {
       const { Migrator } = await import("kysely/migration");
       const migrator = new Migrator({ db: world.db, provider: migrationProvider });
-      // Roll back to before 0023: 0023 is the latest, so one step down removes it.
+      // Roll back 0024 first, then 0023, and reapply both in migration order.
+      const latestDown = await migrator.migrateDown();
+      expect(latestDown.error).toBeUndefined();
+      expect(latestDown.results?.[0]).toMatchObject({ migrationName: "0024_better_auth_admin", status: "Success" });
       const down = await migrator.migrateDown();
       expect(down.error).toBeUndefined();
       expect(down.results?.[0]).toMatchObject({ migrationName: "0023_payout_batches", status: "Success" });
