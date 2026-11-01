@@ -105,6 +105,22 @@ describe("POST /api/organizations/:organizationId/programs/:programId/request-ap
     expect(store.requests.size).toBe(0);
   });
 
+  test("the caller is resolved once per request, shared by the guard and the handler", async () => {
+    const { store } = app();
+    let calls = 0;
+    const counting = (headers: Headers) => {
+      calls += 1;
+      return principalFrom(headers);
+    };
+    const server = createApp({ clock, ids, readiness: [] }).use(
+      programApprovalRoutes({ db: {} as never, store, clock, ids, principal: counting }),
+    );
+    const response = await post(server, orgA, { property_id: propertyA });
+
+    expect(response.status).toBe(202);
+    expect(calls).toBe(1);
+  });
+
   test("a body without property_id is a validation failure and nothing is written", async () => {
     const { server, store } = app();
     const response = await post(server, orgA, {});
