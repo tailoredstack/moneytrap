@@ -509,6 +509,7 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect(results.filter((result) => result.ok)).toHaveLength(1);
           for (const result of results) if (!result.ok) expect(result.code).toBe("ALREADY_PROCESSED");
           expect((await h.world.store.find(h.world.organizationId, batch.id))?.state).toBe("approved");
+          // The approval is written once. The shared contract cannot read audit rows, so the fake and Postgres suites count them.
         }));
 
       test("a reservation after an approval never holds more than the publisher has (approve's own lock is OZE-3285)", () =>

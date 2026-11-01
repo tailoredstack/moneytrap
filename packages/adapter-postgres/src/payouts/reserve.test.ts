@@ -530,6 +530,36 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
+  test("direct SQL cannot cancel a batch that still holds reserved payouts (TP-W7-051)", async () => {
+    await withPostgres(async (world) => {
+      const { batchId } = await reserveOne(world);
+      await expect(
+        world.db.transaction().execute(async (trx) => {
+          await sql`update payout_batches set state = 'cancelled', cancelled_at = ${now} where id = ${batchId}`.execute(
+            trx,
+          );
+        }),
+      ).rejects.toThrow(/cancelled batch still has reserved payouts/);
+      const row = await sql<{ state: string }>`select state from payout_batches where id = ${batchId}`.execute(
+        world.db,
+      );
+      expect(row.rows[0]?.state).toBe("prepared");
+    });
+  });
+
+  test("direct SQL cannot approve a batch and its payouts without the approval audit row (TP-W7-051)", async () => {
+    await withPostgres(async (world) => {
+      const { batchId, payoutId } = await reserveOne(world);
+      await expect(
+        world.db.transaction().execute(async (trx) => {
+          await sql`update payout_batches set state = 'approved', approved_by = ${checkerId}, approved_at = ${now}
+            where id = ${batchId}`.execute(trx);
+          await sql`update payouts set state = 'approved' where id = ${payoutId}`.execute(trx);
+        }),
+      ).rejects.toThrow(/needs its payout_batch.approved audit row/);
+    });
+  });
+
   test("an approval in one transaction with its payouts still commits", async () => {
     await withPostgres(async (world) => {
       const { batchId, payoutId } = await reserveOne(world);
@@ -537,6 +567,9 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
         await sql`update payout_batches set state = 'approved', approved_by = ${checkerId}, approved_at = ${now}
           where id = ${batchId}`.execute(trx);
         await sql`update payouts set state = 'approved' where id = ${payoutId}`.execute(trx);
+        await sql`insert into audit_logs (id, organization_id, actor_type, actor_id, action, entity_type, entity_id, metadata, occurred_at)
+          values (${fixtureId("audit", 83)}, ${organizationId}, 'user', ${checkerId}, 'payout_batch.approved', 'payout_batch',
+            ${batchId}, '{}'::jsonb, ${now})`.execute(trx);
       });
       const row = await sql<{ state: string }>`select state from payouts where id = ${payoutId}`.execute(world.db);
       expect(row.rows[0]?.state).toBe("approved");

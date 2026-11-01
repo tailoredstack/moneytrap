@@ -136,3 +136,47 @@ test("fake refuses a self-approval with an audit row, and refuses a repeat appro
     reason: "already_approved",
   });
 });
+
+test("fake writes exactly one approval audit row when approvals race (TP-W7-048)", async () => {
+  const store = new FakePayoutBatchStore();
+  const publisherId = fixtureId("publisher", 1);
+  const methodId = fixtureId("payoutMethod", 1);
+  store.publisherOrganization.set(publisherId, organizationId);
+  store.addMethod({ id: methodId, publisherId, currency: "GBP" });
+  const at = new Date("2026-11-02T09:30:00.000Z");
+  const batchId = fixtureId("payoutBatch", 1);
+  await store.reserve({
+    organizationId,
+    batchId,
+    reservationKey: "reservation-1",
+    currency: "GBP",
+    periodStart: new Date("2026-10-01T00:00:00.000Z"),
+    periodEnd: new Date("2026-10-31T00:00:00.000Z"),
+    capMinor: null,
+    policyVersion: 1,
+    createdBy: userId,
+    createdAt: at,
+    lines: [
+      {
+        payoutId: fixtureId("payout", 1),
+        publisherId,
+        methodId,
+        requestedMinor: 5_000n,
+        availableMinor: 5_000n,
+        minimumMinor: 1_000n,
+      },
+    ],
+    audit: { id: fixtureId("audit", 1), actor: { type: "user", id: userId }, occurredAt: at },
+  });
+  const input = {
+    organizationId,
+    batchId,
+    approver: checkerId,
+    at,
+    availability: [{ publisherId, availableMinor: 5_000n }],
+    audit: { id: fixtureId("audit", 2), actor: { type: "user" as const, id: checkerId }, occurredAt: at },
+  };
+  const results = await Promise.all(Array.from({ length: 6 }, () => store.approve(input)));
+  expect(results.filter((result) => result.outcome === "approved")).toHaveLength(1);
+  expect(store.audit.filter((row) => row.action === "payout_batch.approved")).toHaveLength(1);
+});
