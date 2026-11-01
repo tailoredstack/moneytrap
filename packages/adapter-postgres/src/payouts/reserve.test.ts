@@ -594,6 +594,50 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
+  test("a payout inserted while an approval of its batch is committing is refused, not left reserved (READ COMMITTED race)", async () => {
+    await withPostgres(async (world) => {
+      const { batchId, payoutId } = await reserveOne(world);
+      const publisherId = fixtureId("publisher", 2);
+      const methodId = fixtureId("payoutMethod", 2);
+      await world.addPublisher({ organizationId, publisherId, methodId, currency: "GBP" });
+      let approvalHoldsBatch!: () => void;
+      const batchLocked = new Promise<void>((resolve) => (approvalHoldsBatch = resolve));
+      let releaseApproval!: () => void;
+      const approvalGate = new Promise<void>((resolve) => (releaseApproval = resolve));
+      const approving = world.db.transaction().execute(async (trx) => {
+        await sql`update payout_batches set state = 'approved', approved_by = ${checkerId}, approved_at = ${now}
+          where id = ${batchId}`.execute(trx);
+        await sql`insert into audit_logs (id, organization_id, actor_type, actor_id, action, entity_type, entity_id, metadata, occurred_at)
+          values (${fixtureId("audit", 84)}, ${organizationId}, 'user', ${checkerId}, 'payout_batch.approved', 'payout_batch',
+            ${batchId}, ${JSON.stringify({ approvedBy: checkerId, approvedAt: now.toISOString() })}::jsonb, ${now})`.execute(
+          trx,
+        );
+        await sql`update payouts set state = 'approved' where id = ${payoutId}`.execute(trx);
+        approvalHoldsBatch();
+        await approvalGate;
+      });
+      await batchLocked;
+      // The insert starts while the approval holds the batch. It must wait, then see the batch approved and refuse.
+      let releaseInsert!: () => void;
+      const insertGate = new Promise<void>((resolve) => (releaseInsert = resolve));
+      const inserting = world.db.transaction().execute(async (trx) => {
+        await sql`insert into payouts (id, batch_id, publisher_id, method_id, currency, amount_minor, reservation_key,
+          idempotency_key, state, created_at)
+          values (${fixtureId("payout", 70)}, ${batchId}, ${publisherId}, ${methodId}, 'GBP', 1000, 'reservation-1',
+            'race-insert-1', 'reserved', ${now})`.execute(trx);
+        await insertGate;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      releaseApproval();
+      await approving;
+      releaseInsert();
+      await expect(inserting).rejects.toThrow(/not prepared or the publisher is not in its organization/);
+      const reserved = await sql<{ n: string }>`select count(*)::text as n from payouts
+        where batch_id = ${batchId} and state = 'reserved'`.execute(world.db);
+      expect(reserved.rows[0]?.n).toBe("0");
+    });
+  });
+
   test("an approval in one transaction with its payouts still commits", async () => {
     await withPostgres(async (world) => {
       const { batchId, payoutId } = await reserveOne(world);
@@ -603,7 +647,9 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
         await sql`update payouts set state = 'approved' where id = ${payoutId}`.execute(trx);
         await sql`insert into audit_logs (id, organization_id, actor_type, actor_id, action, entity_type, entity_id, metadata, occurred_at)
           values (${fixtureId("audit", 83)}, ${organizationId}, 'user', ${checkerId}, 'payout_batch.approved', 'payout_batch',
-            ${batchId}, '{}'::jsonb, ${now})`.execute(trx);
+            ${batchId}, ${JSON.stringify({ approvedBy: checkerId, approvedAt: now.toISOString() })}::jsonb, ${now})`.execute(
+          trx,
+        );
       });
       const row = await sql<{ state: string }>`select state from payouts where id = ${payoutId}`.execute(world.db);
       expect(row.rows[0]?.state).toBe("approved");

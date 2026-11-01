@@ -81,8 +81,11 @@ export const payoutBatchApproval: Migration = {
       begin
         if exists (select 1 from payouts p where p.batch_id = new.id and p.state = 'reserved')
         then raise exception 'payout_batches: an approved batch still has reserved payouts'; end if;
-        -- The approval is recorded in the audit log in the same transaction, one row per batch.
-        if not exists (select 1 from audit_logs a where a.entity_id = new.id and a.action = 'payout_batch.approved')
+        -- The approval is recorded in the audit log in the same transaction, one row per batch, naming the approver and time
+        -- the batch holds.
+        if not exists (select 1 from audit_logs a where a.entity_id = new.id and a.action = 'payout_batch.approved'
+          and a.metadata->>'approvedBy' = new.approved_by
+          and a.metadata->>'approvedAt' = to_char(new.approved_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
         then raise exception 'payout_batches: an approved batch needs its payout_batch.approved audit row'; end if;
         return null;
       end $$`.execute(db);
@@ -99,6 +102,20 @@ export const payoutBatchApproval: Migration = {
         if not exists (select 1 from payout_batches b where b.id = new.batch_id and b.state = 'cancelled')
         then raise exception 'payouts: a cancelled payout needs its batch cancelled in the same transaction'; end if;
         return null;
+      end $$`.execute(db);
+    // The insert guard from 0023 reads the batch state without a lock, so under READ COMMITTED a payout could be inserted into
+    // a batch that an approval is committing. This version share-locks the batch row, so an insert waits for an approval in
+    // progress and then sees it approved, and an approval waits for an insert in progress.
+    await sql`create or replace function payouts_insert_guard() returns trigger language plpgsql as $$
+      declare batch_state text;
+      begin
+        if new.state <> 'reserved' then raise exception 'payouts are inserted reserved'; end if;
+        select b.state into batch_state from payout_batches b
+          join publishers p on p.organization_id = b.organization_id
+          where b.id = new.batch_id and p.id = new.publisher_id for share of b;
+        if batch_state is distinct from 'prepared'
+        then raise exception 'payouts: the batch is not prepared or the publisher is not in its organization'; end if;
+        return new;
       end $$`.execute(db);
     await sql`create constraint trigger payouts_cancelled_ct after update on payouts
       deferrable initially deferred for each row when (new.state = 'cancelled')
@@ -131,6 +148,14 @@ export const payoutBatchApproval: Migration = {
     await sql`drop function if exists payout_batches_approved_guard() cascade`.execute(db);
     await sql`drop trigger if exists payout_batches_cancelled_ct on payout_batches`.execute(db);
     await sql`drop function if exists payout_batches_cancelled_guard() cascade`.execute(db);
+    await sql`create or replace function payouts_insert_guard() returns trigger language plpgsql as $$
+      begin
+        if new.state <> 'reserved' then raise exception 'payouts are inserted reserved'; end if;
+        if not exists (select 1 from payout_batches b join publishers p on p.organization_id = b.organization_id
+          where b.id = new.batch_id and b.state = 'prepared' and p.id = new.publisher_id)
+        then raise exception 'payouts: the batch is not prepared or the publisher is not in its organization'; end if;
+        return new;
+      end $$`.execute(db);
     await sql`drop trigger if exists payouts_cancelled_ct on payouts`.execute(db);
     await sql`drop function if exists payouts_cancelled_guard() cascade`.execute(db);
     await sql`drop index if exists audit_logs_payout_batch_approved_uq`.execute(db);
