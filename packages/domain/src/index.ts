@@ -10,7 +10,7 @@ export { type Allocation, allocate } from "./ledger/allocate";
 export { createShareRule, type ShareRule } from "./ledger/share-rule";
 export * from "./links/destination";
 export * from "./links/link";
-export { isCurrencyCode } from "./money/currency";
+export { exponentOf, isCurrencyCode } from "./money/currency";
 export type { CurrencyCode } from "./money/iso4217";
 export { Money, MoneyError, type ParseResult, parseMoney } from "./money/money";
 export * from "./networks/capability";
