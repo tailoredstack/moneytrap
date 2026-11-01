@@ -15,6 +15,9 @@ export const ID_PREFIXES = {
   importBatch: "imb",
   importRow: "imr",
   conversionSource: "cvs",
+  conversion: "cnv",
+  conversionStatusEvent: "cse",
+  conversionAdjustment: "cad",
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;
