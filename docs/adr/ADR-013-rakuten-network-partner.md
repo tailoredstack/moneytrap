@@ -15,7 +15,7 @@ Rakuten Advertising is the network the team will build the first connector again
 - Rakuten Advertising is the first network for `packages/adapter-network-rakuten/` (WP-4.3). The adapter must pass the same adapter contract suite as the recorded-fixture simulator (WP-4.2).
 - ADR-012 is superseded. The simulator remains the connector for conformance tests and for any environment without Rakuten credentials.
 - The `NetworkConnector` port in `packages/app/src/ports/network-connector.ts` (WP-4.1) stays the seam. No app code changes because of this decision.
-- Credentials are held as a T3 secret and never written to the repo, a PR, or Linear.
+- Credentials are kept in the T3 secret store and are never written to the repo, a PR, or Linear.
 
 ## Reason
 
@@ -44,4 +44,4 @@ Reopen this decision if Rakuten sandbox or API access is revoked, if the contrac
 
 ## Fallback
 
-If the Rakuten sandbox cannot support the contract suite, WP-4.3 stays on the simulator and the team records a new network decision in a follow-up ADR. ADR-012's simulator-first decision still applies until that happens.
+If the Rakuten sandbox cannot support the contract suite, WP-4.3 stays on the simulator and the team records a new network decision in a follow-up ADR. The simulator remains the conformance connector, as set out under Decision above.
