@@ -33,6 +33,10 @@ export type Reply =
 
 // Rakuten documents 403 as "the number of requests allowed per minute has been exceeded", so a 403 is retried later.
 const RATE_LIMITED_RETRY_SECONDS = 60;
+const EVENTS_REQUEST_LIMIT = 100;
+const EVENTS_WINDOW_MS = 60_000;
+const ADVANCED_REPORTS_REQUEST_LIMIT = 500;
+const ADVANCED_REPORTS_WINDOW_MS = 86_400_000;
 // An access token lasts 3600 seconds. It is renewed a minute early so a request never carries one about to expire.
 const TOKEN_SKEW_MS = 60_000;
 
@@ -46,6 +50,7 @@ interface Token {
 export class RakutenClient {
   private token: Token | null = null;
   private tokenRequest: Promise<{ token: Token } | { failure: ConnectorFailure }> | null = null;
+  private readonly quotaWindows = new Map<string, { start: number; requests: number }>();
 
   constructor(private readonly config: ClientConfig) {}
 
@@ -76,6 +81,9 @@ export class RakutenClient {
       const token = await this.accessToken(operation);
       if ("failure" in token) return { kind: "failure", failure: token.failure };
 
+      const quota = this.consumeQuota(path);
+      if (quota !== null) return { kind: "failure", failure: unavailable(quota) };
+
       const response = await this.call(operation, `${this.config.baseUrl}${path}`, {
         method,
         headers: {
@@ -98,6 +106,28 @@ export class RakutenClient {
     return { kind: "failure", failure: { state: "not_authorized" } };
   }
 
+  // Rakuten applies separate quotas to Events and Advanced Reports. Use UTC-aligned windows and keep each endpoint
+  // independent so a saturated Events budget cannot prevent settlement report calls (or vice versa).
+  private consumeQuota(path: string): number | null {
+    const pathname = new URL(path, this.config.baseUrl).pathname;
+    const policy =
+      pathname === "/events/1.0/transactions"
+        ? { key: "events", limit: EVENTS_REQUEST_LIMIT, duration: EVENTS_WINDOW_MS }
+        : pathname === "/advancedreports/1.0"
+          ? { key: "advanced-reports", limit: ADVANCED_REPORTS_REQUEST_LIMIT, duration: ADVANCED_REPORTS_WINDOW_MS }
+          : null;
+    if (policy === null) return null;
+
+    const now = this.config.clock.now().getTime();
+    const start = Math.floor(now / policy.duration) * policy.duration;
+    const current = this.quotaWindows.get(policy.key);
+    const window = current?.start === start ? current : { start, requests: 0 };
+    if (window.requests >= policy.limit) return Math.max(1, Math.ceil((start + policy.duration - now) / 1000));
+    window.requests += 1;
+    this.quotaWindows.set(policy.key, window);
+    return null;
+  }
+
   private async interpret(operation: ConnectorOperation, response: Response): Promise<Reply> {
     const { status } = response;
     if (status === 404) return { kind: "not_found" };
@@ -110,6 +140,11 @@ export class RakutenClient {
       return { kind: "failure", failure: unavailable(null) };
     }
     try {
+      if (operation === "retrieve_settlement_evidence") {
+        const body = await response.text();
+        if (body.trim() === "") throw new Error("empty report");
+        return { kind: "ok", body, at: reportedAt(response) ?? this.config.clock.now() };
+      }
       const body: unknown = await response.json();
       return { kind: "ok", body, at: reportedAt(response) ?? this.config.clock.now() };
     } catch {

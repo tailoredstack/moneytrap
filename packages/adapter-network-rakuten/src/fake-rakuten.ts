@@ -25,6 +25,7 @@ export interface FakeRakutenOptions {
   pageSize?: number;
   // Seconds the fake says each access token lasts.
   tokenTtlSeconds?: number;
+  webSecurityToken?: string;
 }
 
 const DAY = 86_400_000;
@@ -211,6 +212,25 @@ export function createFakeRakuten(options: FakeRakutenOptions) {
         return at >= start && at <= end;
       });
       return ok(inRange.slice((page - 1) * limit, page * limit));
+    }
+
+    if (path === "/advancedreports/1.0") {
+      if (!options.webSecurityToken || parsed.searchParams.get("token") !== options.webSecurityToken) {
+        return new Response("invalid report token", { status: 401 });
+      }
+      const report = query.get("reportid");
+      const csv =
+        report === "1"
+          ? "Payment ID,Date,Payment Type,Check Number,Currency Code,Total Commission Amount Paid,Payment Status\npay-1,2026-11-01,direct deposit,check-1,USD,12.50,issued\n"
+          : report === "22"
+            ? 'Invoice Date,Advertiser ID,Advertiser,Invoice Number,Transaction Commissions,Bonus Amount,CPM & CPC Commissions,Cancelled Commissions,Previously Held Commissions,VAT/GST,Payment Amount,Advertiser Payment Date\n2026-10-31,100,"Northwind, Outdoor",inv-1,10.00,0,0,0,0,0,10.00,11/01/2026\n'
+            : report === "23"
+              ? "Date,Time,Advertiser ID,Advertiser,Order ID,SKU #,Product Name,Items,Sales,Baseline Commission,Adjusted Commission,Actual Commission,Transaction Payment Status,Reason,Advertiser Payment Memo,Advertiser Payment Date\n10/31/2026,12:00:00,100,Northwind Outdoor,order-1,sku-1,Widget,1,100.00,10.00,9.50,9.50,Paid,,memo,11/01/2026\n"
+              : "";
+      return new Response(csv, {
+        status: 200,
+        headers: { date: options.now().toUTCString(), "content-type": "text/csv" },
+      });
     }
 
     return json(404, { error: "unknown path" });
