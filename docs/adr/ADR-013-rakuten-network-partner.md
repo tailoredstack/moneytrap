@@ -37,4 +37,4 @@ Reopen this decision if Rakuten sandbox or API access is revoked, if the contrac
 
 ## Fallback
 
-If the Rakuten sandbox cannot support the contract suite, WP-4.3 stays on the simulator and the team records a new network decision in a follow-up ADR. The simulator remains the conformance connector, as set out under Decision above.
+If the project owner does not confirm a Rakuten contract, WP-4.3 does not merge and the simulator stays the only connector. If the Rakuten sandbox cannot support the contract suite, WP-4.3 stays on the simulator as well, and the team records a new network decision in a follow-up ADR. The simulator remains the conformance connector, as set out under Decision above.
