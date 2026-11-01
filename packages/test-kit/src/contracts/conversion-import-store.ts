@@ -1,9 +1,9 @@
-import { describe, expect, test } from "bun:test";
-import { importConversionBatch, type ImportBatchInput } from "@moneytrap/app/src/conversions/import-batch";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { type ImportBatchInput, importConversionBatch } from "@moneytrap/app/src/conversions/import-batch";
 import type { ConversionImportStore } from "@moneytrap/app/src/ports/conversion-import-store";
 import { FakeClock } from "../clock";
-import { fixtureCtx } from "../fixtures/ctx";
 import { FakeIdGenerator } from "../fakes/id-generator";
+import { fixtureCtx } from "../fixtures/ctx";
 
 const digestA = "a".repeat(64);
 const digestB = "b".repeat(64);
@@ -41,7 +41,9 @@ class Interrupted extends Error {}
 function interruptAfter(store: ConversionImportStore, calls: number): ConversionImportStore {
   let applied = 0;
   return {
-    ...store,
+    openBatch: (input) => store.openBatch(input),
+    recordQuarantine: (input) => store.recordQuarantine(input),
+    completeBatch: (input) => store.completeBatch(input),
     async applyRow(input) {
       if (applied >= calls) throw new Interrupted("import interrupted");
       applied += 1;
@@ -67,10 +69,15 @@ export function runConversionImportContract(
       }
     }
 
+    // One ID generator per test: every batch and row in a test needs its own ID, as the database enforces.
+    let ids: FakeIdGenerator;
+    beforeEach(() => {
+      ids = new FakeIdGenerator();
+    });
     const ctxFor = () =>
-      fixtureCtx<unknown>(undefined as never, {
+      fixtureCtx<Record<string, never>>(undefined as never, {
         clock: new FakeClock(new Date("2026-10-31T10:00:00.000Z")),
-        ids: new FakeIdGenerator(),
+        ids,
       });
 
     test("TP-W6-014 importing a batch once creates every row at revision 1", async () => {
@@ -104,7 +111,10 @@ export function runConversionImportContract(
           batch(digestB, [row("tx-1", { amount: "10.00" }), row("tx-2")]),
         );
 
-        expect(result).toMatchObject({ ok: true, value: { outcome: "imported", counts: { revised: 1, unchanged: 1 } } });
+        expect(result).toMatchObject({
+          ok: true,
+          value: { outcome: "imported", counts: { revised: 1, unchanged: 1 } },
+        });
       });
     });
 

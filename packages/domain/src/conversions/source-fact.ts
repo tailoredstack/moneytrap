@@ -26,7 +26,9 @@ export interface ParsedConversionRow {
   payload: ConversionFactPayload;
 }
 
-export type ConversionRowParse = { ok: true; value: ParsedConversionRow } | { ok: false; code: ErrorCode; reason: string };
+export type ConversionRowParse =
+  | { ok: true; value: ParsedConversionRow }
+  | { ok: false; code: ErrorCode; reason: string };
 
 // Turns one raw row from a batch into a normalized fact. Any field that does not meet the contract makes the whole row
 // malformed, so it is quarantined and never becomes a source fact (TP-W6-020).
