@@ -8,14 +8,14 @@
 
 ADR-012 kept WP-4.3 deferred until a network partner was contracted and sandbox access existed. It also required a follow-up ADR to name the network. Plan Q1 is now decided: the project owner reports that the team has signed up with Rakuten Advertising as the first affiliate network partner.
 
-Rakuten Advertising is the network the team will build the first connector against. Its public developer documentation covers the affiliate APIs, and its developer guide covers how to try them out. The team reports that sandbox and API access are available now. Building against a real sandbox lets WP-4.3 test real responses instead of guessing an API shape, which was the risk ADR-012 named.
+Rakuten Advertising is the network the team will build the first connector against. Its public developer documentation publishes an affiliate APIs section and a developer guide on trying them out (see Evidence). What those cover is not verified here. The team reports that sandbox and API access are available now. Building against a real sandbox lets WP-4.3 test real responses instead of guessing an API shape, which was the risk ADR-012 named.
 
 ## Decision
 
 - Rakuten Advertising is the first network for `packages/adapter-network-rakuten/` (WP-4.3). The adapter must pass the same adapter contract suite as the recorded-fixture simulator (WP-4.2).
 - ADR-012 is superseded. The simulator remains the connector for conformance tests and for any environment without Rakuten credentials.
 - The `NetworkConnector` port in `packages/app/src/ports/network-connector.ts` (WP-4.1) stays the seam. No app code changes because of this decision.
-- Credentials follow the blueprint's secret rule (environment or secret store, encrypted at rest). They are never written to the repo, a PR, or Linear.
+- Credentials follow the blueprint's secret rule: they come from the environment or a secret store, are encrypted at rest, and are never returned by any API. They are never written to the repo or a PR, and never put in Linear.
 - Not decided here:
   - The adapter design, its file layout, or its mapping of Rakuten responses onto the `NetworkConnector` operations. WP-4.3 owns those.
   - Whether Rakuten is contracted for production use, its commercial terms, or its fee schedule.
