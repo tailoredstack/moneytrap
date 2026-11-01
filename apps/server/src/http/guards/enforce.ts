@@ -5,7 +5,9 @@ import { decide, type Guard } from "./policy";
 import { ROUTE_GUARDS } from "./routes";
 
 // Resolves the caller from the request headers. Returns null for an anonymous caller.
-export type PrincipalResolver = (headers: Headers) => Promise<Principal | null>;
+export type PrincipalResolver = (
+  headers: Headers,
+) => Promise<(Principal & { globalRole?: string | null | undefined }) | null>;
 
 export const anonymous: PrincipalResolver = async () => null;
 
@@ -30,7 +32,8 @@ export function guard(key: string, principal: PrincipalResolver = anonymous) {
       params: Record<string, string>;
       set: { status?: number | string };
     }) => {
-      const needsCaller = declared.access === "session" || declared.access === "permission";
+      const needsCaller =
+        declared.access === "session" || declared.access === "permission" || declared.access === "global-admin";
       const decision = await decide(declared, needsCaller ? await principal(request.headers) : null, params);
       if (!decision.ok) return failure(set, request, decision.code);
     },

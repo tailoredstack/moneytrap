@@ -30,6 +30,14 @@ describe("guard decisions (Blueprint §3.1, TP-W2-036)", () => {
     expect(await decide({ access: "session" }, viewerOfA, {})).toEqual({ ok: true });
   });
 
+  test("global ops routes require global Better Auth admin role, never tenant admin role", async () => {
+    const ops: Guard = { access: "global-admin" };
+    expect(await decide(ops, null, {})).toEqual({ ok: false, code: "UNAUTHENTICATED" });
+    expect(await decide(ops, adminOfA, {})).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(await decide(ops, { ...adminOfA, globalRole: "user" }, {})).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(await decide(ops, { ...viewerOfA, globalRole: "admin" }, {})).toEqual({ ok: true });
+  });
+
   test("permission routes refuse anonymous callers", async () => {
     expect(await decide(readCatalog, null, { id: "res_a" })).toEqual({ ok: false, code: "UNAUTHENTICATED" });
   });

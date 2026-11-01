@@ -126,6 +126,43 @@ describeWithDatabase("network account store (TP-W4-007, WP-4.4)", () => {
     expect(JSON.stringify(view)).not.toContain(credential);
   });
 
+  test("rotation replaces ciphertext and writes immutable network audit metadata while reads stay safe", async () => {
+    const store = createNetworkAccountStore(db);
+    await store.insert(writeFor("nac_one", "partner-7731"));
+    const replacement = new FakeSecretBox().seal("rotated-secret", "nac_one");
+    const view = await store.rotateCredential("nac_one" as Id<"networkAccount">, replacement, {
+      id: "aud_rotate" as Id<"audit">,
+      actor: operator,
+      action: "network_account.rotated",
+      entityId: "nac_one" as Id<"networkAccount">,
+      metadata: { keyId: replacement.keyId },
+      occurredAt: createdAt,
+    });
+    expect(view?.networkId).toBe(networkId);
+    expect(Object.keys(view ?? {}).sort()).toEqual(
+      ["accountRef", "createdAt", "id", "lastCheckedAt", "networkId", "state"].sort(),
+    );
+    expect(await store.readSealedCredential("nac_one" as Id<"networkAccount">)).toEqual(replacement);
+    expect(JSON.stringify(await store.listForNetwork(networkId))).not.toContain("rotated-secret");
+    const audits = await sql<{
+      action: string;
+      metadata: unknown;
+    }>`select action, metadata from audit_logs where action = 'network_account.rotated'`.execute(db);
+    expect(audits.rows).toEqual([
+      { action: "network_account.rotated", metadata: { networkId, keyId: replacement.keyId } },
+    ]);
+    expect(
+      await store.rotateCredential("nac_missing" as Id<"networkAccount">, replacement, {
+        id: "aud_missing" as Id<"audit">,
+        actor: operator,
+        action: "network_account.rotated",
+        entityId: "nac_missing" as Id<"networkAccount">,
+        metadata: { keyId: replacement.keyId },
+        occurredAt: createdAt,
+      }),
+    ).toBeNull();
+  });
+
   test("the sync path opens the sealed credential for the account it was sealed for", async () => {
     const store = createNetworkAccountStore(db);
     const write = writeFor("nac_one", "partner-7731");

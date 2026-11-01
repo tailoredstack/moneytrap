@@ -28,7 +28,14 @@ const approvals = { db: {}, store: {}, clock, ids, principal: async () => null }
 describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
   test("every route the app serves declares a guard", () => {
     const app = createApp({ clock, ids, readiness: [] }).use(
-      apiRoutes(stubAuth, undefined, reports, redirect, approvals),
+      apiRoutes(stubAuth, undefined, reports, redirect, approvals, {
+        db: {},
+        store: {},
+        secretBox: {},
+        clock,
+        ids,
+        principal: async () => null,
+      } as never),
     );
     expect(undeclaredRoutes(app.routes)).toEqual([]);
   });
@@ -51,7 +58,14 @@ describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
 
   test("the guard table has no entry for a route the app does not serve", () => {
     const app = createApp({ clock, ids, readiness: [] }).use(
-      apiRoutes(stubAuth, undefined, reports, redirect, approvals),
+      apiRoutes(stubAuth, undefined, reports, redirect, approvals, {
+        db: {},
+        store: {},
+        secretBox: {},
+        clock,
+        ids,
+        principal: async () => null,
+      } as never),
     );
     const served = new Set(app.routes.map((route) => `${route.method} ${route.path}`));
     const stale = Object.keys(ROUTE_GUARDS).filter((key) => !served.has(key));

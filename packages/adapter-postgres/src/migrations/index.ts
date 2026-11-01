@@ -25,6 +25,7 @@ import { settlementReceipts } from "./0020_settlement_receipts";
 import { payoutMethods } from "./0021_payout_methods";
 import { payoutPolicy } from "./0022_payout_policy";
 import { payoutBatches } from "./0023_payout_batches";
+import { betterAuthAdmin } from "./0024_better_auth_admin";
 
 // Every migration is imported here statically so the compiled binary carries the set and
 // reads no files at runtime (ADR-003). Add new entries in filename order.
@@ -55,6 +56,7 @@ const migrations: Record<string, Migration> = {
   "0021_payout_methods": payoutMethods,
   "0022_payout_policy": payoutPolicy,
   "0023_payout_batches": payoutBatches,
+  "0024_better_auth_admin": betterAuthAdmin,
 };
 
 export const migrationProvider: MigrationProvider = {

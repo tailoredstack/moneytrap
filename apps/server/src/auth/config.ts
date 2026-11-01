@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { apiKey } from "@better-auth/api-key";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware, getSessionFromCtx, isAPIError } from "better-auth/api";
-import { haveIBeenPwned, organization, twoFactor } from "better-auth/plugins";
+import { admin, haveIBeenPwned, organization, twoFactor } from "better-auth/plugins";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import type { Pool } from "pg";
 import { requireRecentSecondFactor } from "../http/guards/assurance";
@@ -396,7 +396,7 @@ export function authOptions({
   rateLimitPolicy: policy = AUTH_RATE_LIMIT_POLICY,
   trustedProxies = [],
   trustedOrigins: extraOrigins = [],
-}: AuthConfigDeps): BetterAuthOptions {
+}: AuthConfigDeps) {
   const limits: RateLimitSettings = { secret, policy };
   // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
   const db = new Kysely<any>({ dialect: new PostgresDialect({ pool }) });
@@ -462,6 +462,7 @@ export function authOptions({
       },
     },
     plugins: [
+      admin(),
       haveIBeenPwned(),
       twoFactor({ issuer: "Moneytrap" }),
       // Invitations keep Better Auth's defaults: a 48-hour expiry, and acceptance is refused once the invitation is no
@@ -486,7 +487,7 @@ export function authOptions({
         },
       },
     ],
-  };
+  } satisfies BetterAuthOptions;
 }
 
 export function createAuth(deps: AuthConfigDeps) {

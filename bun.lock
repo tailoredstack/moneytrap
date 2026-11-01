@@ -17,6 +17,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@better-auth/api-key": "1.7.14",
+        "@moneytrap/adapter-network-rakuten": "workspace:*",
         "@moneytrap/adapter-postgres": "workspace:*",
         "@moneytrap/adapter-redis": "workspace:*",
         "@moneytrap/app": "workspace:*",

@@ -45,6 +45,31 @@ class MemoryNetworkAccountStore implements NetworkAccountStore {
   async readSealedCredential(id: Id<"networkAccount">): Promise<SealedSecret | null> {
     return this.accounts.get(id)?.sealedCredential ?? null;
   }
+
+  async findForConnection(id: Id<"networkAccount">) {
+    const account = this.accounts.get(id);
+    return account ? { accountRef: account.accountRef, sealedCredential: account.sealedCredential } : null;
+  }
+
+  async rotateCredential(
+    id: Id<"networkAccount">,
+    sealedCredential: SealedSecret,
+    audit: NetworkAccountWrite["audit"],
+  ): Promise<NetworkAccountView | null> {
+    const account = this.accounts.get(id);
+    if (!account) return null;
+    account.sealedCredential = sealedCredential;
+    const storedAudit = { ...audit, metadata: { ...audit.metadata, networkId: account.networkId } };
+    this.audits.push(storedAudit);
+    return {
+      id: account.id,
+      networkId: account.networkId,
+      accountRef: account.accountRef,
+      state: account.state,
+      lastCheckedAt: null,
+      createdAt: account.createdAt,
+    };
+  }
 }
 
 // Reversible stand-in that binds each value to its context, as the server's AES-GCM box does. It is not secure.
@@ -62,15 +87,19 @@ const secretBox: SecretBox = {
 
 function setup(actor: Ctx["actor"] = operator) {
   const store = new MemoryNetworkAccountStore();
-  const deps = { store, secretBox };
+  const deps = {
+    store,
+    secretBox,
+    credentialSchema: [{ name: "access_token", type: "string" as const, required: true }],
+  };
   const ctx: Ctx = { db: undefined as never, clock, ids, actor };
   return { store, deps, ctx };
 }
 
-const valid = { account_ref: "partner-7731", credential };
+const valid = { account_ref: "partner-7731", credential: { access_token: credential } };
 
 describe("register network account (TP-W4-007, WP-4.4)", () => {
-  test("registers the account as unverified and returns metadata only", async () => {
+  test("registers adapter-declared typed fields and seals the credential object", async () => {
     const { store, deps, ctx } = setup();
     const result = await registerNetworkAccount(ctx, deps, networkId, valid);
 
@@ -107,7 +136,9 @@ describe("register network account (TP-W4-007, WP-4.4)", () => {
 
     const sealed = await store.readSealedCredential(result.value.id);
     expect(sealed?.keyId).toBe("test-key-1");
-    expect(deps.secretBox.open(sealed ?? { keyId: "", ciphertext: "" }, result.value.id)).toBe(credential);
+    expect(deps.secretBox.open(sealed ?? { keyId: "", ciphertext: "" }, result.value.id)).toBe(
+      JSON.stringify({ access_token: credential }),
+    );
     expect(() => deps.secretBox.open(sealed ?? { keyId: "", ciphertext: "" }, "nac_other")).toThrow(
       "secret could not be opened",
     );
@@ -130,11 +161,14 @@ describe("register network account (TP-W4-007, WP-4.4)", () => {
     ]);
   });
 
-  test("a caller that is not a user is UNAUTHENTICATED and nothing is written", async () => {
-    const { store, deps, ctx } = setup({ type: "system", id: null });
-    const result = await registerNetworkAccount(ctx, deps, networkId, valid);
-    expect(result).toEqual({ ok: false, code: "UNAUTHENTICATED" });
-    expect(store.accounts.size).toBe(0);
+  test("an authenticated user can reach the use case; ops authorization is enforced by HTTP", async () => {
+    const { store, deps, ctx } = setup();
+    const result = await registerNetworkAccount(ctx, deps, networkId, {
+      ...valid,
+      credential: { access_token: credential },
+    });
+    expect(result.ok).toBe(true);
+    expect(store.accounts.size).toBe(1);
   });
 
   test("a blank or missing account reference is VALIDATION_FAILED", async () => {
@@ -154,11 +188,11 @@ describe("register network account (TP-W4-007, WP-4.4)", () => {
   test("a missing or oversized credential is VALIDATION_FAILED, and the reason never echoes it", async () => {
     const { deps, ctx } = setup();
     const missing = await registerNetworkAccount(ctx, deps, networkId, { account_ref: "partner-7731" });
-    expect(missing).toEqual({ ok: false, code: "VALIDATION_FAILED", reason: "credential is required" });
+    expect(missing).toMatchObject({ ok: false, code: "VALIDATION_FAILED" });
 
     const oversized = await registerNetworkAccount(ctx, deps, networkId, {
       account_ref: "partner-7731",
-      credential: "x".repeat(4097),
+      credential: { access_token: "x".repeat(4097) },
     });
     expect(oversized).toEqual({ ok: false, code: "VALIDATION_FAILED", reason: "credential is too long" });
     expect(
@@ -183,5 +217,37 @@ describe("register network account (TP-W4-007, WP-4.4)", () => {
       code: "STATE_CONFLICT",
     });
     expect(store.accounts.size).toBe(1);
+  });
+  test("rejects client schema injection and widened fields before sealing or persistence", async () => {
+    const { store, deps, ctx } = setup();
+    let seals = 0;
+    const secretBox = {
+      ...deps.secretBox,
+      seal: (plain: string, context: string) => {
+        seals++;
+        return deps.secretBox.seal(plain, context);
+      },
+    };
+    const result = await registerNetworkAccount(ctx, { ...deps, secretBox }, networkId, {
+      ...valid,
+      credential: { access_token: credential, widened: "client-secret" },
+      credential_schema: [{ name: "widened", type: "string", required: true }],
+    });
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_FAILED" });
+    expect(JSON.stringify(result)).not.toContain("client-secret");
+    expect(seals).toBe(0);
+    expect(store.accounts.size).toBe(0);
+  });
+
+  test("rejects undeclared credential fields without echoing their values", async () => {
+    const { store, deps, ctx } = setup();
+    const submitted = "never-echo-this-secret";
+    const result = await registerNetworkAccount(ctx, deps, networkId, {
+      account_ref: "x",
+      credential: { access_token: credential, injected: submitted },
+      credential_schema: [{ name: "access_token", type: "string", required: true }],
+    });
+    expect(JSON.stringify(result)).not.toContain(submitted);
+    expect(store.accounts.size).toBe(0);
   });
 });

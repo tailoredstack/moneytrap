@@ -15,10 +15,10 @@ export interface NetworkAccountView {
 export interface NetworkAccountAudit {
   id: Id<"audit">;
   actor: { type: string; id: string };
-  action: "network_account.registered";
+  action: "network_account.registered" | "network_account.rotated";
   entityId: Id<"networkAccount">;
   // Only identifiers belong here. The credential and its ciphertext never reach the audit row.
-  metadata: { networkId: string; keyId: string };
+  metadata: { networkId?: string; keyId: string };
   occurredAt: Date;
 }
 
@@ -41,4 +41,10 @@ export interface NetworkAccountStore {
   listForNetwork(networkId: string): Promise<NetworkAccountView[]>;
   // Used by the sync worker to open the credential. No API route may call this.
   readSealedCredential(id: Id<"networkAccount">): Promise<SealedSecret | null>;
+  findForConnection(id: Id<"networkAccount">): Promise<{ accountRef: string; sealedCredential: SealedSecret } | null>;
+  rotateCredential(
+    id: Id<"networkAccount">,
+    sealedCredential: SealedSecret,
+    audit: NetworkAccountAudit,
+  ): Promise<NetworkAccountView | null>;
 }

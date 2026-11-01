@@ -12,6 +12,7 @@ export type Guard =
   | { access: "delegated"; reason: string }
   // Any signed-in user. The route limits its own data (for example, a user's own sessions).
   | { access: "session" }
+  | { access: "global-admin" }
   | { access: "permission"; permission: Permission; scope: ScopeResolver };
 
 export type Denial = "UNAUTHENTICATED" | "FORBIDDEN" | "RESOURCE_NOT_FOUND";
@@ -22,12 +23,14 @@ const ALLOW: Decision = { ok: true };
 // Pure apart from the resolver. Callers pass the principal already authenticated (or null for anonymous).
 export async function decide(
   guard: Guard,
-  principal: Principal | null,
+  principal: (Principal & { globalRole?: string | null | undefined }) | null,
   params: Readonly<Record<string, string>>,
 ): Promise<Decision> {
   if (guard.access === "public" || guard.access === "delegated") return ALLOW;
   if (!principal) return { ok: false, code: "UNAUTHENTICATED" };
   if (guard.access === "session") return ALLOW;
+  if (guard.access === "global-admin")
+    return principal.globalRole === "admin" ? ALLOW : { ok: false, code: "FORBIDDEN" };
 
   const scope = await guard.scope(params);
   // Missing and foreign resources share one answer (CT-005). A foreign resource is one whose organization the

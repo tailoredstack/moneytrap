@@ -20,6 +20,9 @@ export const ROUTE_GUARDS: Readonly<Record<string, Guard>> = {
     ]),
   ),
 
+  "POST /v1/admin/network-accounts": { access: "global-admin" },
+  "PUT /v1/admin/network-accounts/:id/credentials": { access: "global-admin" },
+  "POST /v1/admin/network-accounts/:id/test-connection": { access: "global-admin" },
   "GET /api/sessions": { access: "session" },
   "DELETE /api/sessions/:id": { access: "session" },
   "PUT /api/password": { access: "session" },

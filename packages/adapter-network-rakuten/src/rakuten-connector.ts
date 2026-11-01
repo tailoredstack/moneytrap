@@ -1,3 +1,16 @@
+export interface RakutenCredentialField {
+  name: string;
+  type: "string";
+  required: boolean;
+  sealed?: boolean;
+  purpose?: "connection" | "advanced-reports";
+}
+export const RAKUTEN_CREDENTIAL_SCHEMA: readonly RakutenCredentialField[] = [
+  { name: "clientId", type: "string", required: true, sealed: true },
+  { name: "clientSecret", type: "string", required: true, sealed: true },
+  { name: "web_security_token", type: "string", required: false, sealed: true, purpose: "advanced-reports" },
+];
+
 import type { Clock } from "@moneytrap/app/src/ports/clock";
 import type {
   AdjustmentRecord,
