@@ -11,8 +11,12 @@ export class FakePayoutPolicyStore implements PayoutPolicyStore {
   constructor(private readonly writeClock: () => Date = () => new Date()) {}
 
   async publish({ policy, occurredAt }: { policy: PayoutPolicy; occurredAt: Date }): Promise<PublishPolicyResult> {
-    if (occurredAt.getTime() < this.writeClock().getTime() - WRITE_CLOCK_TOLERANCE_MS) {
+    const now = this.writeClock().getTime();
+    if (occurredAt.getTime() < now - WRITE_CLOCK_TOLERANCE_MS) {
       throw new Error("payout_policies: timestamp is earlier than the write clock");
+    }
+    if (occurredAt.getTime() > now + WRITE_CLOCK_TOLERANCE_MS) {
+      throw new Error("payout_policies: timestamp is later than the write clock");
     }
     const sameCurrency = this.policies.filter((existing) => existing.currency === policy.currency);
     if (sameCurrency.some((existing) => existing.version === policy.version)) {

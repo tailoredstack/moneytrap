@@ -397,4 +397,16 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
     ).rejects.toThrow("earlier than the write clock");
     expect(await policies.list("GBP")).toEqual([]);
   });
+
+  test("a hold cannot be placed with a time later than the write clock", async () => {
+    await expect(
+      holds.place({
+        hold: { id: "pho_pol_13", publisherId, currency: "GBP", amountMinor: 1n, reason: "review", expiresAt: null },
+        organizationId: orgId,
+        auditId: "aud_hold_17",
+        actor,
+        occurredAt: new Date(Date.now() + 60 * 60 * 1000),
+      }),
+    ).rejects.toThrow("later than the write clock");
+  });
 });
