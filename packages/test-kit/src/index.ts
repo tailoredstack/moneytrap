@@ -19,6 +19,7 @@ export { FakeIdempotencyStore } from "./fakes/idempotency-store";
 export { FakeNetworkAccountStore } from "./fakes/network-account-store";
 export { FakeNetworkConnector } from "./fakes/network-connector";
 export { FakeNotifier } from "./fakes/notifier";
+export { FakePayoutBatchStore } from "./fakes/payout-batch-store";
 export { FakePayoutHoldStore } from "./fakes/payout-hold-store";
 export { FakePayoutMethodStore } from "./fakes/payout-method-store";
 export { FakePayoutPolicyStore } from "./fakes/payout-policy-store";

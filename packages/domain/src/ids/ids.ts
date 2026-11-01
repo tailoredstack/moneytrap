@@ -22,6 +22,8 @@ export const ID_PREFIXES = {
   settlementReceipt: "str",
   payoutMethod: "pmt",
   payoutHold: "pho",
+  payoutBatch: "pbt",
+  payout: "pay",
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;
