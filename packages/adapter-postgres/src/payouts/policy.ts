@@ -75,6 +75,9 @@ async function writeAudit(
 
 // Versions are published in order. A version that is taken, skips a number, or takes effect before the latest version
 // is refused and writes nothing, so a decision made under an earlier version stays reproducible (TP-W7-011).
+// Carries the trigger's in-the-past refusal out of the transaction as the typed outcome.
+class PolicyInPast extends Error {}
+
 export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore {
   return {
     async publish({ policy, auditId, organizationId, actor, occurredAt }) {
@@ -101,10 +104,18 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
           return { outcome: "rejected", reason: "effective_in_past" };
         }
 
-        await sql`insert into payout_policies (currency, version, minimum_minor, effective_from, created_at, published_by_organization_id)
-          values (${policy.currency}, ${policy.version}, ${policy.minimumMinor.toString()}, ${policy.effectiveFrom}, ${occurredAt}, ${organizationId})`.execute(
-          tx,
-        );
+        try {
+          await sql`insert into payout_policies (currency, version, minimum_minor, effective_from, created_at, published_by_organization_id)
+            values (${policy.currency}, ${policy.version}, ${policy.minimumMinor.toString()}, ${policy.effectiveFrom}, ${occurredAt}, ${organizationId})`.execute(
+            tx,
+          );
+        } catch (error) {
+          // The trigger reads the clock at the insert, which can be later than the check above. Its refusal is the same
+          // typed outcome, and the marker error rolls the transaction back, so nothing is written.
+          if (error instanceof Error && error.message.includes("effective date is in the past"))
+            throw new PolicyInPast();
+          throw error;
+        }
         await writeAudit(tx, {
           auditId,
           organizationId,
@@ -120,6 +131,9 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
           occurredAt,
         });
         return { outcome: "published" };
+      }).catch((error: unknown): PublishPolicyResult => {
+        if (error instanceof PolicyInPast) return { outcome: "rejected", reason: "effective_in_past" };
+        throw error;
       });
     },
 
@@ -160,6 +174,10 @@ export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
     async place({ hold, organizationId, auditId, actor, occurredAt }) {
       await withTx(db, async (tx) => {
         await refuseOutsideWriteClock(tx, occurredAt);
+        // An expiry must follow placement. Checked here, so the caller gets a clear error, not a raw constraint violation.
+        if (hold.expiresAt !== null && hold.expiresAt.getTime() <= occurredAt.getTime()) {
+          throw new Error("payout_holds: expiry must follow placement");
+        }
         const owned = await sql`select 1 from publishers where id = ${hold.publisherId}
           and organization_id = ${organizationId} for share`.execute(tx);
         if (owned.rows.length === 0) throw new Error("payout: publisher is not in the organization");

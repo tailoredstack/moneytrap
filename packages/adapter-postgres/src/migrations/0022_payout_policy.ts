@@ -27,7 +27,7 @@ export const payoutPolicy: Migration = {
       .addColumn("reason", "text", (column) => column.notNull().check(sql`length(trim(reason)) > 0`))
       .addColumn("expires_at", "timestamptz")
       .addColumn("released_at", "timestamptz")
-      .addColumn("created_by", "text", (column) => column.notNull())
+      .addColumn("created_by", "text", (column) => column.notNull().references("user.id"))
       .addColumn("created_at", "timestamptz", (column) => column.notNull())
       // A release cannot precede the placement, so a hold never has a released state before it existed.
       .addCheckConstraint("payout_holds_release_ck", sql`released_at is null or released_at >= created_at`)
