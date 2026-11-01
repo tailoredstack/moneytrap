@@ -130,6 +130,7 @@ export function createPayoutBatchStore(db: Kysely<unknown>): PayoutBatchStore {
               row.period_end.getTime() === write.periodEnd.getTime() &&
               (row.cap_minor === null ? null : BigInt(row.cap_minor)) === write.capMinor;
             if (!same) return { outcome: "key_conflict" };
+            if (row.state === "cancelled") return { outcome: "key_cancelled" };
             return { outcome: "replayed", batch: toBatch(row, await loadLines(tx, row.id)) };
           }
 

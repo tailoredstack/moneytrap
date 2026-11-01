@@ -56,7 +56,9 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
         existing.periodStart.getTime() === write.periodStart.getTime() &&
         existing.periodEnd.getTime() === write.periodEnd.getTime() &&
         existing.capMinor === write.capMinor;
-      return same ? { outcome: "replayed", batch: this.record(existing) } : { outcome: "key_conflict" };
+      if (!same) return { outcome: "key_conflict" };
+      if (existing.state === "cancelled") return { outcome: "key_cancelled" };
+      return { outcome: "replayed", batch: this.record(existing) };
     }
 
     const skipped: SkippedLine[] = [];

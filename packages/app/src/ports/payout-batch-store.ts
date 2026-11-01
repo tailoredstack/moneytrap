@@ -78,12 +78,14 @@ export interface SkippedLine {
 
 // `reserved`: the batch, its payouts, and its audit row committed together, and `skipped` names the lines that reserved
 // nothing. `replayed`: the key already made a batch with the same terms, which is returned as it is and nothing is written.
-// `key_conflict`: the key was used for a different currency, period, or cap. `nothing_reserved`: no line reserved
+// `key_conflict`: the key was used for a different currency, period, or cap. `key_cancelled`: the key made a batch that has
+// since been cancelled, so it reserves nothing and a new key is needed. `nothing_reserved`: no line reserved
 // anything, so no batch was written and the key is still free.
 export type BatchReserveOutcome =
   | { outcome: "reserved"; batch: PayoutBatchRecord; skipped: SkippedLine[] }
   | { outcome: "replayed"; batch: PayoutBatchRecord }
   | { outcome: "key_conflict" }
+  | { outcome: "key_cancelled" }
   | { outcome: "nothing_reserved"; skipped: SkippedLine[] };
 
 // `cancelled`: the batch and every payout in it were cancelled and audited, which frees the funds they held.

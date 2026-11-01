@@ -40,6 +40,7 @@ export const payoutBatches: Migration = {
       .addCheckConstraint("payout_batches_cancelled_ck", sql`(state = 'cancelled') = (cancelled_at is not null)`)
       .addUniqueConstraint("payout_batches_reservation_key_uq", ["organization_id", "reservation_key"])
       .addUniqueConstraint("payout_batches_id_currency_uq", ["id", "currency"])
+      .addUniqueConstraint("payout_batches_id_reservation_key_uq", ["id", "reservation_key"])
       .execute();
 
     await db.schema
@@ -59,6 +60,11 @@ export const payoutBatches: Migration = {
       .addCheckConstraint("payouts_cancelled_ck", sql`(state = 'cancelled') = (cancelled_at is not null)`)
       // The batch and the method must agree with the payout on currency, and the method with it on publisher.
       .addForeignKeyConstraint("payouts_batch_fk", ["batch_id", "currency"], "payout_batches", ["id", "currency"])
+      // A payout carries its batch's reservation key, so the two cannot drift apart.
+      .addForeignKeyConstraint("payouts_batch_key_fk", ["batch_id", "reservation_key"], "payout_batches", [
+        "id",
+        "reservation_key",
+      ])
       .addForeignKeyConstraint("payouts_method_fk", ["method_id", "publisher_id", "currency"], "payout_methods", [
         "id",
         "publisher_id",
@@ -107,10 +113,13 @@ export const payoutBatches: Migration = {
       for each row execute function payouts_guard()`.execute(db);
     await sql`create trigger payouts_no_truncate before truncate on payouts
       for each statement execute function payouts_guard()`.execute(db);
-    // A payout is reserved when it is written, whatever path writes it.
+    // A payout is reserved when it is written, whatever path writes it, and its publisher belongs to the batch's organization.
     await sql`create function payouts_insert_guard() returns trigger language plpgsql as $$
       begin
         if new.state <> 'reserved' then raise exception 'payouts are inserted reserved'; end if;
+        if not exists (select 1 from payout_batches b join publishers p on p.organization_id = b.organization_id
+          where b.id = new.batch_id and p.id = new.publisher_id)
+        then raise exception 'payouts: the publisher is not in the batch organization'; end if;
         return new;
       end $$`.execute(db);
     await sql`create trigger payouts_insert before insert on payouts

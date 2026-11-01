@@ -217,6 +217,12 @@ export async function prepareBatch(
   switch (outcome.outcome) {
     case "key_conflict":
       return { ok: false, code: "STATE_CONFLICT", reason: "reservation_key was used for a different batch" };
+    case "key_cancelled":
+      return {
+        ok: false,
+        code: "STATE_CONFLICT",
+        reason: "reservation_key belongs to a cancelled batch; use a new key",
+      };
     case "nothing_reserved":
       return {
         ok: false,

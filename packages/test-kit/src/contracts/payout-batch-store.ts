@@ -338,6 +338,17 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect(second.totalMinor).toBe(10_000n);
         }));
 
+      test("re-running the key of a cancelled batch is refused, not replayed as a success", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          const body = { reservation_key: "run-2026-10-gbp" };
+          const first = ok(await h.prepare(body)).value.batch;
+          ok(await h.cancel(first.id));
+          expect(await h.prepare(body)).toMatchObject({ ok: false, code: "STATE_CONFLICT" });
+          // A new key reserves the freed funds.
+          expect(ok(await h.prepare()).value.batch.totalMinor).toBe(10_000n);
+        }));
+
       test("a batch of another organization or an unknown batch is not found on cancel", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);
