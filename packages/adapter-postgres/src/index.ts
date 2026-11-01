@@ -18,4 +18,5 @@ export { createPublisherKybStore } from "./publisher/publisher-kyb-store";
 export { createPublisherReviewStore } from "./publisher/publisher-review-store";
 export { createClickReportStore } from "./reporting/click-report-store";
 export { createRiskFlagStore } from "./risk/risk-flag-store";
+export { createSettlementReceiptStore } from "./settlement/receipts";
 export { withTx } from "./transaction";
