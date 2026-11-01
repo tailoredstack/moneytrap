@@ -4,6 +4,7 @@ import {
   createNetworkAccountStore,
   createProgramApprovalStore,
   createRouteSource,
+  createStatementStore,
   migrate,
 } from "@moneytrap/adapter-postgres";
 import {
@@ -120,7 +121,12 @@ function serve(): void {
   };
 
   createApp({ clock: systemClock, ids: randomIds, readiness: [] })
-    .use(apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }, reports, redirect, approvals, networkAccounts))
+    .use(
+      apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }, reports, redirect, approvals, networkAccounts, {
+        store: createStatementStore(db),
+        principal: reports.principal,
+      }),
+    )
     .listen({ hostname, port });
   console.log(`Listening on ${hostname}:${port}`);
 }
