@@ -61,6 +61,19 @@ export interface RecordedDecision {
 // policy_unavailable: the decision was made under a policy version this build does not carry.
 export type ReplayOutcome = "reproduced" | "mismatch" | "policy_unavailable";
 
+/** Test seam for exercising persisted versions before the corresponding domain policy ships. */
+export interface EligibilityPolicyVersions {
+  currentVersion: number;
+  evaluate: typeof evaluateEligibility;
+  replay: ReadonlyMap<number, typeof evaluateEligibility>;
+}
+
+const CURRENT_POLICY_VERSIONS: EligibilityPolicyVersions = {
+  currentVersion: ELIGIBILITY_POLICY_VERSION,
+  evaluate: evaluateEligibility,
+  replay: new Map([[ELIGIBILITY_POLICY_VERSION, evaluateEligibility]]),
+};
+
 // Reads take the caller's organization, so a decision is only visible through its own tenant scope.
 export interface EligibilityDecisionStore {
   record(write: EligibilityDecisionWrite): Promise<RecordedDecision>;
@@ -202,7 +215,10 @@ async function writeEvaluation(
 // Records a decision and its audit row in one transaction (TP-W3-006 pattern). If either write fails, neither commits.
 // The insert is idempotent on (property, program, policy version, input hash). The hash covers the revision too, so the
 // same inputs read from a later revision add a row that names that revision.
-export function createEligibilityDecisionStore(db: Kysely<unknown>): EligibilityDecisionStore {
+export function createEligibilityDecisionStore(
+  db: Kysely<unknown>,
+  policies: EligibilityPolicyVersions = CURRENT_POLICY_VERSIONS,
+): EligibilityDecisionStore {
   return {
     async record(write) {
       return withTx(db, async (tx) => {
@@ -234,7 +250,9 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
             channels: payload?.channels ?? [],
           },
         });
-        const evaluation = evaluateEligibility(inputs);
+        const evaluation = policies.evaluate(inputs);
+        if (evaluation.policyVersion !== policies.currentVersion)
+          throw new Error("eligibility: evaluator returned a different policy version than configured");
         const result = outcomeOf(evaluation);
         const inputHash = hashEvaluation(evaluation.policyVersion, inputs, {
           seq: revisionSeq,
@@ -288,7 +306,10 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
     async replay(organizationId, id) {
       const stored = await selectOne(db, sql`organization_id = ${organizationId} and id = ${id}`);
       if (!stored) return null;
-      if (stored.policyVersion !== ELIGIBILITY_POLICY_VERSION) return "policy_unavailable";
+      const evaluate = policies.replay.get(stored.policyVersion);
+      if (!evaluate) return "policy_unavailable";
+      const replayedEvaluation = evaluate(stored.inputs);
+      if (replayedEvaluation.policyVersion !== stored.policyVersion) return "mismatch";
 
       // A row whose inputs no longer hash to its stored key was altered after it was written.
       if (
@@ -299,7 +320,7 @@ export function createEligibilityDecisionStore(db: Kysely<unknown>): Eligibility
       )
         return "mismatch";
 
-      const replayed = outcomeOf(evaluateEligibility(stored.inputs));
+      const replayed = outcomeOf(replayedEvaluation);
       const same =
         canonicalJson(replayed) ===
         canonicalJson({ decision: stored.decision, reasons: stored.reasons, checks: stored.checks });

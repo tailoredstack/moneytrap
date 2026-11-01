@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { EligibilityInput } from "@moneytrap/domain";
+import { type EligibilityInput, evaluateEligibility } from "@moneytrap/domain";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
 import { createSourceFactStore } from "../catalog/source-fact-store";
@@ -236,19 +236,32 @@ describeWithDatabase("eligibility decision store (TP-W4-022, TP-W4-023)", () => 
   });
 
   test("a decision under an earlier policy version is kept when a new one is recorded (TP-W4-022)", async () => {
-    // Version 0 stands in for an earlier policy: the row is written directly, as an earlier build would have.
-    await sql`insert into eligibility_decisions (id, organization_id, property_id, program_id, policy_version, decision,
-        reasons, checks, inputs, input_hash, evaluated_at)
-      values ('eld_old', ${orgId}, ${propertyId}, ${programId}, 0, 'allow', '[]'::jsonb, '[]'::jsonb,
-        ${JSON.stringify(allowed)}::jsonb, 'hash-v0', ${now})`.execute(db);
-
-    const store = createEligibilityDecisionStore(db);
-    const result = await store.record(writeFor(allowed));
+    const versionOne = createEligibilityDecisionStore(db);
+    const old = await versionOne.record(writeFor(allowed));
+    const versionTwo = createEligibilityDecisionStore(db, {
+      currentVersion: 2,
+      evaluate: (input) => ({ ...evaluateEligibility(input), policyVersion: 2 }),
+      replay: new Map([
+        [1, evaluateEligibility],
+        [2, (input) => ({ ...evaluateEligibility(input), policyVersion: 2 })],
+      ]),
+    });
+    const result = await versionTwo.record({ ...writeFor(allowed), id: "eld_v2", auditId: "aud_v2" });
 
     expect(result.outcome).toBe("recorded");
-    const history = await store.listForPair(orgId, propertyId, programId);
-    expect(history.map((decision) => decision.policyVersion)).toEqual([0, 1]);
-    expect(history[0]?.id).toBe("eld_old");
+    expect(result.decision.policyVersion).toBe(2);
+    const history = await versionTwo.listForPair(orgId, propertyId, programId);
+    expect(history.map((decision) => decision.policyVersion)).toEqual([1, 2]);
+    expect(history.map((decision) => decision.id)).toEqual([old.decision.id, "eld_v2"]);
+    expect(await versionOne.replay(orgId, old.decision.id)).toBe("reproduced");
+    expect(await versionTwo.replay(orgId, result.decision.id)).toBe("reproduced");
+    expect(await versionTwo.replay(orgId, old.decision.id)).toBe("reproduced");
+    const mismatchedReplay = createEligibilityDecisionStore(db, {
+      currentVersion: 2,
+      evaluate: (input) => ({ ...evaluateEligibility(input), policyVersion: 2 }),
+      replay: new Map([[1, (input) => ({ ...evaluateEligibility(input), policyVersion: 2 })]]),
+    });
+    expect(await mismatchedReplay.replay(orgId, old.decision.id)).toBe("mismatch");
   });
 
   test("a stored decision reproduces from its stored inputs", async () => {
