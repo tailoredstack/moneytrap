@@ -19,3 +19,4 @@ export * from "./properties/verification";
 export * from "./publisher/kyb";
 export * from "./publisher/publisher";
 export * from "./settlement/allocation";
+export * from "./settlement/funding";
