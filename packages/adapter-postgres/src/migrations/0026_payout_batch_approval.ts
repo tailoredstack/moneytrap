@@ -79,7 +79,7 @@ export const payoutBatchApproval: Migration = {
       n: string;
     }>`select count(*)::text as n from payout_batches where state = 'approved'`.execute(db);
     if (approved.rows[0]?.n !== "0") {
-      throw new Error("0024_payout_batch_approval cannot roll back while approved payout batches exist");
+      throw new Error("0026_payout_batch_approval cannot roll back while approved payout batches exist");
     }
     await sql`drop index if exists audit_logs_payout_batch_approved_uq`.execute(db);
     await sql`create or replace function payouts_guard() returns trigger language plpgsql as $$

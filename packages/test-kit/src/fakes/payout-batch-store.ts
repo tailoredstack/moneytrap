@@ -37,7 +37,7 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
     entityId: string;
     actor: BatchAudit["actor"];
     occurredAt?: Date;
-    metadata?: Record<string, string>;
+    metadata?: Record<string, string | string[]>;
   }[] = [];
   private readonly methods: { id: Id<"payoutMethod">; publisherId: Id<"publisher">; currency: CurrencyCode }[] = [];
   private readonly batches = new Map<string, Omit<PayoutBatchRecord, "lines">>();
@@ -169,7 +169,7 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
           preparedBy: batch.createdBy,
           attemptedBy: input.approver,
           reason: "insufficient_funds",
-          publisherIds: short.join(","),
+          publisherIds: [...short],
         },
       });
       return { outcome: "insufficient_funds", publisherIds: short };

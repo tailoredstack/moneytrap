@@ -421,7 +421,7 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect(await h.prepare()).toMatchObject({ ok: false, code: "STATE_CONFLICT" });
         }));
 
-      test("the preparer cannot approve their own batch (TP-W7-016)", () =>
+      test("the preparer cannot approve their own batch (TP-W7-016, TP-W7-049)", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);
           const prepared = ok(await h.prepare()).value.batch;
@@ -434,7 +434,7 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect(ok(await h.approve(prepared.id)).value.batch.state).toBe("approved");
         }));
 
-      test("approval is recorded once: a second approval is refused and changes nothing", () =>
+      test("approval is recorded once: a second approval is refused and changes nothing (TP-W7-048)", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);
           const prepared = ok(await h.prepare()).value.batch;
@@ -446,7 +446,7 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect(stored?.approvedBy).toBe(h.world.checkerId);
         }));
 
-      test("a cancelled batch cannot be approved, and an approved batch cannot be cancelled (TP-W7-018)", () =>
+      test("a cancelled batch cannot be approved, and an approved batch cannot be cancelled (TP-W7-018, TP-W7-050)", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);
           const cancelled = ok(await h.prepare()).value.batch;
@@ -501,7 +501,7 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect(ok(await h.cancel(batch.id)).value.state).toBe("cancelled");
         }));
 
-      test("concurrent approvals make one approval", () =>
+      test("concurrent approvals make one approval (TP-W7-048)", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);
           const batch = ok(await h.prepare()).value.batch;
@@ -530,7 +530,7 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect(current.find((batch) => batch.id === first.id)?.state).toBe("approved");
         }));
 
-      test("approving and cancelling at once leave exactly one of them in effect", () =>
+      test("approving and cancelling at once leave exactly one of them in effect (TP-W7-050)", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);
           const batch = ok(await h.prepare()).value.batch;

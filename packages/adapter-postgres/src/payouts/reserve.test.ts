@@ -353,7 +353,7 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
-  test("a refused self-approval changes nothing and is itself audited (TP-W7-016, CT-025)", async () => {
+  test("a refused self-approval changes nothing and is itself audited (TP-W7-016, TP-W7-049, CT-025)", async () => {
     await withPostgres(async (world) => {
       const { batchId } = await reserveOne(world);
       const outcome = await world.store.approve(approvalInput(batchId, userId, 71));
@@ -370,7 +370,7 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
-  test("a second approval and an approval after cancel write nothing", async () => {
+  test("a second approval and an approval after cancel write nothing (TP-W7-048)", async () => {
     await withPostgres(async (world) => {
       const { batchId } = await reserveOne(world);
       await world.store.approve(approvalInput(batchId, checkerId, 72));
@@ -407,7 +407,7 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
-  test("the database refuses an approval by the preparer, a second approval, and an edit of an approved batch", async () => {
+  test("the database refuses an approval by the preparer, a second approval, and an edit of an approved batch (TP-W7-051)", async () => {
     await withPostgres(async (world) => {
       const { batchId } = await reserveOne(world);
       await expect(
@@ -474,7 +474,7 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
-  test("an approved batch cannot be cancelled", async () => {
+  test("an approved batch cannot be cancelled (TP-W7-050)", async () => {
     await withPostgres(async (world) => {
       const { batchId } = await reserveOne(world);
       await world.store.approve(approvalInput(batchId, checkerId, 80));
