@@ -56,6 +56,9 @@ export const payoutPolicy: Migration = {
           if new.effective_from < prev.effective_from then
             raise exception 'payout_policies: effective date must not precede the latest version';
           end if;
+          if new.effective_from < clock_timestamp() then
+            raise exception 'payout_policies: effective date is in the past';
+          end if;
         end if;
         return new;
       end $$`.execute(db);

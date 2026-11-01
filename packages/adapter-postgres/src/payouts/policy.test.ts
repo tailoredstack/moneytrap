@@ -518,4 +518,12 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         values ('GBP', 3, 1, ${new Date("2027-01-01T00:00:00.000Z")}, ${writeNow()}, ${orgId})`.execute(db),
     ).rejects.toThrow("version must follow the latest");
   });
+
+  test("the table refuses a later version that takes effect in the past, even when written directly", async () => {
+    await publish(v1, "aud_pol_direct_2");
+    await expect(
+      sql`insert into payout_policies (currency, version, minimum_minor, effective_from, created_at, published_by_organization_id)
+        values ('GBP', 2, 10000, ${new Date("2026-02-01T00:00:00.000Z")}, ${writeNow()}, ${orgId})`.execute(db),
+    ).rejects.toThrow("effective date is in the past");
+  });
 });
