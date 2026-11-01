@@ -44,11 +44,20 @@ Money moves safely. Only matched and cleared funds become available. Concurrent 
 |---|---|---|---|
 | TP-W7-012 | Two concurrent batch preparations for same funds | Exactly one reservation per amount; other fails or reserves less | WP-7.7, CT-022 |
 | TP-W7-013 | Reservation key reused | Idempotent; same reservation returned | WP-7.7 |
-| TP-W7-014 | Prepare batch, then balance changes (reversal) | Batch cannot exceed available at approval | WP-7.7 |
-| TP-W7-015 | Property test: random interleavings of prepare, cancel, approve | Reserved never exceeds available; no negative available without deficit record | WP-7.7 (prepare, cancel), WP-7.8 (approve) |
+| TP-W7-014 | Prepare batch, then balance changes (reversal) | Batch cannot exceed available at approval; Postgres approval reads the balance in the same transaction as its reservation/approval decision, and deterministic concurrent reserve/reversal cases cannot approve against a stale pre-transaction balance | WP-7.7, OZE-3279 |
+| TP-W7-015 | Property test: random interleavings of prepare, cancel, approve | Reserved never exceeds available; no negative available without deficit record; deterministic Postgres concurrency cases race approval against reversal and prove the transaction-aware balance read prevents stale approval | WP-7.7, WP-7.8, OZE-3279, OZE-3285 |
 | TP-W7-036 | Batch prepared with a release cap | Total reserved never exceeds the cap; publishers beyond it are listed as `over_cap`; a reservation cut below the policy minimum is skipped | WP-7.7 |
 | TP-W7-037 | Cancel a prepared batch | Its reservations are freed for a later batch; a second cancel changes nothing; another organization's batch is not found | WP-7.7 |
 | TP-W7-038 | Prepare finds nothing to reserve | No batch is written and the reservation key stays free | WP-7.7 |
+| TP-W7-039 | Settlement import API authorization and stored upload resolution | `POST /v1/admin/settlements/import` rejects unauthorized actors; accepted uploads are persisted and their `object_ref` resolves to the stored file; parse/validation errors identify source line numbers | WP-7.1, OZE-3267 |
+| TP-W7-040 | Settlement import UI-045 states | Import UI covers receipt selector, file selection, preview, progress, exceptions, loading, error, and success states; exceptions and errors remain associated with the relevant imported lines | WP-7.1, OZE-3267, UI-045 |
+| TP-W7-041 | Settlement allocations and reconciliation exceptions persistence | Persist allocations and exceptions; candidate source is an approved conversion's net amount after prior allocations; transactional locks enforce gross and outstanding bounds and unique receipt/conversion allocation | WP-7.2, OZE-3268 |
+| TP-W7-042 | Provider reference verification before payout method activation | Verify the provider reference before activating a method; a rejected reference leaves no payout method row | WP-7.5, OZE-3269 |
+| TP-W7-043 | Payout method screens and hosted enrollment states | UI-047/048 cover pending, verified, and disabled methods; hosted enrollment success/error, loading/error/success states, and authorization/suspension guards | WP-7.5, OZE-3270, UI-047, UI-048 |
+| TP-W7-044 | Versioned default hold period and approval history | Hold-period changes create versions and retain owner, approval decision, and change history; keep the package on HOLD until finance confirms the values and rules | WP-7.6, OZE-3271 |
+| TP-W7-045 | Finance policy write permissions and trusted timestamps | Action-level finance permissions guard policy publish and hold writes; trusted server timestamps prevent clients from backdating policy or hold changes | WP-7.6, OZE-3272 |
+| TP-W7-046 | Placement/release/window contract suite across stores | Run the same contract scenarios for placement, release, window, tenant, version, and effective-date behavior against both the fake store and Postgres; both implementations satisfy identical expectations | WP-7.13, OZE-3277 |
+| TP-W7-047 | Prepare/cancel HTTP route authorization and idempotency | Prepare and cancel routes enforce `payouts:write` organization scope and request schemas, use production composition, and preserve documented idempotency behavior across retries | WP-7.7, OZE-3280 |
 
 ### 3.4 Maker-checker
 
