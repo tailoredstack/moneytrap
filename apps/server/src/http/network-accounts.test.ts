@@ -181,6 +181,29 @@ describe("POST /v1/admin/network-accounts (API-111, TP-W4-034)", () => {
     expect(f.store.writes).toBe(1);
     expect(f.seals).toBe(1);
   });
+  test("TP-W4-040 optional Advanced Reports token is sealed and never returned or audited", async () => {
+    const f = fixture("admin");
+    const token = "reports-token-never-return-this";
+    const response = await f.server.handle(
+      new Request("http://localhost/v1/admin/network-accounts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          credentials: { ...payload.credentials, web_security_token: token },
+        }),
+      }),
+    );
+    const text = await response.text();
+    const stored = f.store.write;
+    expect(response.status).toBe(201);
+    expect(stored).toBeDefined();
+    expect(Buffer.from(stored?.sealedCredential.ciphertext ?? "", "base64").toString()).toContain(token);
+    expect(text).not.toContain(token);
+    expect(JSON.stringify(stored?.audit)).not.toContain(token);
+    expect(f.store.writes).toBe(1);
+    expect(f.seals).toBe(1);
+  });
   test("tenant and anonymous callers cannot rotate; denied requests do not write or seal", async () => {
     for (const f of [
       fixture(null),
@@ -255,7 +278,7 @@ describe("POST /v1/admin/network-accounts (API-111, TP-W4-034)", () => {
     }
   });
 
-  test("global admin gets safe connection status and capability profile", async () => {
+  test("TP-W4-038 global admin validates without the optional token and gets safe capabilities", async () => {
     const f = fixture(
       "admin",
       [{ organizationId: "org_01arz3ndektsv4rrffq69g5fav" as Id<"organization">, role: "admin" }],

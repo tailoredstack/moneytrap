@@ -31,10 +31,10 @@ Catalog data from a network is versioned, quarantined when malformed, and never 
 | TP-W4-034 | Register/rotate with the global ops authorization boundary | Better Auth global admins can register/rotate; tenant owners/admins and ordinary users receive `403`; denied requests do not mutate accounts or echo/log submitted credentials | WP-4.4a, API-111, API-112 |
 | TP-W4-035 | Rotate account credentials | Atomic replacement and audit event; response/logs contain no old or new values | WP-4.4a, API-112 |
 | TP-W4-036 | Read account or inspect credential status | Safe metadata/status only; no credential field/value in any read response | WP-4.4a |
-| TP-W4-037 | Test connection for stored account | Worker constructs adapter from stored account; returns adapter capability profile; no credential value in response/error/log | WP-4.4a, API-113 |
-| TP-W4-038 | Rakuten ordinary connection validation without `web_security_token` | Validation succeeds or reports actual access-token result; optional token is not required | WP-4.4a, API-113 |
-| TP-W4-039 | Invoke Rakuten Advanced Reports without optional token | Only Advanced Reports capability reports not configured/unavailable; ordinary capabilities and validation remain usable | WP-4.4a |
-| TP-W4-040 | Invoke Advanced Reports with `web_security_token` | Token is sealed, sent only to Advanced Reports as required; no response, error, diagnostic, or log contains it or derived auth material | WP-4.4a |
+| TP-W4-037 | Test connection and run sync from a stored account | API test and normal catalog worker load the selected stored account, open it only in memory, construct the adapter using `account_ref`, and return/store no credential value in any response, error, diagnostic, or log | WP-4.4a, API-113 |
+| TP-W4-038 | Rakuten ordinary validation and worker construction without `web_security_token` | Validation and normal worker connector construction use only `clientId`/`clientSecret`; the optional token is neither required nor passed | WP-4.4a, API-113 |
+| TP-W4-039 | Store optional Advanced Reports token; missing-token report behavior | WP-4.4a seals and never exposes/logs the optional field, and ordinary validation works without it; OZE-3274 tests that an Advanced Reports call without it reports not configured/unavailable | WP-4.4a, OZE-3274 |
+| TP-W4-040 | Advanced Reports with sealed `web_security_token` | WP-4.4a proves the token is sealed and not exposed; OZE-3274 sends it only to Advanced Reports reports 1, 2/22, and 3/23 and verifies no response, error, diagnostic, or log contains it or derived auth material | WP-4.4a, OZE-3274 |
 
 ### 3.2 Catalog sync and quarantine
 
