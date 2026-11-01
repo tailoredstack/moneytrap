@@ -1256,7 +1256,7 @@ A conforming operation defines: principal and scope, preconditions, required inp
 - **Outcome contract:** `200 {data:{connection_status,capabilities}}`; no credential values.
 - **Logical entities touched:** `network_accounts`.
 - **Expected domain event:** `none`.
-- **Acceptance:** Return adapter capability profile. Ordinary validation does not require optional `web_security_token`; Advanced Reports requires it only when that capability is invoked and reports safely unavailable/not configured when absent. Credentials and derived auth material never appear in results or logs.
+- **Acceptance:** Return adapter capability profile. API-113 ordinary validation does not require or pass optional `web_security_token`. Advanced Reports CSV settlement behavior with and without that token remains unsupported in WP-4.4a and is assigned to OZE-3274, with TP-W4-039/040 covering the follow-up. Credentials and derived auth material never appear in results or logs.
 
 ## Semantic contract examples
 
