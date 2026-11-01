@@ -92,6 +92,7 @@ export const payoutPolicy: Migration = {
     await sql`drop function if exists payout_holds_insert_guard() cascade`.execute(db);
     await sql`drop function if exists payout_holds_guard() cascade`.execute(db);
     await sql`drop function if exists payout_policies_immutable() cascade`.execute(db);
+    await sql`drop function if exists payout_policies_order() cascade`.execute(db);
     await db.schema.dropTable("payout_holds").ifExists().execute();
     await db.schema.dropTable("payout_policies").ifExists().execute();
   },
