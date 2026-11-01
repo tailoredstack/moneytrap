@@ -73,11 +73,11 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
     version: 2,
     currency: "GBP",
     minimumMinor: 10000n,
-    effectiveFrom: new Date("2026-06-01T00:00:00.000Z"),
+    effectiveFrom: new Date("2027-06-01T00:00:00.000Z"),
   });
 
   const publish = (policy: typeof v1, auditId: string) =>
-    policies.publish({ policy, auditId, organizationId: orgId, actor, occurredAt: now });
+    policies.publish({ policy, auditId, organizationId: orgId, actor, occurredAt: writeNow() });
 
   test("publishes versions in order and refuses a taken version, a gap, or an effective date before the latest", async () => {
     expect(await publish(v1, "aud_pol_1")).toEqual({ outcome: "published" });
@@ -383,5 +383,18 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         db,
       ),
     ).rejects.toThrow("payout_holds_expiry_ck");
+  });
+
+  test("a publish cannot be backdated to take a past decision's policy", async () => {
+    await expect(
+      policies.publish({
+        policy: v1,
+        auditId: "aud_pol_backdated",
+        organizationId: orgId,
+        actor,
+        occurredAt: new Date(Date.now() - 60 * 60 * 1000),
+      }),
+    ).rejects.toThrow("earlier than the write clock");
+    expect(await policies.list("GBP")).toEqual([]);
   });
 });
