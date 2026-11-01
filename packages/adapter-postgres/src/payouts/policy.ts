@@ -95,8 +95,8 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
           return { outcome: "rejected", reason: "effective_in_past" };
         }
 
-        await sql`insert into payout_policies (currency, version, minimum_minor, effective_from, created_at)
-          values (${policy.currency}, ${policy.version}, ${policy.minimumMinor.toString()}, ${policy.effectiveFrom}, ${occurredAt})`.execute(
+        await sql`insert into payout_policies (currency, version, minimum_minor, effective_from, created_at, published_by_organization_id)
+          values (${policy.currency}, ${policy.version}, ${policy.minimumMinor.toString()}, ${policy.effectiveFrom}, ${occurredAt}, ${organizationId})`.execute(
           tx,
         );
         await writeAudit(tx, {

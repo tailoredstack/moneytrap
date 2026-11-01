@@ -26,6 +26,9 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
     if (this.publisherOrganization.get(hold.publisherId) !== organizationId) {
       throw new Error("payout: publisher is not in the organization");
     }
+    // The same rules the table enforces: a hold moves a positive amount and states a reason.
+    if (hold.amountMinor <= 0n) throw new Error("payout_holds: amount must be positive");
+    if (hold.reason.trim().length === 0) throw new Error("payout_holds: reason is required");
     this.holds.push({ ...hold, placedAt: occurredAt });
     this.holdOrganization.set(hold.id, organizationId);
     this.audit.push({ action: "payout_hold_placed", entityId: hold.id, actor });
@@ -45,6 +48,7 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
   }) {
     const hold = this.holds.find((existing) => existing.id === id);
     if (!hold || hold.releasedAt !== null || this.holdOrganization.get(id) !== organizationId) return false;
+    if (releasedAt.getTime() < hold.placedAt.getTime()) throw new Error("payout_holds: release precedes placement");
     hold.releasedAt = releasedAt;
     this.audit.push({ action: "payout_hold_released", entityId: id, actor });
     return true;

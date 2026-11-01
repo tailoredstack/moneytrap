@@ -285,4 +285,40 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       "released once",
     );
   });
+
+  test("a publish writes one audit row, and a refused publish writes none", async () => {
+    await publish(v1, "aud_pol_audit_ok");
+    expect(await publish(v1, "aud_pol_audit_refused")).toEqual({ outcome: "rejected", reason: "version_taken" });
+
+    const rows = await sql<{ id: string; organization_id: string }>`select id, organization_id from audit_logs
+      where action = 'payout_policy_published' order by id`.execute(db);
+    expect(rows.rows).toEqual([{ id: "aud_pol_audit_ok", organization_id: orgId }]);
+  });
+
+  test("a release cannot precede the placement", async () => {
+    await holds.place({
+      hold: {
+        id: "pho_pol_7",
+        publisherId,
+        currency: "GBP",
+        amountMinor: 1n,
+        reason: "review",
+        expiresAt: null,
+        releasedAt: null,
+      },
+      organizationId: orgId,
+      auditId: "aud_hold_11",
+      actor,
+      occurredAt: now,
+    });
+    await expect(
+      holds.release({
+        id: "pho_pol_7",
+        organizationId: orgId,
+        auditId: "aud_hold_12",
+        actor,
+        releasedAt: new Date("2026-02-01T00:00:00.000Z"),
+      }),
+    ).rejects.toThrow();
+  });
 });
