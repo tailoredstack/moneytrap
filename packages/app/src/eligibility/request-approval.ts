@@ -38,8 +38,8 @@ function toView(record: ProgramApprovalRecord): ProgramApprovalView {
 // a repeat call returns the stored request and writes nothing. No input here can set approval: the status is read from
 // the network's state, and this action never writes it. The caller passes organizationId from the authorized scope, and
 // the guard has already checked the actor's membership and catalog:write permission, as with submitProperty.
-export async function requestProgramApproval(
-  ctx: Ctx,
+export async function requestProgramApproval<DB>(
+  ctx: Ctx<DB>,
   store: ProgramApprovalStore,
   input: { organizationId: Id<"organization">; propertyId: string; programId: string },
 ): Promise<RequestApprovalResult> {

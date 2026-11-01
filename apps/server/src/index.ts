@@ -1,6 +1,7 @@
 import {
   createClickReportStore,
   createMembershipReader,
+  createProgramApprovalStore,
   createRouteSource,
   migrate,
 } from "@moneytrap/adapter-postgres";
@@ -82,6 +83,14 @@ function serve(): void {
     principal: (headers: Headers) => authenticate(auth, headers, createMembershipReader(db)),
   };
   // The visitor redirect (ADR-007). A cache miss reads the primary; a click is enqueued after the answer, never awaited.
+  // The approval request (API-035). It reads the same principal as the reports, and writes through the same database.
+  const approvals = {
+    db,
+    store: createProgramApprovalStore(db),
+    clock: systemClock,
+    ids: randomIds,
+    principal: reports.principal,
+  };
   const redirect = {
     cache: createRouteCache(redis),
     source: createRouteSource(db),
@@ -91,7 +100,7 @@ function serve(): void {
   };
 
   createApp({ clock: systemClock, ids: randomIds, readiness: [] })
-    .use(apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }, reports, redirect))
+    .use(apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }, reports, redirect, approvals))
     .listen({ hostname, port });
   console.log(`Listening on ${hostname}:${port}`);
 }

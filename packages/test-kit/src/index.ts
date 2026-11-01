@@ -14,6 +14,7 @@ export { FakeNetworkConnector } from "./fakes/network-connector";
 export { FakeNotifier } from "./fakes/notifier";
 export { FakePayoutMethodStore } from "./fakes/payout-method-store";
 export { FakePayoutProvider } from "./fakes/payout-provider";
+export { FakeProgramApprovalStore } from "./fakes/program-approval-store";
 export { FakePropertyReviewStore } from "./fakes/property-review-store";
 export { FakePropertyStore } from "./fakes/property-store";
 export { FakePublisherBalanceSource } from "./fakes/publisher-balance-source";

@@ -32,4 +32,14 @@ export const ROUTE_GUARDS: Readonly<Record<string, Guard>> = {
       return organizationId ? { organizationId } : null;
     },
   },
+  // Asks for approval of a program for one property (API-035, WP-4.10). The organization is in the path, so the guard
+  // can check membership and catalog:write before the handler runs. The body never names the organization.
+  "POST /api/organizations/:organizationId/programs/:programId/request-approval": {
+    access: "permission",
+    permission: "catalog:write",
+    scope: async (params) => {
+      const organizationId = parseId("organization", params.organizationId);
+      return organizationId ? { organizationId } : null;
+    },
+  },
 };
