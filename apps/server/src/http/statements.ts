@@ -24,7 +24,8 @@ export function statementRoutes(wiring?: StatementWiring) {
       const organizationId = parseId("organization", params.organizationId);
       if (!organizationId) return fail(set, request, "VALIDATION_FAILED");
       if (!authenticated) return fail(set, request, "UNAUTHENTICATED");
-      if (query.currency && !isCurrencyCode(query.currency)) return fail(set, request, "VALIDATION_FAILED");
+      if (query.currency !== undefined && !isCurrencyCode(query.currency))
+        return fail(set, request, "VALIDATION_FAILED");
       const currency = query.currency as CurrencyCode | undefined;
       const year = number(query.year),
         month = number(query.month);
