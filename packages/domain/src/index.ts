@@ -14,6 +14,7 @@ export { exponentOf, isCurrencyCode } from "./money/currency";
 export type { CurrencyCode } from "./money/iso4217";
 export { Money, MoneyError, type ParseResult, parseMoney } from "./money/money";
 export * from "./networks/capability";
+export * from "./payouts/policy";
 export * from "./properties/property";
 export * from "./properties/verification";
 export * from "./publisher/kyb";
