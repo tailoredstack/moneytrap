@@ -275,4 +275,37 @@ describe("against a real git branch", () => {
   test("an unknown base fails loudly instead of passing", () => {
     expect(() => collectDrift(repo, "origin/nope")).toThrow("cannot find a merge base");
   });
+
+  describe("command line", () => {
+    const cli = (args: string[] = [], base = "main") =>
+      spawnSync("bun", [resolve(import.meta.dir, "check-drift.ts"), ...args], {
+        encoding: "utf8",
+        env: { ...process.env, DRIFT_ROOT: repo, BASE_SHA: base },
+      });
+
+    test("exits 0 on a clean branch", () => {
+      expect(cli().status).toBe(0);
+    });
+    test("exits 1 and names the drift for a spec change without a bump", () => {
+      write("docs/legacy/MONEYTRAP_API_OPERATIONS.md", "# API\n\nnew rule\n");
+      const run = cli();
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain("without a version bump");
+    });
+    test("exits 2 when the base cannot be found", () => {
+      const run = cli([], "origin/nope");
+      expect(run.status).toBe(2);
+      expect(run.stderr).toContain("cannot find a merge base");
+    });
+    test("exits 1 when a touched conformance case is red, and skips it with --skip-conformance", () => {
+      write(
+        "packages/conformance/src/ct/identity.test.ts",
+        '// CT-001\nimport { expect, test } from "bun:test";\ntest("CT-001", () => expect(1).toBe(2));\n',
+      );
+      const red = cli();
+      expect(red.status).toBe(1);
+      expect(red.stderr).toContain("touched conformance cases are not green");
+      expect(cli(["--skip-conformance"]).status).toBe(0);
+    });
+  });
 });

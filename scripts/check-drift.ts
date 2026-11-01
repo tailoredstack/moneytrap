@@ -8,6 +8,8 @@
 //
 // The base is $BASE_SHA when CI sets it, else origin/main. The diff runs from the merge base to the working tree, so
 // it sees the same files in CI (clean tree) and before a commit, including untracked files. Usage: bun scripts/check-drift.ts [--skip-conformance]
+// The conformance tests that need a database skip without TEST_DATABASE_URL, so the job that has one runs them.
+// DRIFT_ROOT points the check at another checkout (the tests use it).
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -187,7 +189,7 @@ export function collectDrift(root: string, baseRef: string): DriftReport {
 }
 
 if (import.meta.main) {
-  const root = resolve(import.meta.dir, "..");
+  const root = process.env.DRIFT_ROOT ?? resolve(import.meta.dir, "..");
   const baseRef = process.env.BASE_SHA || "origin/main";
   let report: DriftReport;
   try {
