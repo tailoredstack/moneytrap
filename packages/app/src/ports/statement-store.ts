@@ -24,7 +24,7 @@ export interface StatementStore {
     organizationId: Id<"organization">,
     statementId: Id<"statement">,
   ): Promise<StatementRecord | null>;
-  downloadUrl?(objectRef: string): Promise<string>;
+  downloadUrl(objectRef: string): Promise<string>;
   findClosed(
     publisherId: Id<"publisher">,
     currency: CurrencyCode,

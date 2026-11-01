@@ -5,6 +5,10 @@ import type { CurrencyCode, Id } from "@moneytrap/domain";
 export class FakeStatementStore implements StatementStore {
   readonly records: StatementRecord[] = [];
 
+  async downloadUrl(objectRef: string): Promise<string> {
+    return `https://download.example.test/${objectRef.split("/").map(encodeURIComponent).join("/")}`;
+  }
+
   async findClosed(
     publisherId: Id<"publisher">,
     currency: CurrencyCode,

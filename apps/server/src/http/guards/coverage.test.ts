@@ -43,7 +43,12 @@ describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
           principal: async () => null,
         } as never,
         {
-          store: { list: async () => [], findClosed: async () => null, recordClosed: async () => false },
+          store: {
+            list: async () => [],
+            findClosed: async () => null,
+            recordClosed: async () => false,
+            downloadUrl: async () => "https://example.test/x",
+          },
           principal: async () => null,
         },
       ),
@@ -84,7 +89,12 @@ describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
           principal: async () => null,
         } as never,
         {
-          store: { list: async () => [], findClosed: async () => null, recordClosed: async () => false },
+          store: {
+            list: async () => [],
+            findClosed: async () => null,
+            recordClosed: async () => false,
+            downloadUrl: async () => "https://example.test/x",
+          },
           principal: async () => null,
         },
       ),
