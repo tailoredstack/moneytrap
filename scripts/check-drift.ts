@@ -64,7 +64,7 @@ function checkBump(label: string, files: string[], versionFile: string, versions
     return [`${label} changed (${shown}) but ${versionFile} has no readable version`];
   }
   // A version file that is new on the branch has no base, so any head version stands. A base file with no version
-  // line is read as "0" by the caller, so adding one counts as a bump.
+  // line is read as "0" by the caller, so adding a version above 0 counts as a bump.
   if (versions.base === null) return [];
   const order = compareVersions(versions.head, versions.base);
   if (order === null) {
@@ -169,9 +169,12 @@ export function collectDrift(root: string, baseRef: string): DriftReport {
     },
   });
 
-  const catalogDiff = changed.includes(CONFORMANCE_CATALOG)
-    ? git(root, ["diff", "--no-renames", "-U0", base, "--", CONFORMANCE_CATALOG]).out
-    : "";
+  // An untracked catalog has no diff, so every row of it counts as added.
+  const catalogDiff = !changed.includes(CONFORMANCE_CATALOG)
+    ? ""
+    : untracked.out.split("\0").includes(CONFORMANCE_CATALOG)
+      ? (atHead(CONFORMANCE_CATALOG) ?? "").replace(/^/gm, "+")
+      : git(root, ["diff", "--no-renames", "-U0", base, "--", CONFORMANCE_CATALOG]).out;
   const testDir = join(root, CONFORMANCE_TEST_DIR);
   const sources = new Map<string, string>();
   if (existsSync(testDir)) {

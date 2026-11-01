@@ -66,7 +66,13 @@ describe("version drift", () => {
     const errors = checkVersionDrift({ changed: specChange, spec: { base: "2.0", head: "2.1-rc1" }, contract: none });
     expect(errors[0]).toContain("not numeric");
   });
-  test("a version bump alone is not a spec change", () => {
+  test("editing the spec file without moving its version fails", () => {
+    expect(checkVersionDrift({ changed: [SPEC_VERSION_FILE], spec: none, contract: none })).toHaveLength(1);
+  });
+  test("a base spec with no version line reads as 0, so a head version of 0 is no bump", () => {
+    expect(checkVersionDrift({ changed: specChange, spec: { base: "0", head: "0" }, contract: none })).toHaveLength(1);
+  });
+  test("bumping the version in the spec file itself passes", () => {
     expect(
       checkVersionDrift({ changed: [SPEC_VERSION_FILE], spec: { base: "2.0", head: "2.1" }, contract: none }),
     ).toEqual([]);
@@ -197,6 +203,15 @@ describe("against a real git branch", () => {
     git("rm", "-q", "docs/legacy/MONEYTRAP_API_OPERATIONS.md");
     commit("delete spec file");
     expect(collectDrift(repo, "main").errors).toHaveLength(1);
+  });
+  test("an untracked conformance catalog selects every case it names", () => {
+    git("checkout", "-q", "main");
+    git("rm", "-q", CONFORMANCE_CATALOG);
+    commit("main has no catalog yet");
+    git("checkout", "-q", "-b", "other");
+    write(SPEC_VERSION_FILE, specText("2.1"));
+    write(CONFORMANCE_CATALOG, "| ID | Given |\n| CT-001 | a |\n");
+    expect(collectDrift(repo, "main").tests).toEqual(["packages/conformance/src/ct/identity.test.ts"]);
   });
   test("an untracked new spec file is seen", () => {
     write("docs/legacy/NEW_SPEC.md", "# New\n");
