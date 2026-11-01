@@ -31,6 +31,8 @@ export const payoutPolicy: Migration = {
       .addColumn("created_at", "timestamptz", (column) => column.notNull())
       // A release cannot precede the placement, so a hold never has a released state before it existed.
       .addCheckConstraint("payout_holds_release_ck", sql`released_at is null or released_at >= created_at`)
+      // An expiry after placement, so a hold is never stored already expired (WP-7.6 review).
+      .addCheckConstraint("payout_holds_expiry_ck", sql`expires_at is null or expires_at > created_at`)
       .execute();
     await db.schema
       .createIndex("payout_holds_publisher_idx")
@@ -57,11 +59,20 @@ export const payoutPolicy: Migration = {
       end $$`.execute(db);
     await sql`create trigger payout_holds_guard before update or delete on payout_holds
       for each row execute function payout_holds_guard()`.execute(db);
+    // A hold is placed unreleased, however it is written. Direct SQL cannot bypass the port's rule.
+    await sql`create function payout_holds_insert_guard() returns trigger language plpgsql as $$
+      begin
+        if new.released_at is not null then raise exception 'payout_holds may only be released after placement'; end if;
+        return new;
+      end $$`.execute(db);
+    await sql`create trigger payout_holds_insert before insert on payout_holds
+      for each row execute function payout_holds_insert_guard()`.execute(db);
     await sql`create trigger payout_holds_no_truncate before truncate on payout_holds
       for each statement execute function payout_holds_guard()`.execute(db);
   },
 
   async down(db: Kysely<unknown>) {
+    await sql`drop function if exists payout_holds_insert_guard() cascade`.execute(db);
     await sql`drop function if exists payout_holds_guard() cascade`.execute(db);
     await sql`drop function if exists payout_policies_immutable() cascade`.execute(db);
     await db.schema.dropTable("payout_holds").ifExists().execute();
