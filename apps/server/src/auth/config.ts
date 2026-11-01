@@ -58,7 +58,8 @@ export function trustedOrigins(raw: string | undefined): string[] {
 function requireOrigin(entry: string): string {
   const origin = httpOrigin(entry.trim());
   if (!origin) {
-    const shown = entry.trim().replace(/\/\/[^/?#]*@/, "//***@");
+    // Everything between the scheme and the last "@" goes, because a password may itself contain "/", "?", or "#".
+    const shown = entry.trim().replace(/^([a-z][a-z0-9+.-]*:\/\/).*@/i, "$1***@");
     throw new Error(
       `TRUSTED_ORIGINS must be a comma-separated list of http or https origins such as http://localhost:3000; got "${shown}"`,
     );
