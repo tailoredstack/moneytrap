@@ -1,5 +1,8 @@
 import type {
+  BatchApproveInput,
+  BatchApproveOutcome,
   BatchAudit,
+  BatchCancelOutcome,
   BatchCandidate,
   BatchReserveOutcome,
   BatchReserveWrite,
@@ -7,7 +10,7 @@ import type {
   PayoutBatchStore,
   SkippedLine,
 } from "@moneytrap/app/src/ports/payout-batch-store";
-import { type CurrencyCode, decideReservation, type Id } from "@moneytrap/domain";
+import { type CurrencyCode, decideApproval, decideReservation, type Id } from "@moneytrap/domain";
 
 interface MemoryPayout {
   id: Id<"payout">;
@@ -16,7 +19,7 @@ interface MemoryPayout {
   methodId: Id<"payoutMethod">;
   currency: CurrencyCode;
   amountMinor: bigint;
-  state: "reserved" | "cancelled";
+  state: "reserved" | "approved" | "cancelled";
 }
 
 /**
@@ -29,7 +32,13 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
   readonly publisherOrganization = new Map<string, string>();
   /** A publisher not listed here is approved. Seed a status to model one that is not. */
   readonly publisherStatus = new Map<string, string>();
-  readonly audit: { action: string; entityId: string; actor: BatchAudit["actor"] }[] = [];
+  readonly audit: {
+    action: string;
+    entityId: string;
+    actor: BatchAudit["actor"];
+    occurredAt?: Date;
+    metadata?: Record<string, string>;
+  }[] = [];
   private readonly methods: { id: Id<"payoutMethod">; publisherId: Id<"publisher">; currency: CurrencyCode }[] = [];
   private readonly batches = new Map<string, Omit<PayoutBatchRecord, "lines">>();
   private readonly payouts: MemoryPayout[] = [];
@@ -104,21 +113,79 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
     if (reserved.length === 0) return { outcome: "nothing_reserved", skipped };
 
     const { lines: _lines, audit: _audit, batchId, ...terms } = write;
-    const batch = { ...terms, id: batchId, state: "prepared" as const };
+    const batch = { ...terms, id: batchId, state: "prepared" as const, approvedBy: null, approvedAt: null };
     this.batches.set(batchId, batch);
     this.payouts.push(...reserved);
     this.audit.push({ action: "payout_batch.prepared", entityId: batchId, actor: write.audit.actor });
     return { outcome: "reserved", batch: this.record(batch), skipped };
   }
 
-  async cancel(input: { organizationId: Id<"organization">; batchId: Id<"payoutBatch">; at: Date; audit: BatchAudit }) {
+  async cancel(input: {
+    organizationId: Id<"organization">;
+    batchId: Id<"payoutBatch">;
+    at: Date;
+    audit: BatchAudit;
+  }): Promise<BatchCancelOutcome> {
     const batch = this.batches.get(input.batchId);
-    if (!batch || batch.organizationId !== input.organizationId) return "not_found" as const;
-    if (batch.state === "cancelled") return "already_cancelled" as const;
+    if (!batch || batch.organizationId !== input.organizationId) return "not_found";
+    if (batch.state === "cancelled") return "already_cancelled";
+    if (batch.state === "approved") return "approved";
     batch.state = "cancelled";
     for (const payout of this.payouts) if (payout.batchId === batch.id) payout.state = "cancelled";
     this.audit.push({ action: "payout_batch.cancelled", entityId: batch.id, actor: input.audit.actor });
-    return "cancelled" as const;
+    return "cancelled";
+  }
+
+  async approve(input: BatchApproveInput): Promise<BatchApproveOutcome> {
+    const batch = this.batches.get(input.batchId);
+    if (!batch || batch.organizationId !== input.organizationId) return { outcome: "not_found" };
+    const decision = decideApproval({ state: batch.state, preparedBy: batch.createdBy, approver: input.approver });
+    if (!decision.approved) {
+      // A refused self-approval is itself audited (CT-025). Other refusals change nothing and write nothing.
+      if (decision.reason === "self_approval") {
+        this.audit.push({
+          action: "payout_batch.approval_denied",
+          entityId: batch.id,
+          actor: input.audit.actor,
+          occurredAt: input.audit.occurredAt,
+          metadata: { preparedBy: batch.createdBy, attemptedBy: input.approver, reason: decision.reason },
+        });
+      }
+      return { outcome: "refused", reason: decision.reason };
+    }
+
+    // What every open payout holds for a publisher, this batch's included, must still be within what is available.
+    const short = [...new Set(this.payouts.filter((p) => p.batchId === batch.id).map((p) => p.publisherId))]
+      .filter((publisherId) => {
+        const available = input.availability.find((entry) => entry.publisherId === publisherId)?.availableMinor ?? 0n;
+        return this.committed(publisherId, batch.currency) > available;
+      })
+      .sort();
+    if (short.length > 0) return { outcome: "insufficient_funds", publisherIds: short };
+
+    batch.state = "approved";
+    batch.approvedBy = input.approver;
+    batch.approvedAt = input.at;
+    let total = 0n;
+    for (const payout of this.payouts) {
+      if (payout.batchId === batch.id && payout.state === "reserved") {
+        payout.state = "approved";
+        total += payout.amountMinor;
+      }
+    }
+    this.audit.push({
+      action: "payout_batch.approved",
+      entityId: batch.id,
+      actor: input.audit.actor,
+      occurredAt: input.audit.occurredAt,
+      metadata: {
+        preparedBy: batch.createdBy,
+        approvedBy: input.approver,
+        approvedAt: input.at.toISOString(),
+        totalMinor: total.toString(),
+      },
+    });
+    return { outcome: "approved", batch: this.record(batch) };
   }
 
   async find(organizationId: Id<"organization">, batchId: Id<"payoutBatch">) {

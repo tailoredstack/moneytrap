@@ -5,6 +5,7 @@ import { FakePayoutBatchStore } from "./payout-batch-store";
 const organizationId = fixtureId("organization", 1);
 const otherOrganizationId = fixtureId("organization", 2);
 const userId = fixtureId("user", 1);
+const checkerId = fixtureId("user", 2);
 
 runPayoutBatchStoreContract([
   {
@@ -16,6 +17,7 @@ runPayoutBatchStoreContract([
         organizationId,
         otherOrganizationId,
         userId,
+        checkerId,
         async addPublisher(input) {
           store.publisherOrganization.set(input.publisherId, input.organizationId);
           store.publisherStatus.set(input.publisherId, input.status ?? "approved");

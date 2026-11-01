@@ -14,6 +14,7 @@ const now = new Date("2026-11-01T00:00:00.000Z");
 const organizationId = fixtureId("organization", 1);
 const otherOrganizationId = fixtureId("organization", 2);
 const userId = fixtureId("user", 1);
+const checkerId = fixtureId("user", 2);
 
 // Each world gets a private schema with the migrations applied and two organizations, so the foreign keys hold.
 async function openPostgres() {
@@ -26,7 +27,8 @@ async function openPostgres() {
   const db = new Kysely<unknown>({ dialect: new PostgresDialect({ pool }) });
   await migrate(db);
   await sql`insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
-    values (${userId}, 'Finance', 'finance@example.com', true, ${now}, ${now})`.execute(db);
+    values (${userId}, 'Finance', 'finance@example.com', true, ${now}, ${now}),
+      (${checkerId}, 'Checker', 'checker@example.com', true, ${now}, ${now})`.execute(db);
   for (const id of [organizationId, otherOrganizationId]) {
     await sql`insert into organizations (id, name, country, base_currency, status, created_by, created_at, updated_at)
       values (${id}, ${id}, 'GB', 'GBP', 'active', ${userId}, ${now}, ${now})`.execute(db);
@@ -38,6 +40,7 @@ async function openPostgres() {
     organizationId,
     otherOrganizationId,
     userId,
+    checkerId,
     async addPublisher(input: {
       organizationId: string;
       publisherId: string;
@@ -141,7 +144,7 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
       const { payoutId, batchId } = await reserveOne(world);
       await expect(
         sql`update payouts set amount_minor = 9999 where id = ${payoutId}`.execute(world.db),
-      ).rejects.toThrow(/may only be cancelled once/);
+      ).rejects.toThrow(/may only be cancelled or approved once/);
       await expect(sql`delete from payouts where id = ${payoutId}`.execute(world.db)).rejects.toThrow(/never deleted/);
       await expect(sql`delete from payout_batches where id = ${batchId}`.execute(world.db)).rejects.toThrow(
         /never deleted/,
@@ -150,7 +153,7 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
       await sql`update payouts set state = 'cancelled', cancelled_at = ${now} where id = ${payoutId}`.execute(world.db);
       await expect(
         sql`update payouts set state = 'reserved', cancelled_at = null where id = ${payoutId}`.execute(world.db),
-      ).rejects.toThrow(/may only be cancelled once/);
+      ).rejects.toThrow(/may only be cancelled or approved once/);
     });
   });
 
@@ -306,10 +309,187 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
-  test("migration 0023 rolls back and re-applies", async () => {
+  const approvalInput = (batchId: string, approver: string, n: number) => ({
+    organizationId,
+    batchId: batchId as ReturnType<typeof fixtureId<"payoutBatch">>,
+    approver: approver as ReturnType<typeof fixtureId<"user">>,
+    at: new Date("2026-11-02T09:30:00.000Z"),
+    availability: [{ publisherId: fixtureId("publisher", 1), availableMinor: 5_000n }],
+    audit: {
+      id: fixtureId("audit", n),
+      actor: { type: "user" as const, id: approver as ReturnType<typeof fixtureId<"user">> },
+      occurredAt: new Date("2026-11-02T09:30:00.000Z"),
+    },
+  });
+
+  test("an approval writes the batch, its payouts, and one audit row naming both people together (TP-W7-017)", async () => {
+    await withPostgres(async (world) => {
+      const { batchId } = await reserveOne(world);
+      const outcome = await world.store.approve(approvalInput(batchId, checkerId, 70));
+      expect(outcome.outcome).toBe("approved");
+
+      const batch = await sql<{ state: string; approved_by: string; approved_at: Date }>`
+        select state, approved_by, approved_at from payout_batches where id = ${batchId}`.execute(world.db);
+      expect(batch.rows[0]).toMatchObject({ state: "approved", approved_by: checkerId });
+      expect(batch.rows[0]?.approved_at.toISOString()).toBe("2026-11-02T09:30:00.000Z");
+      const payouts = await sql<{ state: string }>`select state from payouts where batch_id = ${batchId}`.execute(
+        world.db,
+      );
+      expect(payouts.rows.map((row) => row.state)).toEqual(["approved"]);
+
+      const audits = await sql<{ actor_id: string; metadata: Record<string, unknown>; occurred_at: Date }>`
+        select actor_id, metadata, occurred_at from audit_logs
+        where entity_id = ${batchId} and action = 'payout_batch.approved'`.execute(world.db);
+      expect(audits.rows).toHaveLength(1);
+      expect(audits.rows[0]?.actor_id).toBe(checkerId);
+      expect(audits.rows[0]?.occurred_at.toISOString()).toBe("2026-11-02T09:30:00.000Z");
+      expect(audits.rows[0]?.metadata).toMatchObject({
+        preparedBy: userId,
+        approvedBy: checkerId,
+        approvedAt: "2026-11-02T09:30:00.000Z",
+        payoutCount: 1,
+        totalMinor: "5000",
+      });
+    });
+  });
+
+  test("a refused self-approval changes nothing and is itself audited (TP-W7-016, CT-025)", async () => {
+    await withPostgres(async (world) => {
+      const { batchId } = await reserveOne(world);
+      const outcome = await world.store.approve(approvalInput(batchId, userId, 71));
+      expect(outcome).toEqual({ outcome: "refused", reason: "self_approval" });
+      const batch = await sql<{ state: string; approved_by: string | null }>`
+        select state, approved_by from payout_batches where id = ${batchId}`.execute(world.db);
+      expect(batch.rows[0]).toEqual({ state: "prepared", approved_by: null });
+      const audits = await sql<{ action: string; actor_id: string }>`
+        select action, actor_id from audit_logs where entity_id = ${batchId} order by occurred_at, action`.execute(
+        world.db,
+      );
+      expect(audits.rows.map((row) => row.action)).toEqual(["payout_batch.prepared", "payout_batch.approval_denied"]);
+      expect(audits.rows.find((row) => row.action === "payout_batch.approval_denied")?.actor_id).toBe(userId);
+    });
+  });
+
+  test("a second approval and an approval after cancel write nothing", async () => {
+    await withPostgres(async (world) => {
+      const { batchId } = await reserveOne(world);
+      await world.store.approve(approvalInput(batchId, checkerId, 72));
+      expect(await world.store.approve(approvalInput(batchId, checkerId, 73))).toEqual({
+        outcome: "refused",
+        reason: "already_approved",
+      });
+      const audits =
+        await sql`select 1 from audit_logs where entity_id = ${batchId} and action = 'payout_batch.approved'`.execute(
+          world.db,
+        );
+      expect(audits.rows).toHaveLength(1);
+
+      const second = await reserveOne(world, 2);
+      await world.store.cancel({
+        organizationId,
+        batchId: second.batchId,
+        at: now,
+        audit: { id: fixtureId("audit", 74), actor: { type: "user", id: userId }, occurredAt: now },
+      });
+      expect(await world.store.approve(approvalInput(second.batchId, checkerId, 75))).toEqual({
+        outcome: "refused",
+        reason: "cancelled",
+      });
+    });
+  });
+
+  test("the database refuses an approval by the preparer, a second approval, and an edit of an approved batch", async () => {
+    await withPostgres(async (world) => {
+      const { batchId } = await reserveOne(world);
+      await expect(
+        sql`update payout_batches set state = 'approved', approved_by = ${userId}, approved_at = ${now}
+          where id = ${batchId}`.execute(world.db),
+      ).rejects.toThrow(/payout_batches_maker_checker_ck|approved once/);
+      await expect(
+        sql`update payout_batches set state = 'approved' where id = ${batchId}`.execute(world.db),
+      ).rejects.toThrow(/other than the preparer/);
+      await expect(
+        sql`update payout_batches set approved_by = ${checkerId}, approved_at = ${now} where id = ${batchId}`.execute(
+          world.db,
+        ),
+      ).rejects.toThrow();
+
+      await world.store.approve(approvalInput(batchId, checkerId, 76));
+      const rewrite = (set: ReturnType<typeof sql>) =>
+        sql`update payout_batches set ${set} where id = ${batchId}`.execute(world.db);
+      await expect(
+        rewrite(sql`state = 'cancelled', cancelled_at = ${now}, approved_by = null, approved_at = null`),
+      ).rejects.toThrow(/may only be cancelled or approved once/);
+      await expect(rewrite(sql`approved_by = ${userId}`)).rejects.toThrow();
+      await expect(rewrite(sql`approved_at = ${now}`)).rejects.toThrow(/may only be cancelled or approved once/);
+    });
+  });
+
+  test("the database refuses a payout approved without an approved batch, an approved payout edited, and a duplicate approval audit row", async () => {
+    await withPostgres(async (world) => {
+      const { batchId, payoutId } = await reserveOne(world);
+      await expect(sql`update payouts set state = 'approved' where id = ${payoutId}`.execute(world.db)).rejects.toThrow(
+        /batch is not approved/,
+      );
+      await world.store.approve(approvalInput(batchId, checkerId, 77));
+      await expect(
+        sql`update payouts set state = 'cancelled', cancelled_at = ${now} where id = ${payoutId}`.execute(world.db),
+      ).rejects.toThrow(/may only be cancelled or approved once/);
+      await expect(sql`update payouts set amount_minor = 1 where id = ${payoutId}`.execute(world.db)).rejects.toThrow(
+        /may only be cancelled or approved once/,
+      );
+      await expect(
+        sql`insert into audit_logs (id, organization_id, actor_type, actor_id, action, entity_type, entity_id, metadata, occurred_at)
+          values (${fixtureId("audit", 78)}, ${organizationId}, 'user', ${checkerId}, 'payout_batch.approved', 'payout_batch',
+            ${batchId}, '{}'::jsonb, ${now})`.execute(world.db),
+      ).rejects.toThrow(/audit_logs_payout_batch_approved_uq/);
+    });
+  });
+
+  test("an approval is stopped when available no longer covers what is held, and nothing is written (TP-W7-014)", async () => {
+    await withPostgres(async (world) => {
+      const { batchId, publisherId } = await reserveOne(world);
+      const outcome = await world.store.approve({ ...approvalInput(batchId, checkerId, 79), availability: [] });
+      expect(outcome).toEqual({ outcome: "insufficient_funds", publisherIds: [publisherId] });
+      const batch = await sql<{ state: string }>`select state from payout_batches where id = ${batchId}`.execute(
+        world.db,
+      );
+      expect(batch.rows[0]?.state).toBe("prepared");
+      const audits =
+        await sql`select 1 from audit_logs where entity_id = ${batchId} and action = 'payout_batch.approved'`.execute(
+          world.db,
+        );
+      expect(audits.rows).toHaveLength(0);
+    });
+  });
+
+  test("an approved batch cannot be cancelled", async () => {
+    await withPostgres(async (world) => {
+      const { batchId } = await reserveOne(world);
+      await world.store.approve(approvalInput(batchId, checkerId, 80));
+      const outcome = await world.store.cancel({
+        organizationId,
+        batchId,
+        at: now,
+        audit: { id: fixtureId("audit", 81), actor: { type: "user", id: userId }, occurredAt: now },
+      });
+      expect(outcome).toBe("approved");
+    });
+  });
+
+  test("migrations 0026 through 0023 roll back and re-apply", async () => {
     await withPostgres(async (world) => {
       const { Migrator } = await import("kysely/migration");
       const migrator = new Migrator({ db: world.db, provider: migrationProvider });
+      // 0026 is the latest, so it comes off first, then the statement and admin migrations, then 0023.
+      const approval = await migrator.migrateDown();
+      expect(approval.error).toBeUndefined();
+      expect(approval.results?.[0]).toMatchObject({ migrationName: "0026_payout_batch_approval", status: "Success" });
+      const columns = await sql<{ n: string }>`select count(*)::text as n from information_schema.columns
+        where table_schema = current_schema() and table_name = 'payout_batches' and column_name like 'approved_%'`.execute(
+        world.db,
+      );
+      expect(columns.rows[0]?.n).toBe("0");
       // Roll back newer migrations first, then 0023, and reapply in migration order.
       const latestDown = await migrator.migrateDown();
       expect(latestDown.error).toBeUndefined();

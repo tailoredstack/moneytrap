@@ -37,6 +37,8 @@ export interface PayoutBatchView {
   policyVersion: number;
   createdBy: Id<"user">;
   createdAt: Date;
+  approvedBy: Id<"user"> | null;
+  approvedAt: Date | null;
   // The sum of the lines that still hold funds. Currencies are never summed together; a batch has one.
   totalMinor: bigint;
   lines: PayoutBatchLineView[];
@@ -48,7 +50,7 @@ export interface ExcludedPublisher {
   reasons: (PayoutExclusion | BatchSkipReason)[];
 }
 
-type Failure = { ok: false; code: ErrorCode; reason?: string };
+export type Failure = { ok: false; code: ErrorCode; reason?: string };
 
 export type PrepareBatchResult =
   | {
@@ -121,7 +123,7 @@ function parsePreparation(body: unknown): ParsedPreparation {
 }
 
 // Grants come only from membership in the scope. The actor must be the principal, so one user cannot act as another.
-function authorize(ctx: Ctx, principal: Principal, scope: Scope, permission: Permission): Failure | null {
+export function authorize(ctx: Ctx, principal: Principal, scope: Scope, permission: Permission): Failure | null {
   if (ctx.actor.type !== "user" || ctx.actor.id !== principal.userId) return { ok: false, code: "UNAUTHENTICATED" };
   if (!can(principal, permission, scope)) return { ok: false, code: "FORBIDDEN" };
   return null;
@@ -138,7 +140,10 @@ export function toBatchView(record: PayoutBatchRecord): PayoutBatchView {
     policyVersion: record.policyVersion,
     createdBy: record.createdBy,
     createdAt: record.createdAt,
-    totalMinor: record.lines.reduce((sum, line) => (line.state === "reserved" ? sum + line.amountMinor : sum), 0n),
+    approvedBy: record.approvedBy,
+    approvedAt: record.approvedAt,
+    // Every line that still holds funds counts, so an approved batch keeps its total.
+    totalMinor: record.lines.reduce((sum, line) => (line.state === "cancelled" ? sum : sum + line.amountMinor), 0n),
     lines: record.lines.map((line) => ({
       payoutId: line.id,
       publisherId: line.publisherId,
@@ -152,8 +157,8 @@ export function toBatchView(record: PayoutBatchRecord): PayoutBatchView {
 // Prepares a batch and reserves its funds (DM-047, DM-048, CT-022). Each publisher with an active method is paid what the
 // policy allows from its cleared balance, less holds and minimums. The store then reserves under a lock, so batches over the
 // same funds cannot reserve more than is available in total (TP-W7-012). The reservation key makes a re-run return the batch
-// it already made instead of reserving again (TP-W7-013). The balance read here is a snapshot: the approval step checks
-// available again before money moves (TP-W7-014, WP-7.8).
+// it already made instead of reserving again (TP-W7-013). The balance read here is a snapshot: the approval step
+// (approve.ts) checks available again before money moves (TP-W7-014, WP-7.8).
 // The period labels the batch for reporting and keys a re-run; it does not select funds. A publisher is paid everything
 // cleared and unreserved, whichever period it cleared in, so an amount left over from an earlier period is never stranded.
 export async function prepareBatch(
@@ -270,5 +275,8 @@ export async function cancelBatch(
     audit: { id: ctx.ids.next("audit"), actor: { type: "user", id: principal.userId }, occurredAt: at },
   });
   if (outcome === "not_found") return { ok: false, code: "RESOURCE_NOT_FOUND" };
+  if (outcome === "approved") {
+    return { ok: false, code: "STATE_CONFLICT", reason: "an approved batch can no longer be cancelled" };
+  }
   return { ok: true, value: { id: batchId, state: "cancelled" } };
 }
