@@ -8,6 +8,7 @@ import {
   type RouterHistory,
   redirect,
 } from "@tanstack/react-router";
+import { ClickReportScreen } from "../features/analytics/click-report-containers";
 import { isStepUpPending } from "../features/identity/challenge-marker";
 import {
   AccountSecurityScreen,
@@ -134,6 +135,25 @@ const invitationRoute = createRoute({
   },
 });
 
+// Click analytics (SKELETONS §5.4, UI-037). The organization is in the path, as in the API. The cursor is the page position.
+const clickReportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/organizations/$organizationId/reports/clicks",
+  validateSearch: (input: Record<string, unknown>) => ({ cursor: optionalString(input, "cursor") }),
+  component: function ClickReport() {
+    const { organizationId } = clickReportRoute.useParams();
+    const search = clickReportRoute.useSearch();
+    const navigate = clickReportRoute.useNavigate();
+    return (
+      <ClickReportScreen
+        organizationId={organizationId}
+        cursor={search.cursor}
+        onNext={(cursor) => void navigate({ search: { cursor } })}
+      />
+    );
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   overviewRoute,
   registerRoute,
@@ -145,6 +165,7 @@ const routeTree = rootRoute.addChildren([
   sessionsRoute,
   membersRoute,
   invitationRoute,
+  clickReportRoute,
 ]);
 
 // Pass a browser history from the entry point. Memory history keeps tests and SSR-free imports safe.
