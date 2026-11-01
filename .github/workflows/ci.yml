@@ -8,9 +8,40 @@ permissions:
   contents: read
 
 jobs:
+  # Decides which areas the change reaches (scripts/ci-changes.ts). Anything it cannot prove unaffected, it reports as
+  # changed, so the jobs below skip only what the diff cannot reach.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.decide.outputs.docs_only }}
+      code: ${{ steps.decide.outputs.code }}
+      db: ${{ steps.decide.outputs.db }}
+      binary: ${{ steps.decide.outputs.binary }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - id: decide
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bun scripts/ci-changes.ts
+
+  # The job always starts, so its matrix names (Verify (ubuntu-latest), Verify (macos-latest)) keep resolving for
+  # branch protection: a matrix job skipped at job level reports one check with the unexpanded name instead. The docs
+  # checks run for every change. The other steps run when the change reaches them, or when the changes job did not
+  # succeed (then everything runs).
   verify:
     name: Verify (${{ matrix.os }})
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
+    env:
+      RUN_CODE: ${{ needs.changes.result != 'success' || needs.changes.outputs.code == 'true' }}
+      RUN_BINARY: ${{ needs.changes.result != 'success' || needs.changes.outputs.binary == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -37,20 +68,39 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: bun run check:drift --skip-conformance
       - run: bun run check:ports
-      - run: bun run typecheck
-      - run: bun run lint
-      - run: bun run boundaries
-      - run: bun install -g @colbymchenry/codegraph@1.6.2
-      - run: echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
-      - run: codegraph init -i
+      - name: Typecheck
+        if: env.RUN_CODE == 'true'
+        run: bun run typecheck
+      - name: Lint
+        if: env.RUN_CODE == 'true'
+        run: bun run lint
+      - name: Boundaries
+        if: env.RUN_CODE == 'true'
+        run: bun run boundaries
+      - name: Install CodeGraph
+        if: env.RUN_CODE == 'true'
+        run: bun install -g @colbymchenry/codegraph@1.6.2
+      - name: Add Bun bin to PATH
+        if: env.RUN_CODE == 'true'
+        run: echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+      - name: Index with CodeGraph
+        if: env.RUN_CODE == 'true'
+        run: codegraph init -i
       - name: Run affected tests
+        if: env.RUN_CODE == 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: bash scripts/affected-tests.sh
-      - run: bun run build:binary
+      - name: Build binary
+        if: env.RUN_BINARY == 'true'
+        run: bun run build:binary
 
+  # Skips, and reports skipped under the same name, when the change cannot reach the database code. Runs when the
+  # changes job did not succeed.
   postgres-integration:
     name: PostgreSQL migrations
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.db == 'true') }}
     runs-on: ubuntu-latest
     services:
       postgres:
