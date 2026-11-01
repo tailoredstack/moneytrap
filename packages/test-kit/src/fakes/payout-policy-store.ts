@@ -33,7 +33,7 @@ export class FakePayoutPolicyStore implements PayoutPolicyStore {
     if (latest !== null && policy.effectiveFrom.getTime() < latest.effectiveFrom.getTime()) {
       return { outcome: "rejected", reason: "effective_before_latest" };
     }
-    if (latest !== null && policy.effectiveFrom.getTime() < occurredAt.getTime()) {
+    if (latest !== null && policy.effectiveFrom.getTime() < now) {
       return { outcome: "rejected", reason: "effective_in_past" };
     }
     this.policies.push({ ...policy });

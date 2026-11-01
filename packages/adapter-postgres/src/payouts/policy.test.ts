@@ -342,7 +342,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         actor,
         releasedAt: new Date(placedAt.getTime() - 1000),
       }),
-    ).rejects.toThrow("payout_holds_release_ck");
+    ).rejects.toThrow("release precedes placement");
   });
 
   test("a hold cannot be placed or released with a time earlier than the write clock", async () => {

@@ -91,9 +91,10 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
         if (top && policy.effectiveFrom.getTime() < top.effective_from.getTime()) {
           return { outcome: "rejected", reason: "effective_before_latest" };
         }
-        // Once a version exists, a decision may already rest on it. A new version cannot take effect in the past, so the
-        // policy in effect at an instant that was already decided never changes. The first version has no such history.
-        if (top && policy.effectiveFrom.getTime() < occurredAt.getTime()) {
+        // Once a version exists, a decision may already rest on it. A new version cannot take effect before the write clock,
+        // so the policy in effect at an instant that was already decided never changes. The first version has no such history.
+        const clock = await sql<{ db_now: Date }>`select now() as db_now`.execute(tx);
+        if (top && policy.effectiveFrom.getTime() < (clock.rows[0]?.db_now.getTime() ?? 0)) {
           return { outcome: "rejected", reason: "effective_in_past" };
         }
 
@@ -179,6 +180,12 @@ export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
     async release({ id, organizationId, auditId, actor, releasedAt }) {
       return withTx(db, async (tx) => {
         await refuseOutsideWriteClock(tx, releasedAt);
+        const placed = await sql<{ created_at: Date }>`select created_at from payout_holds where id = ${id}
+          and publisher_id in (select id from publishers where organization_id = ${organizationId})`.execute(tx);
+        const placedAt = placed.rows[0]?.created_at;
+        if (placedAt && releasedAt.getTime() < placedAt.getTime()) {
+          throw new Error("payout_holds: release precedes placement");
+        }
         const updated = await sql<{ id: string }>`update payout_holds set released_at = ${releasedAt}
           where id = ${id} and released_at is null
             and publisher_id in (select id from publishers where organization_id = ${organizationId})
