@@ -33,7 +33,7 @@ export interface CurrencyControlTotal {
   creditMinor: bigint;
 }
 
-export interface CurrencyVariance {
+export interface CurrencyImbalance {
   currency: string;
   // The sum of the absolute imbalance of every unbalanced journal in the currency. Gross, so opposite imbalances in two
   // journals never cancel each other out.
@@ -43,12 +43,16 @@ export interface CurrencyVariance {
 export interface LedgerReconciliationReport {
   asOf: Date;
   // "clean" only when there is no finding at all. Every finding is unexplained: no register of known differences exists
-  // yet, and a difference is never absorbed silently.
+  // yet, and a difference is never absorbed silently. Read status, not grossImbalance, as the pass or fail of a run.
   status: "clean" | "variance";
   counts: { accounts: number; journals: number; postings: number };
   // Debits and credits per currency over every posting, sorted by currency. Currencies are never summed together.
   controlTotals: CurrencyControlTotal[];
-  unexplainedVariance: CurrencyVariance[];
+  // Only the amount that is out of balance, from unbalanced journals. A structural finding, such as a reversal for the
+  // wrong amount, moves no money out of balance, so it shows in findingCounts and findings but not here.
+  grossImbalance: CurrencyImbalance[];
+  // How many findings there are of each code. Codes with none are absent.
+  findingCounts: Partial<Record<ReconciliationFindingCode, number>>;
   findings: ReconciliationFinding[];
 }
 
@@ -79,10 +83,11 @@ function sameMovement(original: ReconciliationJournal, reversal: ReconciliationJ
 
 // Reads the whole ledger from one snapshot and reports every place it disagrees with its own invariants. Read-only: it
 // writes no journal, no audit row, and no outbox row, so running it twice on the same ledger gives the same findings.
+// It needs only the clock, so the context type says so and a caller need not supply a database.
 // The ledger cannot be corrected from here. A finding is for a person to investigate and fix with a reversal or an
 // adjustment journal.
 export async function reconcileLedger(
-  ctx: Ctx,
+  ctx: Pick<Ctx, "clock">,
   source: LedgerReconciliationSource,
 ): Promise<LedgerReconciliationReport> {
   const asOf = ctx.clock.now();
@@ -187,14 +192,18 @@ export async function reconcileLedger(
     }
   }
 
+  const findingCounts: Partial<Record<ReconciliationFindingCode, number>> = {};
+  for (const finding of findings) findingCounts[finding.code] = (findingCounts[finding.code] ?? 0) + 1;
+
   return {
     asOf,
     status: findings.length === 0 ? "clean" : "variance",
     counts: { accounts: snapshot.accounts.length, journals: journals.length, postings: postingCount },
     controlTotals: [...totals.values()].sort((a, b) => byText(a.currency, b.currency)),
-    unexplainedVariance: [...variance]
+    grossImbalance: [...variance]
       .map(([currency, grossMinor]) => ({ currency, grossMinor }))
       .sort((a, b) => byText(a.currency, b.currency)),
+    findingCounts,
     findings,
   };
 }

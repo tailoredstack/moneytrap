@@ -112,7 +112,7 @@ describeWithDatabase("ledger reconciliation against Postgres (WP-X.3)", () => {
 
       expect(report.findings).toEqual([]);
       expect(report.status).toBe("clean");
-      expect(report.unexplainedVariance).toEqual([]);
+      expect(report.grossImbalance).toEqual([]);
       expect(report.counts).toEqual({ accounts: 6, journals: 5, postings: 10 });
       expect(report.controlTotals).toEqual([
         { currency: "JPY", debitMinor: 5_000n, creditMinor: 5_000n },
@@ -147,7 +147,7 @@ describeWithDatabase("ledger reconciliation against Postgres (WP-X.3)", () => {
         ["journal_too_few_postings", "j3", null, null],
         ["journal_unbalanced", "j3", "JPY", 7n],
       ]);
-      expect(report.unexplainedVariance).toEqual([
+      expect(report.grossImbalance).toEqual([
         { currency: "JPY", grossMinor: 7n },
         { currency: "USD", grossMinor: 10n },
       ]);
@@ -188,7 +188,7 @@ describeWithDatabase("ledger reconciliation against Postgres (WP-X.3)", () => {
         ["reversal_of_reversal", "j3"],
       ]);
       // Both are structural, so no amount is out of balance.
-      expect(report.unexplainedVariance).toEqual([]);
+      expect(report.grossImbalance).toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -251,23 +251,14 @@ describeWithDatabase("ledger reconciliation against Postgres (WP-X.3)", () => {
       ]);
       const count = async (table: string) =>
         (await sql<{ n: string }>`select count(*)::text as n from ${sql.table(table)}`.execute(fixture.db)).rows[0]?.n;
-      const before = [
-        await count("journals"),
-        await count("postings"),
-        await count("accounts"),
-        await count("audit_logs"),
-      ];
+      const tables = ["journals", "postings", "accounts", "audit_logs", "outbox_events"];
+      const before = await Promise.all(tables.map(count));
       fixture.statements.length = 0;
 
       await reconcileLedger(ctx, fixture.source);
       const sent = fixture.statements.map((text) => text.toLowerCase());
 
-      const after = [
-        await count("journals"),
-        await count("postings"),
-        await count("accounts"),
-        await count("audit_logs"),
-      ];
+      const after = await Promise.all(tables.map(count));
       expect(after).toEqual(before);
       expect(sent[0]).toBe("start transaction isolation level repeatable read");
       expect(sent[1]).toBe("set transaction read only");
