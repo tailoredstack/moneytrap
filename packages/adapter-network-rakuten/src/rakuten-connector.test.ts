@@ -354,6 +354,30 @@ describe("RakutenConnector Advanced Reports", () => {
       failure: { state: "temporarily_unavailable", retryAfterSeconds: null },
     });
   });
+
+  test("an impossible ISO report payment date fails closed while a valid ISO date is accepted", async () => {
+    const makeConnector = (replacement: string) =>
+      setup({
+        webSecurityToken: "web-token",
+        wrap: (inner) => async (url, init) => {
+          const response = await inner(url, init);
+          if (new URL(url).searchParams.get("reportid") !== "23") return response;
+          return new Response((await response.text()).replace("11/01/2026", replacement), {
+            status: 200,
+            headers: { "content-type": "text/csv" },
+          });
+        },
+      }).connector;
+
+    const invalid = await makeConnector("2026-02-31").retrieveSettlementEvidence({ ...range, cursor: null });
+    expect(invalid).toEqual({
+      ok: false,
+      failure: { state: "temporarily_unavailable", retryAfterSeconds: null },
+    });
+
+    const valid = await makeConnector("2026-11-01").retrieveSettlementEvidence({ ...range, cursor: null });
+    expect(valid.ok && valid.value.items[0]?.paidAt.toISOString()).toBe("2026-11-01T00:00:00.000Z");
+  });
 });
 
 describe("RakutenConnector independent pacing", () => {

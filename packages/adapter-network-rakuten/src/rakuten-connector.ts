@@ -509,15 +509,14 @@ function reportMoney(value: string | undefined, currency: string) {
 
 function reportDate(value: string | undefined): Date {
   if (!value) throw new MappingError("malformed_body");
-  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
-  const at = match ? new Date(Date.UTC(Number(match[3]), Number(match[1]) - 1, Number(match[2]))) : new Date(value);
-  if (Number.isNaN(at.getTime())) throw new MappingError("malformed_body");
-  if (
-    match &&
-    (at.getUTCFullYear() !== Number(match[3]) ||
-      at.getUTCMonth() !== Number(match[1]) - 1 ||
-      at.getUTCDate() !== Number(match[2]))
-  ) {
+  const monthDayYear = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
+  const yearMonthDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!monthDayYear && !yearMonthDay) throw new MappingError("malformed_body");
+  const year = Number(monthDayYear?.[3] ?? yearMonthDay?.[1]);
+  const month = Number(monthDayYear?.[1] ?? yearMonthDay?.[2]);
+  const day = Number(monthDayYear?.[2] ?? yearMonthDay?.[3]);
+  const at = new Date(Date.UTC(year, month - 1, day));
+  if (at.getUTCFullYear() !== year || at.getUTCMonth() !== month - 1 || at.getUTCDate() !== day) {
     throw new MappingError("malformed_body");
   }
   return at;
