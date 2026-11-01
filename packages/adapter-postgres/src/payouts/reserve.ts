@@ -1,4 +1,5 @@
 import type {
+  BatchApproveOutcome,
   BatchAudit,
   BatchCancelOutcome,
   BatchCandidate,
@@ -8,7 +9,7 @@ import type {
   PayoutRecord,
   SkippedLine,
 } from "@moneytrap/app/src/ports/payout-batch-store";
-import { type CurrencyCode, decideReservation, type Id } from "@moneytrap/domain";
+import { type CurrencyCode, decideApproval, decideReservation, type Id } from "@moneytrap/domain";
 import { type Kysely, sql, type Transaction } from "kysely";
 import { withTx } from "../transaction";
 
@@ -30,6 +31,8 @@ interface BatchRow {
   policy_version: number;
   created_by: string;
   created_at: Date;
+  approved_by: string | null;
+  approved_at: Date | null;
 }
 
 interface PayoutRow {
@@ -41,7 +44,7 @@ interface PayoutRow {
 }
 
 const BATCH_COLUMNS = sql`id, organization_id, reservation_key, currency, period_start, period_end, state, cap_minor,
-  policy_version, created_by, created_at`;
+  policy_version, created_by, created_at, approved_by, approved_at`;
 
 // Carries the skipped lines out of the transaction when nothing was reserved. Throwing rolls the batch row back, so the
 // reservation key stays free.
@@ -74,6 +77,8 @@ function toBatch(row: BatchRow, lines: PayoutRow[]): PayoutBatchRecord {
     policyVersion: row.policy_version,
     createdBy: row.created_by as Id<"user">,
     createdAt: row.created_at,
+    approvedBy: row.approved_by as Id<"user"> | null,
+    approvedAt: row.approved_at,
     lines: lines.map(toPayout),
   };
 }
@@ -225,6 +230,17 @@ export function createPayoutBatchStore(db: Kysely<unknown>): PayoutBatchStore {
         const batch = found.rows[0];
         if (!batch) return "not_found";
         if (batch.state === "cancelled") return "already_cancelled";
+        if (batch.state === "approved") {
+          // A refused cancel of an approved batch is audited too: the funds it holds are still held.
+          await writeAudit(tx, {
+            organizationId,
+            audit,
+            action: "payout_batch.cancel_denied",
+            batchId,
+            metadata: { reason: "approved" },
+          });
+          return "approved";
+        }
 
         const freed = await sql<{ amount_minor: string }>`update payouts set state = 'cancelled', cancelled_at = ${at}
           where batch_id = ${batchId} and state = 'reserved' returning amount_minor`.execute(tx);
@@ -242,6 +258,97 @@ export function createPayoutBatchStore(db: Kysely<unknown>): PayoutBatchStore {
           },
         });
         return "cancelled";
+      });
+    },
+
+    async approve({ organizationId, batchId, approver, at, availability, audit }): Promise<BatchApproveOutcome> {
+      return withTx(db, async (tx): Promise<BatchApproveOutcome> => {
+        // The batch row is locked, so approving and cancelling, or two approvals, take turns and the second sees the first.
+        const found = await sql<BatchRow>`select ${BATCH_COLUMNS} from payout_batches
+          where id = ${batchId} and organization_id = ${organizationId} for update`.execute(tx);
+        const row = found.rows[0];
+        if (!row) return { outcome: "not_found" };
+
+        const decision = decideApproval({
+          state: row.state as PayoutBatchRecord["state"],
+          preparedBy: row.created_by as Id<"user">,
+          approver,
+        });
+        if (!decision.approved) {
+          // Every refusal for a known batch is auditable, including stale retries after cancellation or approval.
+          await writeAudit(tx, {
+            organizationId,
+            audit,
+            action: "payout_batch.approval_denied",
+            batchId,
+            metadata: { preparedBy: row.created_by, attemptedBy: approver, reason: decision.reason },
+          });
+          return { outcome: "refused", reason: decision.reason };
+        }
+
+        // Publishers are locked in id order, as in reserve, so a concurrent reserve cannot deadlock with this. Under the
+        // lock, what every open payout holds for each publisher must still be within the balance the app read.
+        const batchPublishers = await sql<{ publisher_id: string }>`select distinct publisher_id from payouts
+          where batch_id = ${batchId} and state = 'reserved' order by publisher_id`.execute(tx);
+        const publisherIds = batchPublishers.rows.map((r) => r.publisher_id);
+        const short: Id<"publisher">[] = [];
+        if (publisherIds.length > 0) {
+          await sql`select id from publishers where id in (${sql.join(publisherIds)}) order by id for update`.execute(
+            tx,
+          );
+          const held = await sql<{ publisher_id: string; committed: string }>`
+            select publisher_id, sum(amount_minor)::text as committed from payouts
+            where publisher_id in (${sql.join(publisherIds)}) and currency = ${row.currency} and state <> 'cancelled'
+            group by publisher_id`.execute(tx);
+          for (const heldRow of held.rows) {
+            const available =
+              availability.find((entry) => entry.publisherId === heldRow.publisher_id)?.availableMinor ?? 0n;
+            if (BigInt(heldRow.committed) > available) short.push(heldRow.publisher_id as Id<"publisher">);
+          }
+        }
+        if (short.length > 0) {
+          // The attempt is kept in the audit log: finance can see that an approval was stopped, and why.
+          await writeAudit(tx, {
+            organizationId,
+            audit,
+            action: "payout_batch.approval_blocked",
+            batchId,
+            metadata: {
+              preparedBy: row.created_by,
+              attemptedBy: approver,
+              reason: "insufficient_funds",
+              publisherIds: short.sort(),
+            },
+          });
+          return { outcome: "insufficient_funds", publisherIds: short };
+        }
+
+        await sql`update payout_batches set state = 'approved', approved_by = ${approver}, approved_at = ${at}
+          where id = ${batchId}`.execute(tx);
+        const approved = await sql<{ amount_minor: string }>`update payouts set state = 'approved'
+          where batch_id = ${batchId} and state = 'reserved' returning amount_minor`.execute(tx);
+        await writeAudit(tx, {
+          organizationId,
+          audit,
+          action: "payout_batch.approved",
+          batchId,
+          // Both people are in the one row: the actor is the approver, and the preparer is named beside them.
+          metadata: {
+            preparedBy: row.created_by,
+            approvedBy: approver,
+            approvedAt: at.toISOString(),
+            currency: row.currency,
+            payoutCount: approved.rows.length,
+            totalMinor: approved.rows.reduce((sum, r) => sum + BigInt(r.amount_minor), 0n).toString(),
+          },
+        });
+
+        const after = await sql<BatchRow>`select ${BATCH_COLUMNS} from payout_batches where id = ${batchId}`.execute(
+          tx,
+        );
+        const batchRow = after.rows[0];
+        if (!batchRow) throw new Error("payout batch: batch missing after approval");
+        return { outcome: "approved", batch: toBatch(batchRow, await loadLines(tx, batchId)) };
       });
     },
 

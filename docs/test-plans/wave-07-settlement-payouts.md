@@ -66,6 +66,10 @@ Money moves safely. Only matched and cleared funds become available. Concurrent 
 | TP-W7-016 | Preparer tries to approve own batch | Guard returns `FORBIDDEN` | WP-7.8 |
 | TP-W7-017 | Different finance user approves | Approved; audit row contains both actors | WP-7.8 |
 | TP-W7-018 | Approval after batch cancelled | Rejected | WP-7.8 |
+| TP-W7-048 | Approve the same batch twice, including two approvals at once | One approval and one audit row; the rest return `ALREADY_PROCESSED` | WP-7.8 |
+| TP-W7-049 | Refused self-approval is written to the audit log | The `payout_batch.approval_denied` row names the preparer and the attempting user, with reason `self_approval`; the batch is unchanged (behaviour in TP-W7-016) | WP-7.8 |
+| TP-W7-050 | Cancel an approved batch, or approve and cancel at once | The approved batch is not cancelled (`STATE_CONFLICT`); exactly one of a racing pair takes effect | WP-7.8 |
+| TP-W7-051 | Direct SQL approves as the preparer, approves twice, or edits an approved batch | The database refuses | WP-7.8 |
 
 ### 3.5 Dispatch and unknown outcomes (chaos)
 

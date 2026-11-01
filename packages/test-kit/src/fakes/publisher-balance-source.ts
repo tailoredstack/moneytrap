@@ -10,6 +10,11 @@ export class FakePublisherBalanceSource implements PublisherBalanceSource {
     this.rows.set(publisherId, [...(this.rows.get(publisherId) ?? []), row]);
   }
 
+  /** Drops every conversion of a publisher, as a reversal that takes the whole balance back would. */
+  clear(publisherId: Id<"publisher">): void {
+    this.rows.delete(publisherId);
+  }
+
   async listConversions(publisherId: Id<"publisher">): Promise<BalanceConversion[]> {
     return [...(this.rows.get(publisherId) ?? [])];
   }

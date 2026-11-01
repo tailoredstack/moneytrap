@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { approveBatch } from "@moneytrap/app/src/payouts/approve";
 import { cancelBatch, type PayoutBatchView, prepareBatch } from "@moneytrap/app/src/payouts/batch";
 import type { PayoutBatchStore } from "@moneytrap/app/src/ports/payout-batch-store";
 import { type CurrencyCode, createPayoutPolicy, createShareRule, type Id, type Principal } from "@moneytrap/domain";
@@ -16,7 +17,9 @@ export interface PayoutBatchWorld {
   store: PayoutBatchStore;
   organizationId: Id<"organization">;
   otherOrganizationId: Id<"organization">;
+  // The preparer, and a second user who may check. Both exist wherever the store keeps users, so approval can name them.
   userId: Id<"user">;
+  checkerId: Id<"user">;
   addPublisher(input: {
     organizationId: Id<"organization">;
     publisherId: Id<"publisher">;
@@ -48,9 +51,13 @@ const fullShare = createShareRule(10000, 0, 0, 1);
 interface Harness {
   world: PayoutBatchWorld;
   principal: Principal;
+  checker: Principal;
   prepare(body?: Record<string, unknown>): ReturnType<typeof prepareBatch>;
   cancel(id: string, principal?: Principal, organizationId?: Id<"organization">): ReturnType<typeof cancelBatch>;
+  approve(id: string, principal?: Principal, organizationId?: Id<"organization">): ReturnType<typeof approveBatch>;
   fund(n: number, amountMinor: bigint, status?: "approved" | "suspended"): Promise<void>;
+  // A reversal that takes a publisher's whole balance back after funds were reserved.
+  reverse(n: number): void;
   holds: FakePayoutHoldStore;
   nextKey(): string;
   available: Map<number, bigint>;
@@ -75,11 +82,15 @@ async function harness(world: PayoutBatchWorld): Promise<Harness> {
     userId: world.userId,
     memberships: [{ organizationId: world.organizationId, role: "finance" }],
   };
-  const ctx = () =>
+  const checker: Principal = {
+    userId: world.checkerId,
+    memberships: [{ organizationId: world.organizationId, role: "finance" }],
+  };
+  const ctx = (as: Principal = principal) =>
     fixtureCtx<Record<string, never>>(undefined as never, {
       clock,
       ids,
-      actor: { type: "user", id: world.userId },
+      actor: { type: "user", id: as.userId },
     });
   const deps = { batches: world.store, balances, policies, holds };
   let keys = 0;
@@ -87,6 +98,7 @@ async function harness(world: PayoutBatchWorld): Promise<Harness> {
   const h: Harness = {
     world,
     principal,
+    checker,
     holds,
     available,
     nextKey() {
@@ -109,7 +121,14 @@ async function harness(world: PayoutBatchWorld): Promise<Harness> {
       );
     },
     cancel(id, as = principal, organizationId = world.organizationId) {
-      return cancelBatch(ctx(), deps, as, { organizationId }, id);
+      return cancelBatch(ctx(as), deps, as, { organizationId }, id);
+    },
+    approve(id, as = checker, organizationId = world.organizationId) {
+      return approveBatch(ctx(as), deps, as, { organizationId }, id);
+    },
+    reverse(n) {
+      balances.clear(pub(n));
+      available.set(n, 0n);
     },
     async fund(n, amountMinor, status = "approved") {
       await world.addPublisher({
@@ -132,7 +151,7 @@ async function harness(world: PayoutBatchWorld): Promise<Harness> {
     reservedFor(batches, n) {
       return batches
         .flatMap((batch) => batch.lines)
-        .filter((line) => line.publisherId === pub(n) && line.state === "reserved")
+        .filter((line) => line.publisherId === pub(n) && line.state !== "cancelled")
         .reduce((sum, line) => sum + line.amountMinor, 0n);
     },
   };
@@ -147,7 +166,7 @@ function ok<T extends { ok: boolean }>(result: T): Extract<T, { ok: true }> {
   return result as Extract<T, { ok: true }>;
 }
 
-/** Runs the batch preparation and reservation suite against each store (DM-047, DM-048, CT-022, TP-W7-009 to TP-W7-015). */
+/** Runs the batch preparation, reservation, and approval suite against each store and the maker-checker approval (DM-047, DM-048, CT-022, TP-W7-009 to TP-W7-018). */
 export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]): void {
   for (const target of targets) {
     describe(`payout batch store: ${target.name}`, () => {
@@ -381,8 +400,150 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect((await h.world.store.find(h.world.organizationId, batch.id))?.state).toBe("prepared");
         }));
 
-      // TP-W7-015: whatever order batches are prepared and cancelled in, reservations never exceed available.
-      test("property: random prepare and cancel interleavings never reserve more than available (TP-W7-015)", () =>
+      test("a second user approves a prepared batch, once, and its funds stay held (TP-W7-017)", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          await h.fund(2, 25_000n);
+          const prepared = ok(await h.prepare()).value.batch;
+          const { batch } = ok(await h.approve(prepared.id)).value;
+          expect(batch.state).toBe("approved");
+          expect(batch.createdBy).toBe(h.world.userId);
+          expect(batch.approvedBy).toBe(h.world.checkerId);
+          expect(batch.approvedAt).toEqual(now);
+          expect(batch.totalMinor).toBe(35_000n);
+          expect(batch.lines.map((line) => line.state)).toEqual(["approved", "approved"]);
+
+          const stored = await h.world.store.find(h.world.organizationId, prepared.id);
+          expect(stored?.state).toBe("approved");
+          expect(stored?.approvedBy).toBe(h.world.checkerId);
+          expect(stored?.lines.every((line) => line.state === "approved")).toBe(true);
+          // Approved payouts still hold their funds, so nothing is left for another batch.
+          expect(await h.prepare()).toMatchObject({ ok: false, code: "STATE_CONFLICT" });
+        }));
+
+      test("the preparer cannot approve their own batch (TP-W7-016, TP-W7-049)", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          const prepared = ok(await h.prepare()).value.batch;
+          expect(await h.approve(prepared.id, h.principal)).toMatchObject({ ok: false, code: "FORBIDDEN" });
+          const stored = await h.world.store.find(h.world.organizationId, prepared.id);
+          expect(stored?.state).toBe("prepared");
+          expect(stored?.approvedBy).toBeNull();
+          expect(stored?.approvedAt).toBeNull();
+          // Refused for the preparer, approved for the checker.
+          expect(ok(await h.approve(prepared.id)).value.batch.state).toBe("approved");
+        }));
+
+      test("approval is recorded once: a second approval is refused and changes nothing (TP-W7-048)", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          const prepared = ok(await h.prepare()).value.batch;
+          ok(await h.approve(prepared.id));
+          expect(await h.approve(prepared.id)).toMatchObject({ ok: false, code: "ALREADY_PROCESSED" });
+          expect(await h.approve(prepared.id, h.principal)).toMatchObject({ ok: false, code: "FORBIDDEN" });
+          const stored = await h.world.store.find(h.world.organizationId, prepared.id);
+          expect(stored?.state).toBe("approved");
+          expect(stored?.approvedBy).toBe(h.world.checkerId);
+        }));
+
+      test("a cancelled batch cannot be approved, and an approved batch cannot be cancelled (TP-W7-018, TP-W7-050)", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          const cancelled = ok(await h.prepare()).value.batch;
+          ok(await h.cancel(cancelled.id));
+          expect(await h.approve(cancelled.id)).toMatchObject({ ok: false, code: "STATE_CONFLICT" });
+          expect((await h.world.store.find(h.world.organizationId, cancelled.id))?.state).toBe("cancelled");
+
+          const approved = ok(await h.prepare()).value.batch;
+          ok(await h.approve(approved.id));
+          expect(await h.cancel(approved.id)).toMatchObject({ ok: false, code: "STATE_CONFLICT" });
+          const stored = await h.world.store.find(h.world.organizationId, approved.id);
+          expect(stored?.state).toBe("approved");
+          expect(stored?.lines.every((line) => line.state === "approved")).toBe(true);
+        }));
+
+      test("a user without payouts:write cannot approve, and another organization's batch is not found", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          const batch = ok(await h.prepare()).value.batch;
+          const viewer: Principal = {
+            userId: h.world.checkerId,
+            memberships: [{ organizationId: h.world.organizationId, role: "viewer" }],
+          };
+          expect(await h.approve(batch.id, viewer)).toMatchObject({ ok: false, code: "FORBIDDEN" });
+
+          const outsider: Principal = {
+            userId: h.world.checkerId,
+            memberships: [{ organizationId: h.world.otherOrganizationId, role: "finance" }],
+          };
+          expect(await h.approve(batch.id, outsider, h.world.otherOrganizationId)).toMatchObject({
+            ok: false,
+            code: "RESOURCE_NOT_FOUND",
+          });
+          expect(await h.approve(fixtureId("payoutBatch", 777))).toMatchObject({
+            ok: false,
+            code: "RESOURCE_NOT_FOUND",
+          });
+          expect(await h.approve("not-an-id")).toMatchObject({ ok: false, code: "RESOURCE_NOT_FOUND" });
+          expect((await h.world.store.find(h.world.organizationId, batch.id))?.state).toBe("prepared");
+        }));
+
+      test("a balance reversed before approval stops the approval, and the batch can still be cancelled (TP-W7-014, sequential case only; the read-to-lock window is OZE-3285)", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          await h.fund(2, 7_000n);
+          const batch = ok(await h.prepare()).value.batch;
+          h.reverse(1);
+          expect(await h.approve(batch.id)).toMatchObject({ ok: false, code: "STATE_CONFLICT" });
+          const stored = await h.world.store.find(h.world.organizationId, batch.id);
+          expect(stored?.state).toBe("prepared");
+          expect(stored?.lines.every((line) => line.state === "reserved")).toBe(true);
+          expect(ok(await h.cancel(batch.id)).value.state).toBe("cancelled");
+        }));
+
+      test("concurrent approvals make one approval (TP-W7-048)", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          const batch = ok(await h.prepare()).value.batch;
+          const results = await Promise.all(Array.from({ length: 6 }, () => h.approve(batch.id)));
+          expect(results.filter((result) => result.ok)).toHaveLength(1);
+          for (const result of results) if (!result.ok) expect(result.code).toBe("ALREADY_PROCESSED");
+          expect((await h.world.store.find(h.world.organizationId, batch.id))?.state).toBe("approved");
+          // The approval is written once. The shared contract cannot read audit rows, so the fake and Postgres suites count them.
+        }));
+
+      test("a reservation after an approval never holds more than the publisher has (approve's own lock is OZE-3285)", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          const first = ok(await h.prepare({ cap_minor: "4000" })).value.batch;
+          const [approved, second] = await Promise.all([h.approve(first.id), h.prepare()]);
+          expect(approved.ok).toBe(true);
+          const batches = [first, ...(second.ok ? [second.value.batch] : [])];
+          const current = (
+            await Promise.all(batches.map((batch) => h.world.store.find(h.world.organizationId, batch.id)))
+          ).filter((batch) => batch !== null);
+          const held = current
+            .flatMap((batch) => batch.lines)
+            .filter((line) => line.state !== "cancelled")
+            .reduce((sum, line) => sum + line.amountMinor, 0n);
+          // The approved 4000 and the second batch's 6000 together are exactly the available funds, never more.
+          expect(held).toBe(10_000n);
+          expect(current.find((batch) => batch.id === first.id)?.state).toBe("approved");
+        }));
+
+      test("approving and cancelling at once leave exactly one of them in effect (TP-W7-050)", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          const batch = ok(await h.prepare()).value.batch;
+          const [approved, cancelled] = await Promise.all([h.approve(batch.id), h.cancel(batch.id)]);
+          expect(approved.ok !== cancelled.ok).toBe(true);
+          const stored = await h.world.store.find(h.world.organizationId, batch.id);
+          expect(stored?.state).toBe(approved.ok ? "approved" : "cancelled");
+          expect(stored?.lines.every((line) => line.state === stored.state)).toBe(true);
+        }));
+
+      // TP-W7-015: whatever order batches are prepared, cancelled, and approved in, reservations never exceed available.
+      test("property: random prepare, cancel, and approve interleavings never reserve more than available (TP-W7-015, partial: reversal and dispatch are not in the loop)", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);
           await h.fund(2, 6_000n);
@@ -394,23 +555,28 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           };
           const batches: PayoutBatchView[] = [];
           for (let step = 0; step < 40; step += 1) {
-            if (batches.length > 0 && roll(3) === 0) {
+            const action = roll(4);
+            if (batches.length > 0 && action === 0) {
+              // Cancelling an approved batch is refused, so a refusal here is expected and changes nothing.
               const target = batches[roll(batches.length)];
-              if (target) ok(await h.cancel(target.id));
+              if (target) await h.cancel(target.id);
+            } else if (batches.length > 0 && action === 1) {
+              const target = batches[roll(batches.length)];
+              if (target) await h.approve(target.id);
             } else {
               const caps = [undefined, "2500", "4000", "9000"] as const;
               const cap = caps[roll(caps.length)];
               const result = await h.prepare(cap === undefined ? {} : { cap_minor: cap });
               if (result.ok) batches.push(result.value.batch);
             }
-            // Re-read every batch so cancelled lines stop counting.
+            // Re-read every batch so cancelled lines stop counting; approved lines still hold their funds.
             const current = (
               await Promise.all(batches.map((batch) => h.world.store.find(h.world.organizationId, batch.id)))
             ).filter((batch) => batch !== null);
             for (const n of [1, 2, 3]) {
               const reserved = current
                 .flatMap((batch) => batch.lines)
-                .filter((line) => line.publisherId === pub(n) && line.state === "reserved")
+                .filter((line) => line.publisherId === pub(n) && line.state !== "cancelled")
                 .reduce((sum, line) => sum + line.amountMinor, 0n);
               expect(reserved <= (h.available.get(n) ?? 0n)).toBe(true);
             }

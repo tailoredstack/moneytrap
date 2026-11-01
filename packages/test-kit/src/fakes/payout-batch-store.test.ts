@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { runPayoutBatchStoreContract } from "../contracts/payout-batch-store";
 import { fixtureId } from "../fixtures/ids";
 import { FakePayoutBatchStore } from "./payout-batch-store";
@@ -5,6 +6,7 @@ import { FakePayoutBatchStore } from "./payout-batch-store";
 const organizationId = fixtureId("organization", 1);
 const otherOrganizationId = fixtureId("organization", 2);
 const userId = fixtureId("user", 1);
+const checkerId = fixtureId("user", 2);
 
 runPayoutBatchStoreContract([
   {
@@ -16,6 +18,7 @@ runPayoutBatchStoreContract([
         organizationId,
         otherOrganizationId,
         userId,
+        checkerId,
         async addPublisher(input) {
           store.publisherOrganization.set(input.publisherId, input.organizationId);
           store.publisherStatus.set(input.publisherId, input.status ?? "approved");
@@ -26,3 +29,209 @@ runPayoutBatchStoreContract([
     },
   },
 ]);
+
+// The contract reads the store through its port, which has no audit rows. The fake keeps them, and they must match what the
+// Postgres adapter writes (reserve.test.ts reads the same fields from audit_logs).
+describe("fake payout batch store audit", () => {
+  test("an approval records both people, the time, the currency, and the amounts", async () => {
+    const store = new FakePayoutBatchStore();
+    const publisherId = fixtureId("publisher", 1);
+    const methodId = fixtureId("payoutMethod", 1);
+    store.publisherOrganization.set(publisherId, organizationId);
+    store.addMethod({ id: methodId, publisherId, currency: "GBP" });
+    const at = new Date("2026-11-02T09:30:00.000Z");
+    const batchId = fixtureId("payoutBatch", 1);
+    await store.reserve({
+      organizationId,
+      batchId,
+      reservationKey: "reservation-1",
+      currency: "GBP",
+      periodStart: new Date("2026-10-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-10-31T00:00:00.000Z"),
+      capMinor: null,
+      policyVersion: 1,
+      createdBy: userId,
+      createdAt: at,
+      lines: [
+        {
+          payoutId: fixtureId("payout", 1),
+          publisherId,
+          methodId,
+          requestedMinor: 5_000n,
+          availableMinor: 5_000n,
+          minimumMinor: 1_000n,
+        },
+      ],
+      audit: { id: fixtureId("audit", 1), actor: { type: "user", id: userId }, occurredAt: at },
+    });
+    await store.approve({
+      organizationId,
+      batchId,
+      approver: checkerId,
+      at,
+      availability: [{ publisherId, availableMinor: 5_000n }],
+      audit: { id: fixtureId("audit", 2), actor: { type: "user", id: checkerId }, occurredAt: at },
+    });
+    const row = store.audit.find((entry) => entry.action === "payout_batch.approved");
+    expect(row).toMatchObject({
+      entityId: batchId,
+      actor: { type: "user", id: checkerId },
+      occurredAt: at,
+      metadata: {
+        preparedBy: userId,
+        approvedBy: checkerId,
+        approvedAt: "2026-11-02T09:30:00.000Z",
+        currency: "GBP",
+        payoutCount: 1,
+        totalMinor: "5000",
+      },
+    });
+  });
+});
+
+test("fake refuses a self-approval with an audit row, and refuses a repeat approval as already approved", async () => {
+  const store = new FakePayoutBatchStore();
+  const publisherId = fixtureId("publisher", 2);
+  const methodId = fixtureId("payoutMethod", 2);
+  store.publisherOrganization.set(publisherId, organizationId);
+  store.addMethod({ id: methodId, publisherId, currency: "GBP" });
+  const at = new Date("2026-11-02T09:30:00.000Z");
+  const batchId = fixtureId("payoutBatch", 2);
+  await store.reserve({
+    organizationId,
+    batchId,
+    reservationKey: "reservation-2",
+    currency: "GBP",
+    periodStart: at,
+    periodEnd: at,
+    capMinor: null,
+    policyVersion: 1,
+    createdBy: userId,
+    createdAt: at,
+    lines: [
+      {
+        payoutId: fixtureId("payout", 2),
+        publisherId,
+        methodId,
+        requestedMinor: 5_000n,
+        availableMinor: 5_000n,
+        minimumMinor: 1_000n,
+      },
+    ],
+    audit: { id: fixtureId("audit", 3), actor: { type: "user", id: userId }, occurredAt: at },
+  });
+  const approve = (approver: typeof checkerId, n: number, availability = [{ publisherId, availableMinor: 5_000n }]) =>
+    store.approve({
+      organizationId,
+      batchId,
+      approver,
+      at,
+      availability,
+      audit: { id: fixtureId("audit", n), actor: { type: "user", id: approver }, occurredAt: at },
+    });
+  // The preparer's attempt is refused and audited with both people (TP-W7-049).
+  expect(await approve(userId, 6)).toEqual({ outcome: "refused", reason: "self_approval" });
+  await approve(checkerId, 4);
+  await approve(checkerId, 5);
+  const denied = store.audit.filter((row) => row.action === "payout_batch.approval_denied");
+  expect(denied.map((row) => row.metadata)).toEqual([
+    expect.objectContaining({ preparedBy: userId, attemptedBy: userId, reason: "self_approval" }),
+    expect.objectContaining({ preparedBy: userId, attemptedBy: checkerId, reason: "already_approved" }),
+  ]);
+});
+
+test("fake writes exactly one approval audit row when approvals race (TP-W7-048)", async () => {
+  const store = new FakePayoutBatchStore();
+  const publisherId = fixtureId("publisher", 1);
+  const methodId = fixtureId("payoutMethod", 1);
+  store.publisherOrganization.set(publisherId, organizationId);
+  store.addMethod({ id: methodId, publisherId, currency: "GBP" });
+  const at = new Date("2026-11-02T09:30:00.000Z");
+  const batchId = fixtureId("payoutBatch", 1);
+  await store.reserve({
+    organizationId,
+    batchId,
+    reservationKey: "reservation-1",
+    currency: "GBP",
+    periodStart: new Date("2026-10-01T00:00:00.000Z"),
+    periodEnd: new Date("2026-10-31T00:00:00.000Z"),
+    capMinor: null,
+    policyVersion: 1,
+    createdBy: userId,
+    createdAt: at,
+    lines: [
+      {
+        payoutId: fixtureId("payout", 1),
+        publisherId,
+        methodId,
+        requestedMinor: 5_000n,
+        availableMinor: 5_000n,
+        minimumMinor: 1_000n,
+      },
+    ],
+    audit: { id: fixtureId("audit", 1), actor: { type: "user", id: userId }, occurredAt: at },
+  });
+  const input = {
+    organizationId,
+    batchId,
+    approver: checkerId,
+    at,
+    availability: [{ publisherId, availableMinor: 5_000n }],
+    audit: { id: fixtureId("audit", 2), actor: { type: "user" as const, id: checkerId }, occurredAt: at },
+  };
+  const results = await Promise.all(Array.from({ length: 6 }, () => store.approve(input)));
+  expect(results.filter((result) => result.outcome === "approved")).toHaveLength(1);
+  expect(store.audit.filter((row) => row.action === "payout_batch.approved")).toHaveLength(1);
+});
+
+test("fake audits a refused cancel of an approved batch (TP-W7-050)", async () => {
+  const store = new FakePayoutBatchStore();
+  const publisherId = fixtureId("publisher", 3);
+  const methodId = fixtureId("payoutMethod", 3);
+  store.publisherOrganization.set(publisherId, organizationId);
+  store.addMethod({ id: methodId, publisherId, currency: "GBP" });
+  const at = new Date("2026-11-02T09:30:00.000Z");
+  const batchId = fixtureId("payoutBatch", 3);
+  await store.reserve({
+    organizationId,
+    batchId,
+    reservationKey: "reservation-3",
+    currency: "GBP",
+    periodStart: new Date("2026-10-01T00:00:00.000Z"),
+    periodEnd: new Date("2026-10-31T00:00:00.000Z"),
+    capMinor: null,
+    policyVersion: 1,
+    createdBy: userId,
+    createdAt: at,
+    lines: [
+      {
+        payoutId: fixtureId("payout", 3),
+        publisherId,
+        methodId,
+        requestedMinor: 5_000n,
+        availableMinor: 5_000n,
+        minimumMinor: 1_000n,
+      },
+    ],
+    audit: { id: fixtureId("audit", 30), actor: { type: "user", id: userId }, occurredAt: at },
+  });
+  await store.approve({
+    organizationId,
+    batchId,
+    approver: checkerId,
+    at,
+    availability: [{ publisherId, availableMinor: 5_000n }],
+    audit: { id: fixtureId("audit", 31), actor: { type: "user", id: checkerId }, occurredAt: at },
+  });
+  const outcome = await store.cancel({
+    organizationId,
+    batchId,
+    at,
+    audit: { id: fixtureId("audit", 32), actor: { type: "user", id: userId }, occurredAt: at },
+  });
+  expect(outcome).toBe("approved");
+  expect(store.audit.filter((row) => row.action === "payout_batch.cancel_denied")).toMatchObject([
+    { entityId: batchId, metadata: { reason: "approved" } },
+  ]);
+  expect((await store.find(organizationId, batchId))?.state).toBe("approved");
+});

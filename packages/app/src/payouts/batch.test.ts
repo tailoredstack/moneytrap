@@ -47,6 +47,9 @@ function deps(overrides: { policies?: PayoutPolicy[]; reserve?: PayoutBatchStore
     async cancel() {
       return "not_found";
     },
+    async approve() {
+      return { outcome: "not_found" };
+    },
     async find() {
       return null;
     },
