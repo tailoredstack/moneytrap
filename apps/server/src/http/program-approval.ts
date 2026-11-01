@@ -34,7 +34,17 @@ const STATE: Record<ProgramApprovalStatus, string> = {
 export function programApprovalRoutes(wiring?: ProgramApprovalWiring) {
   const app = new Elysia({ name: "program-approval" });
   if (!wiring) return app;
-  const { db, store, clock, ids, principal } = wiring;
+  // The guard and the handler both need the caller. The resolver runs once per request, and both read the same result.
+  const callers = new WeakMap<Headers, ReturnType<PrincipalResolver>>();
+  const principal: PrincipalResolver = (headers) => {
+    let caller = callers.get(headers);
+    if (!caller) {
+      caller = wiring.principal(headers);
+      callers.set(headers, caller);
+    }
+    return caller;
+  };
+  const { db, store, clock, ids } = wiring;
   return app.post(
     PROGRAM_APPROVAL_PATH,
     {
