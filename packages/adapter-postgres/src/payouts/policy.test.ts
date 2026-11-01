@@ -490,4 +490,20 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       }),
     ).toBe(false);
   });
+
+  test("the table refuses a release before the placement even when written directly", async () => {
+    const placedAt = writeNow();
+    await holds.place({
+      hold: { id: "pho_pol_17", publisherId, currency: "GBP", amountMinor: 1n, reason: "review", expiresAt: null },
+      organizationId: orgId,
+      auditId: "aud_hold_25",
+      actor,
+      occurredAt: placedAt,
+    });
+    await expect(
+      sql`update payout_holds set released_at = ${new Date(placedAt.getTime() - 200)} where id = 'pho_pol_17'`.execute(
+        db,
+      ),
+    ).rejects.toThrow("payout_holds_release_ck");
+  });
 });
