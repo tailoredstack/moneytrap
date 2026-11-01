@@ -332,6 +332,6 @@ Time-box each spike. If a spike fails, record the failure as an ADR with the fal
 ## 14. Known gaps in this blueprint
 
 - Load profile and latency SLO are placeholders until the product owner confirms them (plan open question 5).
-- Network connector library choice depends on the partner chosen (plan open question 1); the port and capability profile are stable regardless.
+- Network connector library choice follows the partner chosen in ADR-013 (Rakuten Advertising; plan open question 1, decided); the port and capability profile are stable regardless.
 - Payout provider is not selected; M5 only defines the port (plan open question 4).
 - Optimize (M8) has no code-level design yet. It is gated on legal review and should not be designed in detail before that review.

@@ -30,7 +30,6 @@ Start here. Everything needed to begin building is in this folder.
 
 | Decision | Blocks | Owner |
 |---|---|---|
-| First affiliate network (plan Q1) | WP-4.3, Wave 4 real adapter | Product |
 | Launch country and currency (plan Q2) | Wave 6 FX scope | Product |
 | Load profile and latency SLO (plan Q5, WP-0.10) | Spike B pass or fail | Product + Platform |
 | Optimize in scope for the year (plan Q6) | Wave 9 | Product |

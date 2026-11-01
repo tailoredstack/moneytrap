@@ -27,7 +27,7 @@ The spec set is thorough about *what must be true*. It is weak on *what we build
 **Wedge (first 90 days of product, not of engineering):**
 
 - Channel: websites and editorial blogs only. Social, mobile, and API channels are deferred.
-- Source: **one** affiliate network with a documented API and a sandbox. Recommend picking by (a) API coverage of transactions and adjustments, (b) program breadth for our target publishers' niches, (c) how well its link and reporting model fits our redirect. Decision owner: product. **Open question #1.**
+- Source: **one** affiliate network with a documented API and a sandbox. Recommend picking by (a) API coverage of transactions and adjustments, (b) program breadth for our target publishers' niches, (c) how well its link and reporting model fits our redirect. **Decided: Rakuten Advertising (ADR-013).**
 - Geography: one country and one currency (USD or the currency the first partner settles in).
 - Publisher side: manual KYB and property review by our own ops team. We do not automate review in the wedge.
 - Money: we record commissions and statements in the wedge; we move real money only in the Finance milestone.
@@ -200,7 +200,7 @@ Assumed: a small product team with one product manager, one designer, a staff-le
 
 ## 9. Open questions (need a decision, not more research)
 
-1. **Which affiliate network is first?** Recommend deciding within two weeks on API coverage, program breadth, and fit with the redirect model.
+1. **Which affiliate network is first?** Decided: Rakuten Advertising (ADR-013). Selection criteria were API coverage, program breadth, and fit with the redirect model.
 2. **Which country and currency for the wedge?** Recommend the country where the first network settles in its own currency, to avoid FX in M5.
 3. **Who runs publisher review in M2?** Recommend an internal ops hire or contractor, not automation.
 4. **Which payout methods must publishers be able to use at launch?** Needed before M6; the payout adapter contract must exist from M5.
