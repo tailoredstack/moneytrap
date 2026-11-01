@@ -1,15 +1,15 @@
 // One-time local setup for Moneytrap. Safe to run more than once: every step prints "skipped" when it is already done.
 // Run from the repo root: bun run setup
 //
-// Steps: .env files, the server's BETTER_AUTH_SECRET, the local Postgres and Redis stack, dependencies, migrations,
-// and the dev seed. Imports only Node built-ins and ./setup-env, so it runs before `bun install`.
+// Steps: .env files, the server's BETTER_AUTH_SECRET, the local Postgres, Redis, and Mailpit stack, dependencies,
+// migrations, and the dev seed. Imports only Node built-ins and ./setup-env, so it runs before `bun install`.
 
 import { dirname, join, resolve } from "node:path";
 import { ensureEnvFile, ensureSecret } from "./setup-env";
 
 const root = resolve(import.meta.dir, "..");
 const COMPOSE_FILE = "ops/docker-compose.yml";
-const STACK_SERVICES = ["postgres", "redis"];
+const STACK_SERVICES = ["postgres", "redis", "mailpit"];
 
 type Output = { code: number; stdout: string; stderr: string };
 
