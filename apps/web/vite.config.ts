@@ -3,10 +3,13 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
+  // API_PROXY_TARGET, read from apps/web/.env (optional, see .env.example), overrides the proxy target. The shell
+  // environment wins.
+  const webEnv = loadEnv(mode, fileURLToPath(new URL(".", import.meta.url)), "API_PROXY_TARGET");
   // The server reads PORT from apps/server/.env (see its .env.example), so read it from there too. The shell
   // environment wins, and the port falls back to 3000 as the server does.
   const serverEnv = loadEnv(mode, fileURLToPath(new URL("../server", import.meta.url)), "PORT");
-  const target = `http://127.0.0.1:${serverEnv.PORT ?? 3000}`;
+  const target = webEnv.API_PROXY_TARGET || `http://127.0.0.1:${serverEnv.PORT ?? 3000}`;
 
   return {
     plugins: [tailwindcss()],
