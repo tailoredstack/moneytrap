@@ -1,7 +1,7 @@
 import { Toaster } from "@moneytrap/ui";
 import {
   createMemoryHistory,
-  createRootRoute,
+  createRootRouteWithContext,
   createRoute,
   createRouter,
   Outlet,
@@ -22,6 +22,9 @@ import {
   StepUpScreen,
 } from "../features/identity/identity-containers";
 import { stepUpRedirect } from "../features/identity/return-to";
+import { redirectSignedInVisitor } from "../features/landing/landing-guard";
+import { LandingScreen } from "../features/landing/landing-screen";
+import { isSignedIn } from "../features/landing/signed-in";
 import { AppShell } from "./app-shell";
 
 const overviewStatuses = ["all", "active", "paused"] as const;
@@ -37,13 +40,24 @@ export function parseOverviewSearch(input: Record<string, unknown>): OverviewSea
   return { page, status: status as OverviewStatus };
 }
 
-const rootRoute = createRootRoute({
+// The session check is passed in through router context, so tests can replace it without a server.
+export type RouterContext = { isSignedIn: () => Promise<boolean> };
+
+const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: () => (
     <AppShell>
       <Outlet />
       <Toaster />
     </AppShell>
   ),
+});
+
+// Public landing page. A signed-in visitor goes straight to the overview, using the same session check as the identity screens.
+const landingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  beforeLoad: ({ context }) => redirectSignedInVisitor(context.isSignedIn),
+  component: LandingScreen,
 });
 
 const overviewRoute = createRoute({
@@ -155,6 +169,7 @@ const clickReportRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
+  landingRoute,
   overviewRoute,
   registerRoute,
   loginRoute,
@@ -169,8 +184,11 @@ const routeTree = rootRoute.addChildren([
 ]);
 
 // Pass a browser history from the entry point. Memory history keeps tests and SSR-free imports safe.
-export function createAppRouter(history: RouterHistory = createMemoryHistory({ initialEntries: ["/overview"] })) {
-  return createRouter({ routeTree, history });
+export function createAppRouter(
+  history: RouterHistory = createMemoryHistory({ initialEntries: ["/overview"] }),
+  context: RouterContext = { isSignedIn },
+) {
+  return createRouter({ routeTree, history, context });
 }
 
 declare module "@tanstack/react-router" {
