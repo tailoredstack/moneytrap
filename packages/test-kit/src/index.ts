@@ -16,6 +16,7 @@ export { FakeDnsResolver } from "./fakes/dns-resolver";
 export { FakeEarningsSource } from "./fakes/earnings-source";
 export { FakeIdGenerator } from "./fakes/id-generator";
 export { FakeIdempotencyStore } from "./fakes/idempotency-store";
+export { FakeLedgerReconciliationSource } from "./fakes/ledger-reconciliation-source";
 export { FakeNetworkAccountStore } from "./fakes/network-account-store";
 export { FakeNetworkConnector } from "./fakes/network-connector";
 export { FakeNotifier } from "./fakes/notifier";

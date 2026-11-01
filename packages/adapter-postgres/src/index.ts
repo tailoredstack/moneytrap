@@ -5,6 +5,7 @@ export { createCatalogSyncStore } from "./catalog/catalog-sync-store";
 export { createSourceFactStore, type SourceFactStore, type UpsertOutcome } from "./catalog/source-fact-store";
 export { createConversionImportStore } from "./conversions/batches";
 export { createProgramApprovalStore } from "./eligibility/program-approval-store";
+export { createLedgerReconciliationSource } from "./finance/ledger-reconciliation";
 export { createBulkJobStore } from "./links/bulk-jobs";
 export { createLinkStore } from "./links/link-store";
 export { createRouteSource } from "./links/route-source";
