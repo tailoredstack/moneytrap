@@ -28,8 +28,12 @@ export class FakePayoutMethodStore implements PayoutMethodStore {
   }
 
   async listForOrganization(organizationId: Id<"organization">): Promise<PayoutMethodRecord[]> {
+    // Ordered by created_at, id, the same as the pg adapter.
     return this.methods
       .filter((method) => method.organizationId === organizationId)
+      .sort(
+        (a, b) => a.record.createdAt.getTime() - b.record.createdAt.getTime() || a.record.id.localeCompare(b.record.id),
+      )
       .map(({ record }) => ({ ...record }));
   }
 
