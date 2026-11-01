@@ -286,6 +286,7 @@ These are starting points. Each is recorded as configurable policy with a versio
 | ADR-011 | Deferred: OAuth 2.0 for user-delegated client access. M7 ships org-scoped API keys only | Accepted, 2026-10-31 (deferred) |
 | ADR-012 | Deferred: real network adapter until a partner is contracted; the recorded-fixture simulator is the connector | Accepted, 2026-11-01 (superseded by ADR-013) |
 | ADR-013 | Rakuten Advertising is the first network partner; WP-4.3 adapter targets its sandbox | Accepted, 2026-11-01 |
+| ADR-014 | Network adapters stay code until a spike proves a declarative connector engine; the dashboard manages accounts | Accepted, 2026-11-01 (gate: engine spike, OZE-3275) |
 | ADR-003 | Postgres + Kysely; migrations statically bundled | Accepted, 2026-10-31 |
 | ADR-004 | Postgres outbox → Redis queue; at-least-once with consumer dedupe | Accepted, 2026-10-31 (relay gated to WP-1.7) |
 | ADR-005 | Money as `bigint` minor units with largest-remainder allocation | Accepted, 2026-10-31 (gate: WP-1.1 domain tests green) |
