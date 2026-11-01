@@ -340,7 +340,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         organizationId: orgId,
         auditId: "aud_hold_12",
         actor,
-        releasedAt: new Date(placedAt.getTime() - 1000),
+        releasedAt: new Date(placedAt.getTime() - 200),
       }),
     ).rejects.toThrow("release precedes placement");
   });
@@ -379,7 +379,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
     ).rejects.toThrow("may only be released after placement");
     await expect(
       sql`insert into payout_holds (id, publisher_id, currency, amount_minor, reason, expires_at, released_at, created_by, created_at)
-        values ('pho_pol_12', ${publisherId}, 'GBP', 1, 'review', ${new Date(placedAt.getTime() - 1000)}, null, ${actor.id}, ${placedAt})`.execute(
+        values ('pho_pol_12', ${publisherId}, 'GBP', 1, 'review', ${new Date(placedAt.getTime() - 200)}, null, ${actor.id}, ${placedAt})`.execute(
         db,
       ),
     ).rejects.toThrow("payout_holds_expiry_ck");
@@ -408,5 +408,59 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         occurredAt: new Date(Date.now() + 60 * 60 * 1000),
       }),
     ).rejects.toThrow("later than the write clock");
+  });
+
+  test("a publish or release cannot carry a time later than the write clock", async () => {
+    const anHourAhead = new Date(Date.now() + 60 * 60 * 1000);
+    await expect(
+      policies.publish({
+        policy: v1,
+        auditId: "aud_pol_future",
+        organizationId: orgId,
+        actor,
+        occurredAt: anHourAhead,
+      }),
+    ).rejects.toThrow("later than the write clock");
+
+    const placedAt = writeNow();
+    await holds.place({
+      hold: { id: "pho_pol_14", publisherId, currency: "GBP", amountMinor: 1n, reason: "review", expiresAt: null },
+      organizationId: orgId,
+      auditId: "aud_hold_18",
+      actor,
+      occurredAt: placedAt,
+    });
+    await expect(
+      holds.release({
+        id: "pho_pol_14",
+        organizationId: orgId,
+        auditId: "aud_hold_19",
+        actor,
+        releasedAt: anHourAhead,
+      }),
+    ).rejects.toThrow("later than the write clock");
+  });
+
+  test("a release audit row names the publisher, currency and amount", async () => {
+    const placedAt = writeNow();
+    await holds.place({
+      hold: { id: "pho_pol_15", publisherId, currency: "GBP", amountMinor: 42n, reason: "review", expiresAt: null },
+      organizationId: orgId,
+      auditId: "aud_hold_20",
+      actor,
+      occurredAt: placedAt,
+    });
+    await holds.release({
+      id: "pho_pol_15",
+      organizationId: orgId,
+      auditId: "aud_hold_21",
+      actor,
+      releasedAt: writeNow(),
+    });
+    const row = await sql<{
+      metadata: { publisherId: string; currency: string; amountMinor: string };
+    }>`select metadata from audit_logs
+      where id = 'aud_hold_21'`.execute(db);
+    expect(row.rows[0]?.metadata).toEqual({ publisherId, currency: "GBP", amountMinor: "42" });
   });
 });
