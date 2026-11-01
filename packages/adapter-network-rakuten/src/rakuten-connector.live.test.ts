@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { FakeClock } from "@moneytrap/test-kit";
 import { RakutenConnector } from "./rakuten-connector";
 
 // A smoke test against the real Rakuten API. It runs only when RAKUTEN_CLIENT_ID, RAKUTEN_CLIENT_SECRET, and

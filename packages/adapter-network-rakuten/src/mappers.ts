@@ -94,25 +94,28 @@ export function toPartnership(body: unknown): Partnership {
   const root = asObject(body);
   const partnership = asObject(root.partnership ?? root.partnerships);
   const advertiser = asObject(partnership.advertiser);
-  const network = advertiser.network;
-  const country = typeof network === "number" ? NETWORK_COUNTRY[network] : undefined;
   return {
     advertiserSourceId: sourceIdOf(advertiser.id),
     name: text(advertiser.name),
     approval: approvalOf(partnership.status),
-    countries: country === undefined ? [] : [country],
+    countries: countriesOf(advertiser.network),
   };
 }
 
+function countriesOf(network: unknown): string[] {
+  const country = typeof network === "number" ? NETWORK_COUNTRY[network] : undefined;
+  return country === undefined ? [] : [country];
+}
+
 // GET /v2/advertisers/{advertiser-id}, used when the publisher has no partnership with the advertiser. The advertiser
-// exists, but no approval or network is known.
+// exists and names its network, but the publisher has no approval with it.
 export function toUnpartneredAdvertiser(body: unknown): Partnership {
   const advertiser = asObject(asObject(body).advertiser);
   return {
     advertiserSourceId: sourceIdOf(advertiser.id),
     name: text(advertiser.name),
     approval: null,
-    countries: [],
+    countries: countriesOf(advertiser.network),
   };
 }
 
