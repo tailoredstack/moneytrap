@@ -30,7 +30,7 @@ describe("notifierFromEnv", () => {
     expect(() => notifierFromEnv({ SMTP_HOST: "127.0.0.1", SMTP_FROM: " " })).toThrow("SMTP_FROM is required");
   });
 
-  test.each(["abc", "0", "70000", "10.5", "-1"])("rejects SMTP_PORT=%s", (port) => {
+  test.each(["abc", "0", "70000", "10.5", "-1", "0x1f", "1e3", "1_025", "+1025"])("rejects SMTP_PORT=%s", (port) => {
     expect(() => notifierFromEnv({ SMTP_HOST: "127.0.0.1", SMTP_PORT: port, SMTP_FROM: "a@b.test" })).toThrow(
       "SMTP_PORT must be a port number",
     );
