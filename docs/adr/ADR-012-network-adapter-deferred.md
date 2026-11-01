@@ -1,6 +1,6 @@
 # ADR-012: No real network adapter until a partner is contracted; the simulator is the connector
 
-- Status: Accepted, 2026-11-01 (decision to defer WP-4.3)
+- Status: Accepted, 2026-11-01 (superseded by ADR-013; decision to defer WP-4.3)
 - Date: 2026-11-01
 - Work package: WP-4.3 (real connector adapter), blocked on plan open question Q1
 

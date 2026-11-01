@@ -15,6 +15,7 @@ Each ADR records one decision, the evidence behind it, and a fallback. Status is
 | [ADR-009](ADR-009-better-auth.md) | Better Auth for authentication, organizations, two-factor, and API keys | Accepted, 2026-10-31 |
 | [ADR-010](ADR-010-frontend-stack.md) | shadcn/ui, TanStack Router, Query, Table, and Form | Accepted, 2026-10-31 |
 | [ADR-011](ADR-011-defer-oauth-for-user-delegated-access.md) | Defer OAuth 2.0 for user-delegated access; M7 ships org-scoped API keys | Accepted, 2026-10-31 (deferred) |
-| [ADR-012](ADR-012-network-adapter-deferred.md) | No real network adapter until a partner is contracted; the simulator is the connector | Accepted, 2026-11-01 (deferred) |
+| [ADR-012](ADR-012-network-adapter-deferred.md) | No real network adapter until a partner is contracted; the simulator is the connector | Accepted, 2026-11-01 (superseded by ADR-013) |
+| [ADR-013](ADR-013-rakuten-network-partner.md) | Rakuten Advertising is the first network partner; WP-4.3 adapter targets its sandbox | Accepted, 2026-11-01 |
 
-ADR-013 (Optimize consent) is reserved by the implementation plan. Its work package writes it.
+The implementation plan reserved ADR-013 for Optimize consent (WP-9.0). ADR-013 now belongs to the Rakuten decision, so WP-9.0 needs the next free number when its work package writes it.
