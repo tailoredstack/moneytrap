@@ -317,9 +317,21 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
         migrationName: "0025_statement_closed_period",
         status: "Success",
       });
+      const restoredStatementConstraint = await sql<{ name: string }>`
+        select constraint_name as name from information_schema.table_constraints
+        where table_schema = current_schema() and table_name = 'statements'
+          and constraint_name = 'statements_period_revision_uq'`.execute(world.db);
+      expect(restoredStatementConstraint.rows).toHaveLength(1);
       const adminDown = await migrator.migrateDown();
       expect(adminDown.error).toBeUndefined();
       expect(adminDown.results?.[0]).toMatchObject({ migrationName: "0024_better_auth_admin", status: "Success" });
+      const adminColumns = await sql<{ n: string }>`
+        select count(*)::text as n from information_schema.columns
+        where table_schema = current_schema() and (
+          (table_name = 'user' and column_name in ('role', 'banned', 'banReason', 'banExpires')) or
+          (table_name = 'session' and column_name = 'impersonatedBy')
+        )`.execute(world.db);
+      expect(adminColumns.rows[0]?.n).toBe("0");
       const down = await migrator.migrateDown();
       expect(down.error).toBeUndefined();
       expect(down.results?.[0]).toMatchObject({ migrationName: "0023_payout_batches", status: "Success" });
