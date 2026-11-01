@@ -113,7 +113,7 @@ Each lane shows the order a single owner should work, and which other lanes it m
 
 ### W4 — Network, catalog & eligibility
 - **Port-first merge:** 4.1 (connector port and capabilities) before any other lane.
-- **Lane A (connector):** 4.1 → 4.2 (simulator, can start in W2) → 4.3 (real adapter, depends on partner decision) · 4.4
+- **Lane A (connector):** 4.1 → 4.2 (simulator, can start in W2) → 4.3 (real adapter, Rakuten Advertising per ADR-013) · 4.4
 - **Lane B (catalog):** 4.5 → 4.6 → 4.7
 - **Lane C (eligibility):** 4.8 (pure, can start in W3) → 4.9 → 4.10
 - **Lane D (UI):** 4.11 builds against the simulator.
