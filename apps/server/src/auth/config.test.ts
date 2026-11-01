@@ -211,9 +211,15 @@ describe("trusted origins", () => {
     expect(options.trustedOrigins).toEqual(["https://moneytrap.test", "http://localhost:3000"]);
   });
 
-  test("never lists a wildcard", () => {
-    const options = authOptions({ ...base, trustedOrigins: ["http://localhost:3000"] });
-
-    expect((options.trustedOrigins as string[]).some((origin) => origin.includes("*"))).toBe(false);
+  test("refuses an origin that is a pattern or not an exact origin, so the list stays explicit", () => {
+    for (const entry of [
+      "*",
+      "https://*.example.test",
+      "http://localhost:*",
+      "http://localhost:3000/",
+      "ftp://x.test",
+    ]) {
+      expect(() => authOptions({ ...base, trustedOrigins: [entry] })).toThrow("TRUSTED_ORIGINS must be");
+    }
   });
 });

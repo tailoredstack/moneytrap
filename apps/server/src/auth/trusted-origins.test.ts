@@ -52,4 +52,17 @@ describe("TRUSTED_ORIGINS policy value", () => {
   test("one invalid entry refuses the whole list and names the entry", () => {
     expect(() => trustedOrigins("http://localhost:3000,ftp://example.test")).toThrow("ftp://example.test");
   });
+
+  test("does not echo credentials from an entry into the error", () => {
+    let message = "";
+    try {
+      trustedOrigins("http://admin:hunter2@localhost:3000");
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("TRUSTED_ORIGINS must be");
+    expect(message).not.toContain("hunter2");
+    expect(message).not.toContain("admin");
+  });
 });
