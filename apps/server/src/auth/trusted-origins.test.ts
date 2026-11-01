@@ -54,15 +54,19 @@ describe("TRUSTED_ORIGINS policy value", () => {
   });
 
   test("does not echo credentials from an entry into the error", () => {
-    let message = "";
-    try {
-      trustedOrigins("http://admin:hunter2@localhost:3000");
-    } catch (error) {
-      message = (error as Error).message;
-    }
+    // The passwords with "/", "?", and "#" end the userinfo early for a naive pattern.
+    for (const password of ["hunter2", "hun/ter2", "hun?ter2", "hun#ter2"]) {
+      let message = "";
+      try {
+        trustedOrigins(`http://admin:${password}@localhost:3000`);
+      } catch (error) {
+        message = (error as Error).message;
+      }
 
-    expect(message).toContain("TRUSTED_ORIGINS must be");
-    expect(message).not.toContain("hunter2");
-    expect(message).not.toContain("admin");
+      expect(message).toContain("TRUSTED_ORIGINS must be");
+      expect(message).toContain('"http://***@localhost:3000"');
+      expect(message).not.toContain("admin");
+      expect(message).not.toContain("ter2");
+    }
   });
 });
