@@ -9,6 +9,9 @@
     "spikes/*"
   ],
   "scripts": {
+    "setup": "bun scripts/setup.ts",
+    "db:migrate": "bun apps/server/build.ts --manifest-only && bun apps/server/src/index.ts --migrate",
+    "seed": "bun apps/server/src/seed.ts",
     "dev": "bun run --parallel --filter @moneytrap/server --filter @moneytrap/web dev",
     "lint": "biome check .",
     "format": "biome format --write .",

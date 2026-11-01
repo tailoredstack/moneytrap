@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "bun ../../scripts/setup-env.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "bun run build.ts"
   },
