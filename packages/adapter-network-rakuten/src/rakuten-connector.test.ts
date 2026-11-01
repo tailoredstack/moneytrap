@@ -280,6 +280,10 @@ describe("RakutenConnector capabilities", () => {
     expect(result.ok && result.value.permittedScopes).toEqual([`account:${FAKE_ACCOUNT_ID}`]);
     expect(Object.keys(RAKUTEN_CAPABILITIES).sort()).toEqual([...CONNECTOR_OPERATIONS].sort());
   });
+
+  test("the exported profile is conservative because account wiring may not include the reports token", () => {
+    expect(RAKUTEN_CAPABILITIES.retrieve_settlement_evidence).toBe("temporarily_unavailable");
+  });
 });
 
 describe("RakutenConnector Advanced Reports", () => {
