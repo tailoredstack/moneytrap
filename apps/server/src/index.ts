@@ -15,7 +15,7 @@ import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { NotifyDev } from "./adapters/notify-dev";
 import { createApp } from "./app";
-import { createAuth } from "./auth/config";
+import { createAuth, trustedOrigins } from "./auth/config";
 import { notifierMailer } from "./auth/mailer";
 import { rateLimitPolicy } from "./auth/rate-limit";
 import { authenticate } from "./http/auth";
@@ -58,6 +58,9 @@ function serve(): void {
     .split(",")
     .map((cidr) => cidr.trim())
     .filter(Boolean);
+  // Comma-separated origins Better Auth trusts besides BASE_URL, for example http://localhost:3000,http://localhost:5190.
+  // An entry that is not an http or https origin stops startup.
+  const extraOrigins = trustedOrigins(Bun.env.TRUSTED_ORIGINS);
   // One Redis connection serves the rate limits, the route view cache, and the click queue.
   const redis = createRedisConnection(requiredEnv("REDIS_URL"));
   const auth = createAuth({
@@ -68,6 +71,7 @@ function serve(): void {
     rateLimitCounter: createRedisRateLimitCounter(redis),
     rateLimitPolicy: rateLimitPolicy(Bun.env),
     trustedProxies,
+    trustedOrigins: extraOrigins,
     // Dev sink: messages stay in memory until the production Notifier adapter lands. Verification and
     // reset links are not delivered outside this process yet.
     mailer: notifierMailer(new NotifyDev()),

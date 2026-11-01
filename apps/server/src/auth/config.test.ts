@@ -174,3 +174,46 @@ describe("auth rate limits (WP-2.14)", () => {
     ]);
   });
 });
+
+describe("trusted origins", () => {
+  const counter = { increment: async () => 1, count: async () => 0 };
+  const base = {
+    pool: new Pool({ connectionString: "postgres://unused.invalid/db" }),
+    secret: "test-secret-at-least-32-characters-long",
+    baseURL: "https://moneytrap.test",
+    mailer: { sendVerification: async () => {}, sendPasswordReset: async () => {}, sendInvitation: async () => {} },
+    rateLimitCounter: counter,
+  };
+
+  test("trusts the base URL origin when no other origin is configured", () => {
+    expect(authOptions(base).trustedOrigins).toEqual(["https://moneytrap.test"]);
+  });
+
+  test("trusts the base URL origin, without its path", () => {
+    expect(authOptions({ ...base, baseURL: "http://127.0.0.1:3000/app" }).trustedOrigins).toEqual([
+      "http://127.0.0.1:3000",
+    ]);
+  });
+
+  test("adds the configured origins and keeps the base URL origin first", () => {
+    const options = authOptions({
+      ...base,
+      baseURL: "http://127.0.0.1:3000",
+      trustedOrigins: ["http://localhost:3000", "http://localhost:5190"],
+    });
+
+    expect(options.trustedOrigins).toEqual(["http://127.0.0.1:3000", "http://localhost:3000", "http://localhost:5190"]);
+  });
+
+  test("does not list the base URL origin twice", () => {
+    const options = authOptions({ ...base, trustedOrigins: ["https://moneytrap.test", "http://localhost:3000"] });
+
+    expect(options.trustedOrigins).toEqual(["https://moneytrap.test", "http://localhost:3000"]);
+  });
+
+  test("never lists a wildcard", () => {
+    const options = authOptions({ ...base, trustedOrigins: ["http://localhost:3000"] });
+
+    expect((options.trustedOrigins as string[]).some((origin) => origin.includes("*"))).toBe(false);
+  });
+});
