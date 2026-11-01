@@ -161,7 +161,7 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
       .sort();
     if (short.length > 0) {
       this.audit.push({
-        action: "payout_batch.approval_denied",
+        action: "payout_batch.approval_blocked",
         entityId: batch.id,
         actor: input.audit.actor,
         occurredAt: input.audit.occurredAt,

@@ -301,7 +301,7 @@ export function createPayoutBatchStore(db: Kysely<unknown>): PayoutBatchStore {
           await writeAudit(tx, {
             organizationId,
             audit,
-            action: "payout_batch.approval_denied",
+            action: "payout_batch.approval_blocked",
             batchId,
             metadata: {
               preparedBy: row.created_by,

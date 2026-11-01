@@ -465,7 +465,7 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
       );
       expect(batch.rows[0]?.state).toBe("prepared");
       const audits = await sql<{ actor_id: string; metadata: Record<string, unknown> }>`
-        select actor_id, metadata from audit_logs where entity_id = ${batchId} and action = 'payout_batch.approval_denied'`.execute(
+        select actor_id, metadata from audit_logs where entity_id = ${batchId} and action = 'payout_batch.approval_blocked'`.execute(
         world.db,
       );
       expect(audits.rows).toHaveLength(1);
