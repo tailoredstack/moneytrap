@@ -79,6 +79,8 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
   return {
     async publish({ policy, auditId, organizationId, actor, occurredAt }) {
       return withTx(db, async (tx): Promise<PublishPolicyResult> => {
+        // The publish time is bounded like a hold's time, so a publish cannot be backdated to change a past decision.
+        await refuseBackdated(tx, occurredAt);
         await sql`select pg_advisory_xact_lock(hashtext(${`payout_policy:${policy.currency}`}))`.execute(tx);
         const latest = await sql<PolicyRow>`select currency, version, minimum_minor, effective_from from payout_policies
           where currency = ${policy.currency} order by version desc limit 1`.execute(tx);

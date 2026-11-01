@@ -2,10 +2,18 @@ import type { PayoutPolicyStore, PublishPolicyResult } from "@moneytrap/app/src/
 import type { CurrencyCode, PayoutPolicy } from "@moneytrap/domain";
 
 /** In-memory reference adapter for the payout policy store. It applies the same version rules as the Postgres adapter. */
+// Same bound as the Postgres adapter: a publish time earlier than the write clock less the tolerance is refused.
+const WRITE_CLOCK_TOLERANCE_MS = 5 * 60 * 1000;
+
 export class FakePayoutPolicyStore implements PayoutPolicyStore {
   readonly policies: PayoutPolicy[] = [];
 
+  constructor(private readonly writeClock: () => Date = () => new Date()) {}
+
   async publish({ policy, occurredAt }: { policy: PayoutPolicy; occurredAt: Date }): Promise<PublishPolicyResult> {
+    if (occurredAt.getTime() < this.writeClock().getTime() - WRITE_CLOCK_TOLERANCE_MS) {
+      throw new Error("payout_policies: timestamp is earlier than the write clock");
+    }
     const sameCurrency = this.policies.filter((existing) => existing.currency === policy.currency);
     if (sameCurrency.some((existing) => existing.version === policy.version)) {
       return { outcome: "rejected", reason: "version_taken" };
