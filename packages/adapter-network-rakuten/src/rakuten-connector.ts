@@ -94,7 +94,14 @@ const UNSUPPORTED: ReadonlySet<ConnectorOperation> = new Set(["list_adjustments"
 // What Rakuten's public API offers when optional account credentials are configured. Report availability is adjusted
 // per connector instance below; without its separate token it is temporarily unavailable, not silently unsupported.
 export const RAKUTEN_CAPABILITIES: CapabilityProfile = Object.fromEntries(
-  CONNECTOR_OPERATIONS.map((operation) => [operation, UNSUPPORTED.has(operation) ? "unsupported" : "supported"]),
+  CONNECTOR_OPERATIONS.map((operation) => [
+    operation,
+    UNSUPPORTED.has(operation)
+      ? "unsupported"
+      : operation === "retrieve_settlement_evidence"
+        ? "temporarily_unavailable"
+        : "supported",
+  ]),
 ) as CapabilityProfile;
 
 export class RakutenConnector implements NetworkConnector {
