@@ -164,6 +164,44 @@ function pick<T>(random: () => number, values: readonly T[]): T {
 }
 
 describe("[M3] network conformance", () => {
+  test("TP-W4-047 seven simulated sync days quarantine every malformed payload without silent approval", async () => {
+    const store = new FakeCatalogSyncStore();
+    const clock = new FakeClock(NOW);
+    const ids = new FakeIdGenerator();
+    const malformed = RECORDED_FIXTURES["malformed-records"].programs[0];
+    const run = (connector: RecordedNetworkSimulator) =>
+      syncCatalog({ connector, store, clock, ids }, { networkId: NETWORK });
+    const dailyQuarantineCounts: number[] = [];
+    const dailyUnknownFieldCounts: number[] = [];
+
+    for (let day = 0; day < 7; day++) {
+      const result = await run(new RecordedNetworkSimulator("malformed-records"));
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      dailyQuarantineCounts.push(result.value.programs.quarantined);
+      dailyUnknownFieldCounts.push(result.value.unknownFields);
+      const held = store.quarantined.filter((entry) => JSON.stringify(entry.payload) === JSON.stringify(malformed));
+      expect(held).toHaveLength(1);
+      expect(held[0]?.reason).toBe("missing_identity");
+      expect(
+        [...store.programs.values()]
+          .flatMap((fact) => fact.revisions)
+          .some((revision) => revision.sourceRevision === "1" && revision.payload.name === "No Identity"),
+      ).toBe(false);
+      const accepted = syncedProgram(store, "prg-4");
+      expect(accepted.name).toBe("Northwind Trail Gear");
+      expect("campaignTier" in accepted).toBe(false);
+      expect(accepted.approval).toBe("approved");
+      expect(evaluateEligibility(eligibilityFor(accepted, "", "website")).decision).toBe("deny");
+      expect(evaluateEligibility(eligibilityFor(accepted, "US", "  ")).decision).toBe("deny");
+      if (day < 6) clock.advance({ days: 1 });
+    }
+    expect(dailyQuarantineCounts).toHaveLength(7);
+    expect(dailyQuarantineCounts).toEqual(Array(7).fill(1));
+    expect(dailyUnknownFieldCounts).toEqual(Array(7).fill(1));
+    expect(store.quarantined).toHaveLength(1);
+  });
+
   describe("[M3] CT-009 partner credential disabled", () => {
     test("TP-W4-002 sync requested with a disabled credential fails safely and writes no catalog fact", async () => {
       const { store, run } = harness();
