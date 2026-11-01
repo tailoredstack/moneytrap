@@ -188,6 +188,19 @@ Goal: imported network transactions become correct, auditable publisher earnings
 | WP-6.12 | Finance ops screens | D | 1.14, 6.7, 6.10 | `web/src/features/finance-ops/`, `web/src/features/statements/` | UI-039, UI-040, UI-041, UI-043, UI-046, UI-053 | Screens in [ui/SKELETONS.md](../ui/SKELETONS.md) §6 render all states |
 | WP-6.13 | Activate finance conformance (part 1) | E | 6.5 to 6.10 | `packages/conformance/src/ct/finance-1.test.ts` | CT-012, CT-016 to CT-018, CT-020 | Green |
 
+### Wave 6 follow-up packages
+
+The current migration registry ends at `0023_payout_batches`. These follow-ups own distinct migration files and register them in serialized order: `0024` before `0025`. Dependencies below include only the blocked-by relations for these follow-ups; registry sequencing is called out explicitly where it applies. The Wave 6 test-plan rows TP-W6-044–052 merged to `main` in PR #163. These rows describe planned acceptance criteria and do not assert that implementation has passed.
+
+| Issue / WP | Lane | Depends on | Package / path | Tests | Done when |
+|---|---|---|---|---|---|
+| OZE-3262 / WP-6.7 follow-up | B | WP-6.7 / OZE-3178 | `packages/adapter-postgres/src/migrations/0024_attribution_persistence.ts` | TP-W6-021–024, TP-W6-044/045, CT-020 | Postgres match/exception persistence; publisher resolved by click→link join; unique exception per conversion; `last_click_in_window` audit; no publisher without qualifying click |
+| OZE-3261 / WP-6.8 follow-up | B | WP-6.8 / OZE-3179; OZE-3262 solely for migration-registry sequencing | `packages/adapter-postgres/src/migrations/0025_transaction_pull_cursors.ts` | TP-W6-025/046 | Cursor persistence for transaction pulls. OZE-3262 must merge first because both packages edit `migrations/index.ts`. |
+| OZE-3263 / WP-6.9 follow-up | C | WP-6.6 / OZE-3177; WP-6.7 / OZE-3178; OZE-3262 for persisted attribution; finance review required | Postgres publisher balance source | TP-W6-026–029, TP-W6-047, CT-016/017 | Postgres balance source mirrors app behavior for attribution, status, adjustment, and clearance. |
+| OZE-3264 / WP-6.10 follow-up | C | WP-6.10 / OZE-3181 | Postgres `StatementStore`; fake/Postgres contract; API-052/053 routes | TP-W6-030/034, TP-W6-048/049 | Statement persistence and routes satisfy the fake/Postgres contract. |
+| OZE-3265 / WP-6.13 follow-up | E (Linear label: lane-E) | WP-6.1 / OZE-3172; WP-6.3 / OZE-3174; WP-6.4 / OZE-3175; WP-6.5 / OZE-3176; WP-6.6 / OZE-3177; WP-6.13 / OZE-3184; OZE-3262 to serialize shared `migrations/index.ts` and `packages/conformance/src/ct/finance-1.test.ts` | `packages/conformance/src/ct/finance-1.test.ts` and ledger posting integration | TP-W6-017/029/050/051, CT-016 | Approved conversion posts exactly once to the real ledger; reversal links without mutating original history. |
+| OZE-3266 / WP-6.11 follow-up | C | WP-6.11 / OZE-3182; OZE-3263 | Wave 6 Postgres `EarningsSource` only; fake/Postgres parity | TP-W6-031/032/052 | `data_stale` is not zero; currency and `as_of` are preserved. Wave 7 payable/paid and Wave 8 API-047 are outside this row and must be separately tracked under their owning packages. |
+
 ---
 
 ## 9. Wave 7 — Settlement and payouts (milestone M6)
