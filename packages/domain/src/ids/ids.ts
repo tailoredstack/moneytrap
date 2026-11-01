@@ -18,6 +18,7 @@ export const ID_PREFIXES = {
   conversion: "cnv",
   conversionStatusEvent: "cse",
   conversionAdjustment: "cad",
+  statement: "stm",
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;
