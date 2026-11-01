@@ -227,8 +227,9 @@ export class RakutenConnector implements NetworkConnector {
 
     return this.guarded(operation, async () => {
       const reply = await this.client.get(operation, "/events/1.0/transactions", {
-        // The API takes whole seconds. The start rounds down and the end rounds up to the last second before the window
-        // ends, so no row in the window is left out. The filter below removes the sub-second excess.
+        // The API takes whole seconds, and its specification says the end returns transactions "on or before this date", so
+        // the end is inclusive. The start rounds down and the end rounds up to the last second before the window ends, so no
+        // row in the window is left out. The filter below removes the sub-second excess.
         transaction_date_start: eventsDate(new Date(Math.floor(window.from.getTime() / 1000) * 1000)),
         transaction_date_end: eventsDate(new Date(Math.ceil(window.to.getTime() / 1000) * 1000 - 1000)),
         limit: String(this.pageSize),

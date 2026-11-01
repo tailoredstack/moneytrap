@@ -60,6 +60,8 @@ deep links, or real transaction rows. Those are covered by the fake upstream bui
   denies every channel until a source for channels exists.
 - A transaction's amount is `commissions`. The Events API sends no status: a row is `approved` when `lock_status` is
   `Locked`, `reversed` when its amount is negative, and `pending` otherwise.
+- Events query dates are whole seconds. The specification describes `transaction_date_end` as "on or before this date", so
+  the end is inclusive and the adapter sends the last second before a window ends.
 - Events paging ends at the first empty page, not at a short page, because the API may cap `limit`. A row more than a
   second outside the window it was queried for fails the page, which would show the query dates are read in another zone.
 - HTTP 403 is read as the rate limit, as the specification describes it.
