@@ -43,14 +43,12 @@ export function stepUpWindowSeconds(raw: string | undefined): number {
 // STEP_UP_WINDOW_SECONDS is, because Better Auth would otherwise never match it and the failure would show up later as
 // INVALID_ORIGIN.
 export function trustedOrigins(raw: string | undefined): string[] {
-  return [
-    ...new Set(
-      (raw ?? "")
-        .split(",")
-        .filter((item) => item.trim())
-        .map(requireOrigin),
-    ),
-  ];
+  const origins = new Set<string>();
+  // Entries are numbered before blanks are dropped, so the position in an error is the position in the setting.
+  (raw ?? "").split(",").forEach((entry, index) => {
+    if (entry.trim()) origins.add(requireOrigin(entry, index));
+  });
+  return [...origins];
 }
 
 // One entry as the origin Better Auth would match. Credentials need an "@", so an entry that has one is never printed:
