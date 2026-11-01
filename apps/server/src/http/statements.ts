@@ -57,8 +57,8 @@ export function statementRoutes(wiring?: StatementWiring) {
         params.statementId as never,
       );
       if (!record) return fail(set, request, "RESOURCE_NOT_FOUND");
-      const downloadUrl = await store.downloadUrl?.(record.objectRef);
-      if (!downloadUrl || !/^https:\/\//.test(downloadUrl)) return fail(set, request, "INTERNAL");
+      const downloadUrl = await store.downloadUrl(record.objectRef);
+      if (!/^https:\/\//.test(downloadUrl)) return fail(set, request, "INTERNAL");
       return new Response(null, {
         status: 302,
         headers: { location: downloadUrl },
@@ -67,7 +67,7 @@ export function statementRoutes(wiring?: StatementWiring) {
 }
 
 function number(value?: string): number | undefined {
-  return value === undefined ? undefined : Number(value);
+  return value === undefined || !/^\d+$/.test(value) ? undefined : Number(value);
 }
 function serialize(record: Awaited<ReturnType<StatementStore["list"]>>[number]) {
   return {

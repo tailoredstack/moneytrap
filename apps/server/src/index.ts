@@ -24,6 +24,7 @@ import { notifierMailer } from "./auth/mailer";
 import { rateLimitPolicy } from "./auth/rate-limit";
 import { authenticate } from "./http/auth";
 import { apiRoutes } from "./http/routes";
+import { signStatementDownloadUrl } from "./statement-download-url";
 import { randomIds, systemClock } from "./system";
 
 // The only runtime inputs are environment variables and argv. Migrations are not run on boot; `--migrate` runs them
@@ -124,27 +125,12 @@ function serve(): void {
     .use(
       apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }, reports, redirect, approvals, networkAccounts, {
         store: createStatementStore(db, {
-          signDownloadUrl: async (objectRef) => {
-            const base = requiredEnv("STATEMENT_OBJECT_BASE_URL");
-            const secret = requiredEnv("STATEMENT_URL_SIGNING_SECRET");
-            const expires = Math.floor(Date.now() / 1000) + 300;
-            const path = objectRef.split("/").map(encodeURIComponent).join("/");
-            const url = new URL(path, base.endsWith("/") ? base : `${base}/`);
-            const key = await crypto.subtle.importKey(
-              "raw",
-              new TextEncoder().encode(secret),
-              { name: "HMAC", hash: "SHA-256" },
-              false,
-              ["sign"],
-            );
-            const payload = `${url.pathname}\n${expires}`;
-            const signature = Buffer.from(
-              await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload)),
-            ).toString("hex");
-            url.searchParams.set("expires", String(expires));
-            url.searchParams.set("signature", signature);
-            return url.toString();
-          },
+          signDownloadUrl: (objectRef) =>
+            signStatementDownloadUrl(objectRef, {
+              baseUrl: Bun.env.STATEMENT_OBJECT_BASE_URL,
+              secret: Bun.env.STATEMENT_URL_SIGNING_SECRET,
+              now: systemClock.now(),
+            }),
         }),
         principal: reports.principal,
       }),

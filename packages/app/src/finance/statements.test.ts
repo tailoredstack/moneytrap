@@ -45,6 +45,10 @@ class InMemoryBalanceSource implements PublisherBalanceSource {
 class InMemoryStatementStore implements StatementStore {
   readonly records: StatementRecord[] = [];
 
+  async downloadUrl(objectRef: string): Promise<string> {
+    return `https://statements.example.test/${objectRef}`;
+  }
+
   async findClosed(
     publisher: Id<"publisher">,
     currency: string,
