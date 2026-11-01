@@ -20,6 +20,7 @@ export const ID_PREFIXES = {
   conversionAdjustment: "cad",
   statement: "stm",
   settlementReceipt: "str",
+  payoutMethod: "pmt",
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;
