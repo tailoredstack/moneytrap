@@ -1,9 +1,9 @@
-import type { ApprovalRefusal, CurrencyCode, Id, ReservationSkip } from "@moneytrap/domain";
+import type { ApprovalRefusal, BatchApprovalState, CurrencyCode, Id, ReservationSkip } from "@moneytrap/domain";
 
 // A batch prepares payouts for many publishers in one currency. Each payout row in state `reserved` holds its amount
 // against the publisher's available balance until the batch is cancelled (DM-047, DM-048, CT-022). Approval by a second
 // person moves the batch and its payouts to `approved`, which still holds the funds (WP-7.8).
-export type PayoutBatchState = "prepared" | "approved" | "cancelled";
+export type PayoutBatchState = BatchApprovalState;
 export type PayoutState = "reserved" | "approved" | "cancelled";
 
 export interface PayoutRecord {
