@@ -38,6 +38,31 @@ export class FakeNetworkAccountStore implements NetworkAccountStore {
       }));
   }
 
+  async findForConnection(id: Id<"networkAccount">) {
+    const account = this.accounts.get(id);
+    return account ? { accountRef: account.accountRef, sealedCredential: account.sealedCredential } : null;
+  }
+
+  async rotateCredential(
+    id: Id<"networkAccount">,
+    sealedCredential: SealedSecret,
+    audit: NetworkAccountWrite["audit"],
+  ): Promise<NetworkAccountView | null> {
+    const account = this.accounts.get(id);
+    if (!account) return null;
+    account.sealedCredential = { ...sealedCredential };
+    const storedAudit = { ...audit, metadata: { ...audit.metadata, networkId: account.networkId } };
+    this.audits.push(storedAudit);
+    return {
+      id: account.id,
+      networkId: account.networkId,
+      accountRef: account.accountRef,
+      state: account.state,
+      lastCheckedAt: null,
+      createdAt: account.createdAt,
+    };
+  }
+
   async readSealedCredential(id: Id<"networkAccount">): Promise<SealedSecret | null> {
     const account = this.accounts.get(id);
     return account ? { ...account.sealedCredential } : null;

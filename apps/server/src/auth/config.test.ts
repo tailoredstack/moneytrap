@@ -50,17 +50,18 @@ describe("Better Auth config (Blueprint §7)", () => {
   test("does not replace Better Auth's password hashing (no custom hashing)", () => {
     const { options } = setup();
 
-    expect(options.emailAndPassword?.password).toBeUndefined();
+    expect((options.emailAndPassword as { password?: unknown } | undefined)?.password).toBeUndefined();
   });
 
   test("sends verification on sign-up through the injected mailer", async () => {
     const { options, sent } = setup();
 
     expect(options.emailVerification?.sendOnSignUp).toBe(true);
-    await options.emailVerification?.sendVerificationEmail?.(
-      { user: { email: "ada@example.test" } as never, url: "https://x.test/verify?token=t", token: "t" },
-      new Request("https://moneytrap.test/api/auth/sign-up/email"),
-    );
+    await options.emailVerification?.sendVerificationEmail?.({
+      user: { email: "ada@example.test" } as never,
+      url: "https://x.test/verify?token=t",
+      token: "t",
+    });
 
     expect(sent).toEqual([{ kind: "verify", to: "ada@example.test", url: "https://x.test/verify?token=t" }]);
   });
@@ -86,15 +87,16 @@ describe("Better Auth config (Blueprint §7)", () => {
   test("sends password reset through the injected mailer", async () => {
     const { options, sent } = setup();
 
-    await options.emailAndPassword?.sendResetPassword?.(
-      { user: { email: "ada@example.test" } as never, url: "https://x.test/reset?token=r", token: "r" },
-      new Request("https://moneytrap.test/api/auth/request-password-reset"),
-    );
+    await options.emailAndPassword?.sendResetPassword?.({
+      user: { email: "ada@example.test" } as never,
+      url: "https://x.test/reset?token=r",
+      token: "r",
+    });
 
     expect(sent).toEqual([{ kind: "reset", to: "ada@example.test", url: "https://x.test/reset?token=r" }]);
   });
 
-  test("enables the two-factor, organization, API key, and breached-password plugins", () => {
+  test("enables admin, two-factor, organization, API key, and breached-password plugins", () => {
     const { options } = setup();
     const ids = (options.plugins ?? []).map((plugin) => plugin.id);
 

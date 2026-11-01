@@ -12,6 +12,7 @@
     "@better-auth/api-key": "1.7.14",
     "@moneytrap/adapter-postgres": "workspace:*",
     "@moneytrap/adapter-redis": "workspace:*",
+    "@moneytrap/adapter-network-rakuten": "workspace:*",
     "@moneytrap/app": "workspace:*",
     "@moneytrap/contracts": "workspace:*",
     "@moneytrap/domain": "workspace:*",

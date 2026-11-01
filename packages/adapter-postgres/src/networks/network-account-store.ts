@@ -47,6 +47,45 @@ export function createNetworkAccountStore(db: Kysely<unknown>): NetworkAccountSt
       });
     },
 
+    async findForConnection(id) {
+      const { rows } = await sql<{ account_ref: string; credential_ciphertext: string; credential_key_id: string }>`
+        select account_ref, credential_ciphertext, credential_key_id from network_accounts where id = ${id}
+      `.execute(db);
+      const row = rows[0];
+      return row
+        ? {
+            accountRef: row.account_ref,
+            sealedCredential: { keyId: row.credential_key_id, ciphertext: row.credential_ciphertext },
+          }
+        : null;
+    },
+
+    async rotateCredential(id, sealedCredential, audit) {
+      return withTx(db, async (tx) => {
+        const updated = await sql<AccountRow>`
+          update network_accounts
+          set credential_ciphertext = ${sealedCredential.ciphertext}, credential_key_id = ${sealedCredential.keyId}, updated_at = ${audit.occurredAt}
+          where id = ${id}
+          returning id, network_id, account_ref, state, last_checked_at, created_at
+        `.execute(tx);
+        const row = updated.rows[0];
+        if (!row) return null;
+        await sql`insert into audit_logs (id, organization_id, actor_type, actor_id, action, entity_type, entity_id,
+          metadata, occurred_at)
+          values (${audit.id}, null, ${audit.actor.type}, ${audit.actor.id}, 'network_account.rotated',
+            'network_account', ${audit.entityId}, ${JSON.stringify({ networkId: row.network_id, keyId: sealedCredential.keyId })}::jsonb,
+            ${audit.occurredAt})`.execute(tx);
+        return {
+          id: row.id as Id<"networkAccount">,
+          networkId: row.network_id,
+          accountRef: row.account_ref,
+          state: row.state,
+          lastCheckedAt: row.last_checked_at,
+          createdAt: row.created_at,
+        };
+      });
+    },
+
     async listForNetwork(networkId: string): Promise<NetworkAccountView[]> {
       const { rows } = await sql<AccountRow>`
         select id, network_id, account_ref, state, last_checked_at, created_at

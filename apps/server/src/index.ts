@@ -1,6 +1,7 @@
 import {
   createClickReportStore,
   createMembershipReader,
+  createNetworkAccountStore,
   createProgramApprovalStore,
   createRouteSource,
   migrate,
@@ -14,6 +15,8 @@ import {
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import { notifierFromEnv } from "./adapters/notifier-from-env";
+import { createSecretBox } from "./adapters/secret-box";
+import { secretKeyringFromEnv } from "./adapters/secret-box-from-env";
 import { createApp } from "./app";
 import { createAuth, trustedOrigins } from "./auth/config";
 import { notifierMailer } from "./auth/mailer";
@@ -95,6 +98,19 @@ function serve(): void {
     ids: randomIds,
     principal: reports.principal,
   };
+  const networkAccounts = {
+    db,
+    store: createNetworkAccountStore(db),
+    secretBox: createSecretBox(
+      secretKeyringFromEnv({
+        NETWORK_SECRET_ACTIVE_KEY_ID: Bun.env.NETWORK_SECRET_ACTIVE_KEY_ID,
+        NETWORK_SECRET_KEYS: Bun.env.NETWORK_SECRET_KEYS,
+      }),
+    ),
+    clock: systemClock,
+    ids: randomIds,
+    principal: (headers: Headers) => authenticate(auth, headers, createMembershipReader(db)),
+  };
   const redirect = {
     cache: createRouteCache(redis),
     source: createRouteSource(db),
@@ -104,7 +120,7 @@ function serve(): void {
   };
 
   createApp({ clock: systemClock, ids: randomIds, readiness: [] })
-    .use(apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }, reports, redirect, approvals))
+    .use(apiRoutes(auth, { trustProxy: trustedProxies.length > 0 }, reports, redirect, approvals, networkAccounts))
     .listen({ hostname, port });
   console.log(`Listening on ${hostname}:${port}`);
 }

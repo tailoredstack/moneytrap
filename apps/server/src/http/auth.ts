@@ -8,6 +8,8 @@ import { guard } from "./guards/enforce";
 export type AuthHandler = { handler: (request: Request) => Response | Promise<Response> };
 
 export type SessionAuth = Pick<ReturnType<typeof createAuth>, "api">;
+export type AuthSession = ReturnType<typeof createAuth>["$Infer"]["Session"];
+export type AuthenticatedPrincipal = Principal & { globalRole?: AuthSession["user"]["role"] | null | undefined };
 
 // Reads a user's memberships. The only source of roles (spec §4.1). Callers in the composition root supply it.
 export type MembershipLoader = (userId: Id<"user">) => Promise<readonly Membership[]>;
@@ -22,11 +24,11 @@ export async function authenticate(
   auth: SessionAuth,
   headers: Headers,
   memberships: MembershipLoader,
-): Promise<Principal | null> {
+): Promise<AuthenticatedPrincipal | null> {
   const session = await auth.api.getSession({ headers });
   if (!session) return null;
   const userId = session.user.id as Id<"user">;
-  return { userId, memberships: await memberships(userId) };
+  return { userId, memberships: await memberships(userId), globalRole: session.user.role ?? null };
 }
 
 // Forwards every method under /api/auth to Better Auth. Its own routes handle sign-up, sessions,

@@ -44,6 +44,8 @@ async function startServer(): Promise<string> {
       REDIS_URL: "redis://unused.invalid:6379",
       BETTER_AUTH_SECRET: "binary-test-secret-at-least-32-characters",
       BASE_URL: `http://127.0.0.1:${port}`,
+      NETWORK_SECRET_ACTIVE_KEY_ID: "binary-test-key",
+      NETWORK_SECRET_KEYS: JSON.stringify({ "binary-test-key": Buffer.alloc(32, 7).toString("base64") }),
     },
     stdout: "pipe",
     stderr: "pipe",

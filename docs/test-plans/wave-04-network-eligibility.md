@@ -27,8 +27,8 @@ Catalog data from a network is versioned, quarantined when malformed, and never 
 | TP-W4-005 | Discover advertisers pagination | All pages consumed; freshness watermark stored | WP-4.6 |
 | TP-W4-006 | Discover programs with terms and countries | Normalized with source IDs and revisions | WP-4.5 |
 | TP-W4-007 | Secrets never in responses or logs | Scan of responses and logs finds none | WP-4.4 |
-| TP-W4-033 | Register account with adapter-declared typed credentials | Required fields validated; values sealed at rest; response contains only account metadata/status | WP-4.4a, API-111 |
-| TP-W4-034 | Register/rotate without ops permission | `403`; no account mutation; no submitted credential value in response or logs | WP-4.4a, API-111, API-112 |
+| TP-W4-033 | Register account with adapter-declared typed credentials | Adapter-owned schema validates required fields; client schema injection and undeclared keys are rejected before sealing or persistence; values sealed at rest; response contains only account metadata/status | WP-4.4a, API-111 |
+| TP-W4-034 | Register/rotate with the global ops authorization boundary | Better Auth global admins can register/rotate; tenant owners/admins and ordinary users receive `403`; denied requests do not mutate accounts or echo/log submitted credentials | WP-4.4a, API-111, API-112 |
 | TP-W4-035 | Rotate account credentials | Atomic replacement and audit event; response/logs contain no old or new values | WP-4.4a, API-112 |
 | TP-W4-036 | Read account or inspect credential status | Safe metadata/status only; no credential field/value in any read response | WP-4.4a |
 | TP-W4-037 | Test connection for stored account | Worker constructs adapter from stored account; returns adapter capability profile; no credential value in response/error/log | WP-4.4a, API-113 |

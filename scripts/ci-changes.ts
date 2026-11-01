@@ -61,14 +61,14 @@ export const isCodeArea = (path: string) => /^(?:apps|packages|spikes)\//.test(p
 // dependencies, so a new dependency cannot slip out of the list.
 export const DB_PATHS = [
   /^apps\/server\//,
-  /^packages\/(?:adapter-postgres|adapter-redis|app|conformance|contracts|domain|schema|test-kit)\//,
+  /^packages\/(?:adapter-postgres|adapter-redis|adapter-network-rakuten|app|conformance|contracts|domain|schema|test-kit)\//,
   /(?:^|\/)migrations\//,
 ];
 
 // What build:binary bundles: the server and its workspace dependencies, and the web app with the packages it uses.
 export const BINARY_PATHS = [
   /^apps\/(?:server|web)\//,
-  /^packages\/(?:adapter-postgres|adapter-redis|app|contracts|domain|schema|test-kit|ui)\//,
+  /^packages\/(?:adapter-postgres|adapter-redis|adapter-network-rakuten|app|contracts|domain|schema|test-kit|ui)\//,
 ];
 
 const matches = (patterns: RegExp[], path: string) => patterns.some((re) => re.test(path));
