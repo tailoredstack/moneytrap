@@ -81,6 +81,14 @@ describe("TRUSTED_ORIGINS policy value", () => {
     }
   });
 
+  test("numbers entries by their position in the setting, blanks included", () => {
+    expect(() => trustedOrigins("http://a.test,,ftp://x.test")).toThrow("entry 3 is not valid");
+    expect(() => trustedOrigins(",,ftp://x.test")).toThrow("entry 3 is not valid");
+    expect(() => trustedOrigins("http://a.test, ,admin:pw@x.test")).toThrow(
+      "entry 3 is not valid (not shown, it contains an @)",
+    );
+  });
+
   test("names the position and the text of a bad entry that has no @", () => {
     expect(() => trustedOrigins("http://localhost:3000, ftp://example.test")).toThrow(
       'entry 2 is not valid ("ftp://example.test")',
