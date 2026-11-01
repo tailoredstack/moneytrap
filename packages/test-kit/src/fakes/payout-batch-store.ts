@@ -27,6 +27,8 @@ interface MemoryPayout {
  */
 export class FakePayoutBatchStore implements PayoutBatchStore {
   readonly publisherOrganization = new Map<string, string>();
+  /** A publisher not listed here is approved. Seed a status to model one that is not. */
+  readonly publisherStatus = new Map<string, string>();
   readonly audit: { action: string; entityId: string; actor: BatchAudit["actor"] }[] = [];
   private readonly methods: { id: Id<"payoutMethod">; publisherId: Id<"publisher">; currency: CurrencyCode }[] = [];
   private readonly batches = new Map<string, Omit<PayoutBatchRecord, "lines">>();
@@ -65,7 +67,7 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
     const reserved: MemoryPayout[] = [];
     let capRemaining = write.capMinor;
     for (const line of write.lines) {
-      if (this.publisherOrganization.get(line.publisherId) !== write.organizationId) {
+      if (!this.isApprovedIn(line.publisherId, write.organizationId)) {
         skipped.push({ publisherId: line.publisherId, reason: "publisher_unavailable" });
         continue;
       }
@@ -134,6 +136,13 @@ export class FakePayoutBatchStore implements PayoutBatchStore {
       }
     }
     return [...byPublisher.values()].sort((a, b) => (a.publisherId < b.publisherId ? -1 : 1));
+  }
+
+  private isApprovedIn(publisherId: string, organizationId: string): boolean {
+    return (
+      this.publisherOrganization.get(publisherId) === organizationId &&
+      (this.publisherStatus.get(publisherId) ?? "approved") === "approved"
+    );
   }
 
   private sumOf(payouts: readonly MemoryPayout[], publisherId: string): bigint {

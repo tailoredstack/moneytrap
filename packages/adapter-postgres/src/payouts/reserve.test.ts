@@ -38,9 +38,15 @@ async function openPostgres() {
     organizationId,
     otherOrganizationId,
     userId,
-    async addPublisher(input: { organizationId: string; publisherId: string; methodId: string; currency: string }) {
+    async addPublisher(input: {
+      organizationId: string;
+      publisherId: string;
+      methodId: string;
+      currency: string;
+      status?: string;
+    }) {
       await sql`insert into publishers (id, legal_name, status, organization_id, created_at, updated_at)
-        values (${input.publisherId}, ${input.publisherId}, 'approved', ${input.organizationId}, ${now}, ${now})`.execute(
+        values (${input.publisherId}, ${input.publisherId}, ${input.status ?? "approved"}, ${input.organizationId}, ${now}, ${now})`.execute(
         db,
       );
       await sql`insert into payout_methods (id, publisher_id, provider, provider_account_ref, country, currency, state,

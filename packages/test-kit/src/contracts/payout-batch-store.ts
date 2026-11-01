@@ -22,6 +22,8 @@ export interface PayoutBatchWorld {
     publisherId: Id<"publisher">;
     methodId: Id<"payoutMethod">;
     currency: CurrencyCode;
+    // Defaults to approved. Only approved publishers are batched.
+    status?: "approved" | "suspended";
   }): Promise<void>;
   close(): Promise<void>;
 }
@@ -48,7 +50,7 @@ interface Harness {
   principal: Principal;
   prepare(body?: Record<string, unknown>): ReturnType<typeof prepareBatch>;
   cancel(id: string, principal?: Principal, organizationId?: Id<"organization">): ReturnType<typeof cancelBatch>;
-  fund(n: number, amountMinor: bigint): Promise<void>;
+  fund(n: number, amountMinor: bigint, status?: "approved" | "suspended"): Promise<void>;
   holds: FakePayoutHoldStore;
   nextKey(): string;
   available: Map<number, bigint>;
@@ -109,12 +111,13 @@ async function harness(world: PayoutBatchWorld): Promise<Harness> {
     cancel(id, as = principal, organizationId = world.organizationId) {
       return cancelBatch(ctx(), deps, as, { organizationId }, id);
     },
-    async fund(n, amountMinor) {
+    async fund(n, amountMinor, status = "approved") {
       await world.addPublisher({
         organizationId: world.organizationId,
         publisherId: pub(n),
         methodId: fixtureId("payoutMethod", n),
         currency: "GBP",
+        status,
       });
       balances.add(pub(n), {
         conversionId: fixtureId("conversion", n),
@@ -307,6 +310,14 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           const retry = ok(await h.prepare({ reservation_key: "run-2026-10-gbp" })).value;
           expect(retry.replayed).toBe(false);
           expect(retry.batch.totalMinor).toBe(10_000n);
+        }));
+
+      test("a publisher that is not approved is not batched, even with a balance", () =>
+        withWorld(async (h) => {
+          await h.fund(1, 10_000n);
+          await h.fund(5, 10_000n, "suspended");
+          const { batch } = ok(await h.prepare()).value;
+          expect(batch.lines.map((line) => line.publisherId)).toEqual([pub(1)]);
         }));
 
       test("only publishers of the caller's organization are batched", () =>
