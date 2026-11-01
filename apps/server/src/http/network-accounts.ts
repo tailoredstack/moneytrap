@@ -136,7 +136,6 @@ export function networkAccountRoutes(wiring?: NetworkAccountWiring) {
                   clientSecret: String(credentials.clientSecret ?? ""),
                   accountId: accountRef,
                   clock: wiring.clock,
-                  fetch: async () => Response.json({ advertisers: [] }),
                 })
               ).validateConnection(),
           },

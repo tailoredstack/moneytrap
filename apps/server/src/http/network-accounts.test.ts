@@ -75,6 +75,7 @@ function fixture(
   globalRole: string | null,
   memberships: readonly { organizationId: Id<"organization">; role: Role }[] = [],
   stored?: { clientId: string; clientSecret: string; web_security_token?: string },
+  useProductionConnector = false,
 ) {
   const store = new Store();
   let seals = 0;
@@ -101,14 +102,22 @@ function fixture(
       clock,
       ids,
       principal,
-      createConnector: (credentials, accountRef, connectorClock) =>
-        new RakutenConnector({
-          clientId: String(credentials.clientId),
-          clientSecret: String(credentials.clientSecret),
-          accountId: accountRef,
-          clock: connectorClock,
-          fetch: upstream.fetch,
-        }),
+      ...(useProductionConnector
+        ? {}
+        : {
+            createConnector: (
+              credentials: Record<string, string | number | boolean>,
+              accountRef: string,
+              connectorClock: typeof clock,
+            ) =>
+              new RakutenConnector({
+                clientId: String(credentials.clientId),
+                clientSecret: String(credentials.clientSecret),
+                accountId: accountRef,
+                clock: connectorClock,
+                fetch: upstream.fetch,
+              }),
+          }),
     }),
   );
   return {
@@ -120,6 +129,7 @@ function fixture(
     get opens() {
       return opens;
     },
+    upstream,
   };
 }
 
@@ -263,5 +273,24 @@ describe("POST /v1/admin/network-accounts (API-111, TP-W4-034)", () => {
     expect(f.opens).toBe(1);
     expect(f.store.findId).toBe(accountId);
     expect(f.store.connectionAccountRef).toBe(FAKE_ACCOUNT_ID);
+  });
+
+  test("production connector uses provider fetch instead of a fabricated success response", async () => {
+    const f = fixture("admin", [], { clientId: FAKE_CLIENT_ID, clientSecret: FAKE_CLIENT_SECRET }, true);
+    f.store.connectionAccountRef = FAKE_ACCOUNT_ID;
+    const originalFetch = Object.getOwnPropertyDescriptor(globalThis, "fetch");
+    Object.defineProperty(globalThis, "fetch", { configurable: true, value: f.upstream.fetch });
+    try {
+      const response = await f.server.handle(
+        new Request(`http://localhost/v1/admin/network-accounts/${accountId}/test-connection`, { method: "POST" }),
+      );
+      expect(response.status).toBe(200);
+      expect(JSON.parse(await response.text()).data.connection_status).toBe("connected");
+    } finally {
+      if (originalFetch) Object.defineProperty(globalThis, "fetch", originalFetch);
+    }
+    expect(f.upstream.requests.length).toBeGreaterThan(0);
+    expect(f.store.reads).toBe(1);
+    expect(f.opens).toBe(1);
   });
 });
