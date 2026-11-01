@@ -43,6 +43,23 @@ describe("pullTransactions", () => {
     expect(received[0]?.amount.currency).toBe("USD");
   });
 
+  test("TP-W4-041 an unsupported Events page fails without advancing its saved cursor or watermark", async () => {
+    const store = new FakeTransactionPullStore();
+    const scope = scopeOf(OCTOBER);
+    await store.saveCursor(NETWORK, scope, { cursor: "resume-here", watermark: WATERMARK });
+    const connector: Pick<NetworkConnector, "listTransactions"> = {
+      async listTransactions() {
+        return { ok: false, failure: { state: "unsupported" } };
+      },
+    };
+    const result = await pullTransactions({ connector, store }, { networkId: NETWORK, ...OCTOBER }, async () => {
+      throw new Error("a failed Events page must not import rows");
+    });
+
+    expect(result).toEqual({ ok: false, failure: { state: "unsupported" } });
+    expect(await store.loadCursor(NETWORK, scope)).toEqual({ cursor: "resume-here", watermark: WATERMARK });
+  });
+
   test("returns only transactions inside the requested range", async () => {
     const { received, run } = harness(new RecordedNetworkSimulator("clean-catalog"));
 

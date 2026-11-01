@@ -75,6 +75,8 @@ export interface SettlementEvidenceRecord {
   remittanceId: string;
   amount: Money;
   paidAt: Date;
+  paymentStatus?: string;
+  adjustedCommission?: Money;
 }
 
 export interface TimeRange {

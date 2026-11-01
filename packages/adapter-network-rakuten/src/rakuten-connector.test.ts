@@ -16,7 +16,13 @@ const NOW = "2026-11-01T00:00:00.000Z";
 const range = { from: new Date("2026-10-15T00:00:00.000Z"), to: new Date("2026-11-01T00:00:00.000Z") };
 
 function setup(
-  options: { mode?: FakeMode; pageSize?: number; tokenTtlSeconds?: number; wrap?: (f: FetchLike) => FetchLike } = {},
+  options: {
+    mode?: FakeMode;
+    pageSize?: number;
+    tokenTtlSeconds?: number;
+    webSecurityToken?: string;
+    wrap?: (f: FetchLike) => FetchLike;
+  } = {},
 ) {
   const clock = new FakeClock(NOW);
   const upstream = createFakeRakuten({
@@ -24,12 +30,14 @@ function setup(
     pageSize: options.pageSize ?? 2,
     ...(options.mode ? { mode: options.mode } : {}),
     ...(options.tokenTtlSeconds ? { tokenTtlSeconds: options.tokenTtlSeconds } : {}),
+    ...(options.webSecurityToken ? { webSecurityToken: options.webSecurityToken } : {}),
   });
   const diagnostics: Diagnostic[] = [];
   const connector = new RakutenConnector({
     clientId: FAKE_CLIENT_ID,
     clientSecret: FAKE_CLIENT_SECRET,
     accountId: FAKE_ACCOUNT_ID,
+    ...(options.webSecurityToken ? { webSecurityToken: options.webSecurityToken } : {}),
     clock,
     fetch: options.wrap ? options.wrap(upstream.fetch) : upstream.fetch,
     pageSize: options.pageSize ?? 2,
@@ -242,7 +250,7 @@ describe("RakutenConnector next links", () => {
 });
 
 describe("RakutenConnector capabilities", () => {
-  test("adjustments, settlement evidence, and notifications are unsupported and make no request", async () => {
+  test("adjustments and notifications are unsupported; settlement evidence without its token is unavailable", async () => {
     const { connector, upstream } = setup();
 
     expect(await connector.listAdjustments({ ...range, cursor: null })).toEqual({
@@ -251,7 +259,7 @@ describe("RakutenConnector capabilities", () => {
     });
     expect(await connector.retrieveSettlementEvidence({ ...range, cursor: null })).toEqual({
       ok: false,
-      failure: { state: "unsupported" },
+      failure: { state: "temporarily_unavailable", retryAfterSeconds: null },
     });
     expect(await connector.receiveNotification({ headers: {}, body: "{}" })).toEqual({
       ok: false,
@@ -260,14 +268,99 @@ describe("RakutenConnector capabilities", () => {
     expect(upstream.requests).toEqual([]);
   });
 
-  test("validate_connection reports the static profile and the account scope", async () => {
+  test("validate_connection reports the per-account capability profile and account scope", async () => {
     const { connector } = setup();
 
     const result = await connector.validateConnection();
 
-    expect(result.ok && result.value.capabilities).toEqual(RAKUTEN_CAPABILITIES);
+    expect(result.ok && result.value.capabilities).toEqual({
+      ...RAKUTEN_CAPABILITIES,
+      retrieve_settlement_evidence: "temporarily_unavailable",
+    });
     expect(result.ok && result.value.permittedScopes).toEqual([`account:${FAKE_ACCOUNT_ID}`]);
     expect(Object.keys(RAKUTEN_CAPABILITIES).sort()).toEqual([...CONNECTOR_OPERATIONS].sort());
+  });
+});
+
+describe("RakutenConnector Advanced Reports", () => {
+  test("without web_security_token reports unavailable and makes no Reports request", async () => {
+    const { connector, upstream } = setup();
+    const result = await connector.retrieveSettlementEvidence({ ...range, cursor: null });
+    expect(result).toEqual({ ok: false, failure: { state: "temporarily_unavailable", retryAfterSeconds: null } });
+    expect(upstream.requests.some((request) => request.path.includes("reports"))).toBe(false);
+  });
+
+  test("sends the separate Web Security Token only to reports 1, 22, and 23", async () => {
+    const sentinel = "web-security-token-secret-sentinel";
+    const { connector, upstream, diagnostics } = setup({ webSecurityToken: sentinel });
+    const result = await connector.retrieveSettlementEvidence({ ...range, cursor: null });
+    expect(result.ok).toBe(true);
+    const check = await connector.validateConnection();
+    expect(check.ok && check.value.capabilities.retrieve_settlement_evidence).toBe("supported");
+    const reports = upstream.requests.filter((request) => request.path.includes("reports"));
+    expect(reports.map((request) => request.query.get("reportid"))).toEqual(["1", "22", "23"]);
+    expect(reports.map((request) => request.path)).toEqual(Array(3).fill("/advancedreports/1.0"));
+    expect(reports[0]?.query.get("bdate")).toBe("20261015");
+    expect(reports[0]?.query.get("edate")).toBe("20261101");
+    expect(reports[1]?.query.get("payid")).toBe("pay-1");
+    expect(reports[2]?.query.get("invoiceid")).toBe("inv-1");
+    expect(reports.every((request) => request.query.get("token") === sentinel)).toBe(true);
+    const ordinary = upstream.requests.filter(
+      (request) => !request.path.includes("reports") && request.path !== "/token",
+    );
+    expect(ordinary.every((request) => request.authorization?.includes(sentinel) !== true)).toBe(true);
+    const safeResult = result.ok
+      ? {
+          items: result.value.items.map((item) => ({
+            ...item,
+            amount: item.amount.format(),
+            adjustedCommission: item.adjustedCommission?.format(),
+          })),
+        }
+      : result;
+    expect(JSON.stringify({ safeResult, diagnostics })).not.toContain(sentinel);
+    expect(result.ok && result.value.items[0]?.remittanceId).toBe("inv-1:order-1:sku-1");
+    expect(result.ok && result.value.items[0]?.paymentStatus).toBe("Paid");
+    expect(result.ok && result.value.items[0]?.amount.format()).toBe("9.50");
+    expect(result.ok && result.value.items[0]?.adjustedCommission?.format()).toBe("9.50");
+  });
+
+  test("program channels remain empty and eligibility remains unknown", async () => {
+    const { connector } = setup();
+    const result = await connector.discoverPrograms({ advertiserSourceId: "100", cursor: null });
+    expect(result.ok && result.value.items[0]).toMatchObject({ channels: [], eligibility: null });
+  });
+});
+
+describe("RakutenConnector independent pacing", () => {
+  test("Events stops at 100 requests per minute and resumes at the next window", async () => {
+    const { connector, clock, upstream } = setup();
+    const results = [];
+    for (let i = 0; i < 101; i += 1) results.push(await connector.listTransactions({ ...range, cursor: null }));
+    const events = upstream.requests.filter((request) => request.path === "/events/1.0/transactions");
+    expect(events).toHaveLength(100);
+    expect(results[99]?.ok).toBe(true);
+    expect(results[100]).toEqual({ ok: false, failure: { state: "temporarily_unavailable", retryAfterSeconds: 60 } });
+    clock.advance({ minutes: 1 });
+    expect((await connector.listTransactions({ ...range, cursor: null })).ok).toBe(true);
+  });
+
+  test("Advanced Reports stops at 500 requests per UTC day without consuming Events quota", async () => {
+    const { connector, clock, upstream } = setup({ webSecurityToken: "web-token" });
+    for (let i = 0; i < 166; i += 1) {
+      expect((await connector.retrieveSettlementEvidence({ ...range, cursor: null })).ok).toBe(true);
+    }
+    const exhausted = await connector.retrieveSettlementEvidence({ ...range, cursor: null });
+    const reports = upstream.requests.filter((request) => request.path === "/advancedreports/1.0");
+    expect(reports).toHaveLength(500);
+    expect(exhausted).toEqual({
+      ok: false,
+      failure: { state: "temporarily_unavailable", retryAfterSeconds: 86_400 },
+    });
+
+    expect((await connector.listTransactions({ ...range, cursor: null })).ok).toBe(true);
+    clock.advance({ days: 1 });
+    expect((await connector.retrieveSettlementEvidence({ ...range, cursor: null })).ok).toBe(true);
   });
 });
 
@@ -516,7 +609,7 @@ describe("RakutenConnector transactions (Events API)", () => {
     expect(upstream.requests).toEqual([]);
   });
 
-  test("a row in a currency the platform does not carry fails the page instead of being dropped", async () => {
+  test("a row in a currency the platform does not carry is preserved as an explicit safe no-loss failure", async () => {
     const { connector, diagnostics } = setup({
       wrap: (inner) => async (url, init) => {
         const response = await inner(url, init);
@@ -529,7 +622,7 @@ describe("RakutenConnector transactions (Events API)", () => {
 
     const result = await connector.listTransactions({ ...range, cursor: null });
 
-    expect(result).toEqual({ ok: false, failure: { state: "temporarily_unavailable", retryAfterSeconds: null } });
+    expect(result).toEqual({ ok: false, failure: { state: "unsupported" } });
     expect(diagnostics).toEqual([{ operation: "list_transactions", kind: "unsupported_currency" }]);
   });
 

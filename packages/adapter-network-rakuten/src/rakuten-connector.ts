@@ -28,7 +28,13 @@ import type {
   TransactionRecord,
   VerifiedNotification,
 } from "@moneytrap/app/src/ports/network-connector";
-import { type CapabilityProfile, CONNECTOR_OPERATIONS, type ConnectorOperation } from "@moneytrap/domain";
+import {
+  type CapabilityProfile,
+  CONNECTOR_OPERATIONS,
+  type ConnectorOperation,
+  isCurrencyCode,
+  parseMoney,
+} from "@moneytrap/domain";
 import {
   type ClientConfig,
   DEFAULT_BASE_URL,
@@ -67,6 +73,7 @@ export interface RakutenConnectorConfig {
   pageSize?: number;
   requestTimeoutMs?: number;
   onDiagnostic?: (diagnostic: Diagnostic) => void;
+  webSecurityToken?: string;
 }
 
 const DAY_MS = 86_400_000;
@@ -80,17 +87,12 @@ const SECOND_SLOP_MS = 1000;
 const MAX_EVENT_PAGES = 1000;
 
 // list_adjustments: the Events API says commission changes are not reflected after the fact, and no adjustments API is
-// published. retrieve_settlement_evidence: the payment reports (Advanced Reports) need a separate web security token and
-// publish no response format. receive_notifications: the postback is a plain GET to a URL with no signature, so its
-// origin cannot be verified.
-const UNSUPPORTED: ReadonlySet<ConnectorOperation> = new Set([
-  "list_adjustments",
-  "retrieve_settlement_evidence",
-  "receive_notifications",
-]);
+// retrieve_settlement_evidence is available only when an account has the optional sealed Web Security Token. The
+// receive_notifications postback is a plain GET to a URL with no signature, so its origin cannot be verified.
+const UNSUPPORTED: ReadonlySet<ConnectorOperation> = new Set(["list_adjustments", "receive_notifications"]);
 
-// What Rakuten's public API offers, operation by operation (docs verified in the package README). The three
-// unsupported operations have no usable Rakuten API for a publisher, and they fail as `unsupported` without a request.
+// What Rakuten's public API offers when optional account credentials are configured. Report availability is adjusted
+// per connector instance below; without its separate token it is temporarily unavailable, not silently unsupported.
 export const RAKUTEN_CAPABILITIES: CapabilityProfile = Object.fromEntries(
   CONNECTOR_OPERATIONS.map((operation) => [operation, UNSUPPORTED.has(operation) ? "unsupported" : "supported"]),
 ) as CapabilityProfile;
@@ -99,6 +101,7 @@ export class RakutenConnector implements NetworkConnector {
   private readonly client: RakutenClient;
   private readonly accountId: string;
   private readonly pageSize: number;
+  private readonly webSecurityToken: string | undefined;
 
   constructor(config: RakutenConnectorConfig) {
     for (const field of ["clientId", "clientSecret", "accountId"] as const) {
@@ -112,6 +115,7 @@ export class RakutenConnector implements NetworkConnector {
     }
     this.accountId = config.accountId;
     this.pageSize = pageSize;
+    this.webSecurityToken = config.webSecurityToken;
     const client: ClientConfig = {
       clientId: config.clientId,
       clientSecret: config.clientSecret,
@@ -132,7 +136,14 @@ export class RakutenConnector implements NetworkConnector {
       if (reply.kind !== "ok") return this.failureOf("validate_connection", reply);
       return {
         ok: true,
-        value: { capabilities: RAKUTEN_CAPABILITIES, rateLimit: null, permittedScopes: [`account:${this.accountId}`] },
+        value: {
+          capabilities: {
+            ...RAKUTEN_CAPABILITIES,
+            retrieve_settlement_evidence: this.webSecurityToken ? "supported" : "temporarily_unavailable",
+          },
+          rateLimit: null,
+          permittedScopes: [`account:${this.accountId}`],
+        },
       };
     });
   }
@@ -285,7 +296,54 @@ export class RakutenConnector implements NetworkConnector {
   async retrieveSettlementEvidence(
     _input: TimeRange & { cursor: string | null },
   ): Promise<ConnectorResult<Page<SettlementEvidenceRecord>>> {
-    return { ok: false, failure: { state: "unsupported" } };
+    if (!this.webSecurityToken) return { ok: false, failure: unavailable(null) };
+    return this.guarded("retrieve_settlement_evidence", async () => {
+      const report = async (reportid: string, filters: Record<string, string>) => {
+        const reply = await this.client.get("retrieve_settlement_evidence", "/advancedreports/1.0", {
+          reportid,
+          token: this.webSecurityToken as string,
+          ...filters,
+        });
+        if (reply.kind !== "ok") return { failure: this.failureOf("retrieve_settlement_evidence", reply) };
+        return { csv: reply.body };
+      };
+      const first = await report("1", { bdate: compactDate(_input.from), edate: compactDate(_input.to) });
+      if ("failure" in first) return first.failure;
+      const paymentRows = parseCsv(first.csv).rows;
+      const items: SettlementEvidenceRecord[] = [];
+      for (const payment of paymentRows) {
+        const payid = payment["Payment ID"];
+        const currency = payment["Currency Code"];
+        if (!payid || !currency) throw new MappingError("malformed_body");
+        if (!isCurrencyCode(currency)) throw new MappingError("unsupported_currency");
+        const second = await report("22", { payid });
+        if ("failure" in second) return second.failure;
+        for (const invoice of parseCsv(second.csv).rows) {
+          const invoiceid = invoice["Invoice Number"];
+          if (!invoiceid) throw new MappingError("malformed_body");
+          const third = await report("23", { invoiceid });
+          if ("failure" in third) return third.failure;
+          for (const detail of parseCsv(third.csv).rows) {
+            const orderId = detail["Order ID"];
+            const sku = detail["SKU #"];
+            const actual = reportMoney(detail["Actual Commission"], currency);
+            const adjusted = reportMoney(detail["Adjusted Commission"], currency);
+            const paidAt = reportDate(detail["Advertiser Payment Date"]);
+            if (!orderId || !sku || !detail["Transaction Payment Status"]) {
+              throw new MappingError("malformed_body");
+            }
+            items.push({
+              remittanceId: `${invoiceid}:${orderId}:${sku}`,
+              amount: actual,
+              adjustedCommission: adjusted,
+              paidAt,
+              paymentStatus: detail["Transaction Payment Status"],
+            });
+          }
+        }
+      }
+      return { ok: true, value: { items, nextCursor: null, watermark: this.client.now() } };
+    });
   }
 
   async receiveNotification(_input: NotificationEnvelope): Promise<ConnectorResult<VerifiedNotification>> {
@@ -355,6 +413,7 @@ export class RakutenConnector implements NetworkConnector {
     } catch (error) {
       if (error instanceof MappingError) {
         this.client.diagnose({ operation, kind: error.kind });
+        if (error.kind === "unsupported_currency") return { ok: false, failure: { state: "unsupported" } };
         return { ok: false, failure: unavailable(null) };
       }
       throw error;
@@ -428,4 +487,59 @@ function splitRange(range: TimeRange): TimeRange[] {
 // The Events API date format: YYYY-MM-DD HH:mm:ss, read as UTC.
 function eventsDate(at: Date): string {
   return at.toISOString().slice(0, 19).replace("T", " ");
+}
+
+function compactDate(at: Date): string {
+  return at.toISOString().slice(0, 10).replaceAll("-", "");
+}
+
+function reportMoney(value: string | undefined, currency: string) {
+  if (value === undefined || value === "") throw new MappingError("malformed_body");
+  const parsed = parseMoney(value, currency);
+  if (!parsed.ok) throw new MappingError(isCurrencyCode(currency) ? "malformed_body" : "unsupported_currency");
+  return parsed.value;
+}
+
+function reportDate(value: string | undefined): Date {
+  if (!value) throw new MappingError("malformed_body");
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
+  const at = match ? new Date(Date.UTC(Number(match[3]), Number(match[1]) - 1, Number(match[2]))) : new Date(value);
+  if (Number.isNaN(at.getTime())) throw new MappingError("malformed_body");
+  return at;
+}
+
+function parseCsv(body: unknown): { date: string | null; rows: Record<string, string>[] } {
+  if (typeof body !== "string") throw new MappingError("malformed_body");
+  const records: string[][] = [];
+  let row: string[] = [],
+    field = "",
+    quoted = false;
+  for (let i = 0; i < body.length; i += 1) {
+    const c = body[i] as string;
+    if (quoted && c === '"' && body[i + 1] === '"') {
+      field += '"';
+      i += 1;
+    } else if (c === '"') quoted = !quoted;
+    else if (!quoted && c === ",") {
+      row.push(field);
+      field = "";
+    } else if (!quoted && (c === "\n" || c === "\r")) {
+      if (c === "\r" && body[i + 1] === "\n") i += 1;
+      row.push(field);
+      field = "";
+      if (row.some((value) => value !== "")) records.push(row);
+      row = [];
+    } else field += c;
+  }
+  if (quoted) throw new MappingError("malformed_body");
+  if (field || row.length) {
+    row.push(field);
+    records.push(row);
+  }
+  const headers = records.shift();
+  if (!headers || headers.length === 0) throw new MappingError("malformed_body");
+  return {
+    date: null,
+    rows: records.map((values) => Object.fromEntries(headers.map((key, index) => [key.trim(), values[index] ?? ""]))),
+  };
 }
