@@ -13,6 +13,8 @@ export const payoutPolicy: Migration = {
       .addColumn("minimum_minor", "bigint", (column) => column.notNull().check(sql`minimum_minor >= 0`))
       .addColumn("effective_from", "timestamptz", (column) => column.notNull())
       .addColumn("created_at", "timestamptz", (column) => column.notNull())
+      // Policy is platform-wide per currency, so each row records the organization whose actor published it.
+      .addColumn("published_by_organization_id", "text", (column) => column.notNull().references("organizations.id"))
       .addPrimaryKeyConstraint("payout_policies_pk", ["currency", "version"])
       .execute();
 
@@ -27,6 +29,8 @@ export const payoutPolicy: Migration = {
       .addColumn("released_at", "timestamptz")
       .addColumn("created_by", "text", (column) => column.notNull())
       .addColumn("created_at", "timestamptz", (column) => column.notNull())
+      // A release cannot precede the placement, so a hold never has a released state before it existed.
+      .addCheckConstraint("payout_holds_release_ck", sql`released_at is null or released_at >= created_at`)
       .execute();
     await db.schema
       .createIndex("payout_holds_publisher_idx")
