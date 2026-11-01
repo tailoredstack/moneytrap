@@ -38,7 +38,7 @@ test("the fake keeps an unbalanced journal so a variance can be seeded", async (
   });
 
   const report = await reconcileLedger(ctx, source);
-  expect(report.unexplainedVariance).toEqual([{ currency: "USD", grossMinor: 1n }]);
+  expect(report.grossImbalance).toEqual([{ currency: "USD", grossMinor: 1n }]);
 });
 
 test("a snapshot is a copy: changing it does not change the stored ledger", async () => {

@@ -79,7 +79,7 @@ describe("ledger reconciliation (WP-X.3)", () => {
     const report = await reconcileLedger(ctx, ledger(sale, reversal));
 
     expect(report.status).toBe("clean");
-    expect(report.unexplainedVariance).toEqual([]);
+    expect(report.grossImbalance).toEqual([]);
     expect(report.counts).toEqual({ accounts: 3, journals: 2, postings: 4 });
     expect(report.controlTotals).toEqual([{ currency: "USD", debitMinor: 2_000n, creditMinor: 2_000n }]);
   });
@@ -92,7 +92,8 @@ describe("ledger reconciliation (WP-X.3)", () => {
     expect(report.findings).toEqual([
       expect.objectContaining({ code: "journal_unbalanced", journalId: "j1", currency: "USD", deltaMinor: 1n }),
     ]);
-    expect(report.unexplainedVariance).toEqual([{ currency: "USD", grossMinor: 1n }]);
+    expect(report.grossImbalance).toEqual([{ currency: "USD", grossMinor: 1n }]);
+    expect(report.findingCounts).toEqual({ journal_unbalanced: 1 });
   });
 
   test("opposite imbalances in two journals add up in the gross variance instead of cancelling", async () => {
@@ -104,7 +105,7 @@ describe("ledger reconciliation (WP-X.3)", () => {
       ["j1", 5n],
       ["j2", -5n],
     ]);
-    expect(report.unexplainedVariance).toEqual([{ currency: "USD", grossMinor: 10n }]);
+    expect(report.grossImbalance).toEqual([{ currency: "USD", grossMinor: 10n }]);
   });
 
   test("currencies are balanced one by one and never netted against each other", async () => {
@@ -115,7 +116,7 @@ describe("ledger reconciliation (WP-X.3)", () => {
       ["journal_unbalanced", "JPY", -500n],
       ["journal_unbalanced", "USD", 500n],
     ]);
-    expect(report.unexplainedVariance).toEqual([
+    expect(report.grossImbalance).toEqual([
       { currency: "JPY", grossMinor: 500n },
       { currency: "USD", grossMinor: 500n },
     ]);
@@ -194,6 +195,10 @@ describe("ledger reconciliation (WP-X.3)", () => {
       const report = await reconcileLedger(ctx, ledger(sale, partial));
 
       expect(report.findings.map((f) => f.code)).toEqual(["reversal_not_mirror"]);
+      // The ledger balances, so no amount is out of balance. The run still fails, and the counts say why.
+      expect(report.status).toBe("variance");
+      expect(report.grossImbalance).toEqual([]);
+      expect(report.findingCounts).toEqual({ reversal_not_mirror: 1 });
     });
 
     test("a reversal that keeps the original sides is not a mirror", async () => {

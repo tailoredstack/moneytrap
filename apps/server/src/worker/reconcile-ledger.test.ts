@@ -33,7 +33,8 @@ describe("ledger reconciliation job", () => {
       status: "clean",
       counts: { accounts: 2, journals: 1, postings: 2 },
       controlTotals: [{ currency: "USD", debitMinor: "100", creditMinor: "100" }],
-      unexplainedVariance: [],
+      grossImbalance: [],
+      findingCounts: {},
       findings: [],
     });
   });
@@ -58,8 +59,16 @@ describe("ledger reconciliation job", () => {
     const report = JSON.parse(result.json);
     expect(report.status).toBe("variance");
     expect(report.findings[0]).toMatchObject({ code: "journal_unbalanced", deltaMinor: "9007199254740992" });
-    expect(report.unexplainedVariance).toEqual([{ currency: "USD", grossMinor: "9007199254740992" }]);
+    expect(report.grossImbalance).toEqual([{ currency: "USD", grossMinor: "9007199254740992" }]);
   });
+});
+
+test("without DATABASE_URL the entry point exits 2 and says why", async () => {
+  const missing = await run({});
+
+  expect(missing.exitCode).toBe(2);
+  expect(missing.stdout).toBe("");
+  expect(missing.stderr).toContain("DATABASE_URL is required");
 });
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -81,7 +90,7 @@ async function run(env: Record<string, string | undefined>) {
 }
 
 describeWithDatabase("ledger reconciliation entry point against Postgres", () => {
-  test("runs as a process against a database: clean exit 0, variance exit 1, no URL exit 2", async () => {
+  test("runs as a process against a database: clean exit 0, variance exit 1", async () => {
     const schema = `recon_job_${crypto.randomUUID().replaceAll("-", "")}`;
     const admin = new Pool({ connectionString: databaseUrl });
     await admin.query(`create schema "${schema}"`);
@@ -122,11 +131,7 @@ describeWithDatabase("ledger reconciliation entry point against Postgres", () =>
 
       const dirty = await run({ DATABASE_URL: url.toString() });
       expect(dirty.exitCode).toBe(1);
-      expect(JSON.parse(dirty.stdout).unexplainedVariance).toEqual([{ currency: "USD", grossMinor: "1" }]);
-
-      const missing = await run({});
-      expect(missing.exitCode).toBe(2);
-      expect(missing.stderr).toContain("DATABASE_URL is required");
+      expect(JSON.parse(dirty.stdout).grossImbalance).toEqual([{ currency: "USD", grossMinor: "1" }]);
     } finally {
       await db.destroy();
       const cleanup = new Pool({ connectionString: databaseUrl });

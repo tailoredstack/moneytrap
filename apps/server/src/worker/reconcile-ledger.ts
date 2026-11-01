@@ -11,7 +11,7 @@ import { type LedgerReconciliationReport, reconcileLedger } from "@moneytrap/app
 import type { LedgerReconciliationSource } from "@moneytrap/app/src/ports/ledger-reconciliation-source";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
-import { randomIds, systemClock } from "../system";
+import { systemClock } from "../system";
 
 export interface LedgerReconciliationJobOptions {
   source: LedgerReconciliationSource;
@@ -33,8 +33,7 @@ function serialize(report: LedgerReconciliationReport): string {
 export async function runLedgerReconciliation(
   options: LedgerReconciliationJobOptions,
 ): Promise<LedgerReconciliationJobResult> {
-  const ctx = { db: undefined as never, clock: options.clock, ids: randomIds, actor: { type: "system", id: null } };
-  const report = await reconcileLedger(ctx, options.source);
+  const report = await reconcileLedger({ clock: options.clock }, options.source);
   const { journals, postings, accounts } = report.counts;
   const summary =
     report.status === "clean"
