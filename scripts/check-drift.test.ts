@@ -71,8 +71,8 @@ describe("version drift", () => {
       checkVersionDrift({ changed: [SPEC_VERSION_FILE], spec: { base: "2.0", head: "2.1" }, contract: none }),
     ).toEqual([]);
   });
-  test("a spec file deleted on the branch counts as a spec change", () => {
-    expect(checkVersionDrift({ changed: specChange, spec: none, contract: none })).toHaveLength(1);
+  test("a non-markdown file under the spec directory is a spec change", () => {
+    expect(checkVersionDrift({ changed: ["docs/legacy/diagram.png"], spec: none, contract: none })).toHaveLength(1);
   });
   test("fails a contract source change without a bump", () => {
     const errors = checkVersionDrift({
@@ -191,6 +191,30 @@ describe("against a real git branch", () => {
     write("docs/legacy/MONEYTRAP_API_OPERATIONS.md", "# API\n\nnew rule\n");
     write(SPEC_VERSION_FILE, specText("2.1"));
     commit("spec change and bump");
+    expect(collectDrift(repo, "main").errors).toEqual([]);
+  });
+  test("a spec file deleted on the branch counts as a spec change", () => {
+    git("rm", "-q", "docs/legacy/MONEYTRAP_API_OPERATIONS.md");
+    commit("delete spec file");
+    expect(collectDrift(repo, "main").errors).toHaveLength(1);
+  });
+  test("an untracked new spec file is seen", () => {
+    write("docs/legacy/NEW_SPEC.md", "# New\n");
+    expect(collectDrift(repo, "main").errors).toHaveLength(1);
+  });
+  test("a spec path with non-ASCII characters is not skipped", () => {
+    write("docs/legacy/spéc.md", "# Accent\n");
+    commit("accented spec file");
+    expect(collectDrift(repo, "main").errors).toHaveLength(1);
+  });
+  test("a base spec with no version line counts as version 0", () => {
+    git("checkout", "-q", "main");
+    write(SPEC_VERSION_FILE, "# Spec without a version\n");
+    commit("drop version");
+    git("checkout", "-q", "feature");
+    git("merge", "-q", "--ff-only", "main");
+    write(SPEC_VERSION_FILE, specText("1.0"));
+    commit("add version");
     expect(collectDrift(repo, "main").errors).toEqual([]);
   });
   test("an uncommitted spec change is seen too", () => {
