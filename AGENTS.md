@@ -67,7 +67,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 **8. Clean up the merged branch and worktree**
 - Run this after the PR merges. Leave the main checkout's uncommitted changes untouched.
 - Delete the remote branch with `git push origin --delete <branch>`, only if the PR state is `MERGED` and no other open PR uses that branch.
-- Remove the branch's worktree with `git worktree remove <path>`, never `--force`, and delete the local branch with `git branch -D <branch>`, only if the PR is `MERGED` and the worktree has no uncommitted changes.
+- Only if the PR is `MERGED` and the worktree has no uncommitted changes, remove the branch's worktree with `git worktree remove <path>` (never `--force`) and delete the local branch with `git branch -D <branch>`.
 - Never delete a branch with an open PR, a branch of a running thread, or a branch with uncommitted changes. Report each one instead.
 - End the step with `git worktree prune` and `git fetch --prune origin`.
 
