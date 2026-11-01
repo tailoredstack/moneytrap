@@ -53,15 +53,14 @@ export function trustedOrigins(raw: string | undefined): string[] {
   ];
 }
 
-// One entry as the origin Better Auth would match. The error names the entry with any credentials hidden, so a
-// `user:pass@` typo is not written to the logs.
-function requireOrigin(entry: string): string {
+// One entry as the origin Better Auth would match. Credentials need an "@", so an entry that has one is never printed:
+// the error gives its position instead, and a `user:pass@` typo does not reach the logs in any shape.
+function requireOrigin(entry: string, index: number): string {
   const origin = httpOrigin(entry.trim());
   if (!origin) {
-    // Everything between the scheme and the last "@" goes, because a password may itself contain "/", "?", or "#".
-    const shown = entry.trim().replace(/^([a-z][a-z0-9+.-]*:\/\/).*@/i, "$1***@");
+    const shown = entry.includes("@") ? "not shown, it contains an @" : `"${entry.trim()}"`;
     throw new Error(
-      `TRUSTED_ORIGINS must be a comma-separated list of http or https origins such as http://localhost:3000; got "${shown}"`,
+      `TRUSTED_ORIGINS must be a comma-separated list of http or https origins such as http://localhost:3000; entry ${index + 1} is not valid (${shown})`,
     );
   }
   return origin;

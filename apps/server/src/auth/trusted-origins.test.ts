@@ -53,20 +53,37 @@ describe("TRUSTED_ORIGINS policy value", () => {
     expect(() => trustedOrigins("http://localhost:3000,ftp://example.test")).toThrow("ftp://example.test");
   });
 
-  test("does not echo credentials from an entry into the error", () => {
-    // The passwords with "/", "?", and "#" end the userinfo early for a naive pattern.
-    for (const password of ["hunter2", "hun/ter2", "hun?ter2", "hun#ter2"]) {
+  test("never echoes an entry that may carry credentials, whatever its shape", () => {
+    const entries = [
+      "http://admin:hunter2@localhost:3000",
+      "http://admin:hun/ter2@localhost:3000",
+      "http://admin:hun?ter2@localhost:3000",
+      "http://admin:hun#ter2@localhost:3000",
+      "http://u:p@ss@localhost:3000",
+      "admin:hunter2@localhost:3000",
+      "http:/admin:hunter2@localhost:3000",
+      "http:\\\\admin:hunter2@localhost:3000",
+      "x http://admin:hunter2@localhost:3000",
+    ];
+    for (const entry of entries) {
       let message = "";
       try {
-        trustedOrigins(`http://admin:${password}@localhost:3000`);
+        trustedOrigins(entry);
       } catch (error) {
         message = (error as Error).message;
       }
 
       expect(message).toContain("TRUSTED_ORIGINS must be");
-      expect(message).toContain('"http://***@localhost:3000"');
+      expect(message).toContain("entry 1 is not valid (not shown, it contains an @)");
       expect(message).not.toContain("admin");
+      expect(message).not.toContain("hunter2");
       expect(message).not.toContain("ter2");
     }
+  });
+
+  test("names the position and the text of a bad entry that has no @", () => {
+    expect(() => trustedOrigins("http://localhost:3000, ftp://example.test")).toThrow(
+      'entry 2 is not valid ("ftp://example.test")',
+    );
   });
 });
