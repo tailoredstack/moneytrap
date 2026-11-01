@@ -214,7 +214,7 @@ Question 1 is decided and stays listed so the numbering that other docs cite sti
 
 ## 10. Immediate next steps (next two weeks)
 
-1. Decide open questions 1, 2, and 5 (owners: product, platform).
+1. Decide open questions 2 and 5 (owners: product, platform). Question 1 is decided (ADR-013).
 2. Create the monorepo skeleton and CI per blueprint §2 and §8.
 3. Run Spikes A–C; write ADRs 001–006.
 4. Import conformance cases CT-001 … CT-022 as failing test stubs, tagged by milestone.
