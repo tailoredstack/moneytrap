@@ -463,4 +463,31 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       where id = 'aud_hold_21'`.execute(db);
     expect(row.rows[0]?.metadata).toEqual({ publisherId, currency: "GBP", amountMinor: "42" });
   });
+
+  test("a second release before the placement returns false, as the fake does", async () => {
+    const placedAt = writeNow();
+    await holds.place({
+      hold: { id: "pho_pol_16", publisherId, currency: "GBP", amountMinor: 1n, reason: "review", expiresAt: null },
+      organizationId: orgId,
+      auditId: "aud_hold_22",
+      actor,
+      occurredAt: placedAt,
+    });
+    await holds.release({
+      id: "pho_pol_16",
+      organizationId: orgId,
+      auditId: "aud_hold_23",
+      actor,
+      releasedAt: writeNow(),
+    });
+    expect(
+      await holds.release({
+        id: "pho_pol_16",
+        organizationId: orgId,
+        auditId: "aud_hold_24",
+        actor,
+        releasedAt: new Date(placedAt.getTime() - 200),
+      }),
+    ).toBe(false);
+  });
 });
