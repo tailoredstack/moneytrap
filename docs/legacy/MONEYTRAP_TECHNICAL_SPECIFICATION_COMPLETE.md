@@ -19,6 +19,9 @@
 ## Moneytrap — Implementation-Neutral Technical Specification
 
 **Version:** 2.1 (implementation-neutral baseline)
+
+**Change note:** 2.1 adds the network-account API operations API-111–API-113; see the API operation catalog.
+
 **Status:** Proposed product behavior contract; not a selected implementation
 
 **Precedence:** Where a companion contains legacy implementation details, this document governs. Suggested paths, status mappings, field names, and interaction mechanics are examples; observable behavior, security invariants and financial correctness govern conformance.  
