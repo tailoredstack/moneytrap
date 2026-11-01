@@ -386,15 +386,15 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
   });
 
   test("a publish cannot be backdated to take a past decision's policy", async () => {
-    await expect(
-      policies.publish({
+    expect(
+      await policies.publish({
         policy: v1,
         auditId: "aud_pol_backdated",
         organizationId: orgId,
         actor,
         occurredAt: new Date(Date.now() - 60 * 60 * 1000),
       }),
-    ).rejects.toThrow("earlier than the write clock");
+    ).toEqual({ outcome: "rejected", reason: "outside_write_clock" });
     expect(await policies.list("GBP")).toEqual([]);
   });
 
@@ -412,15 +412,15 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
 
   test("a publish or release cannot carry a time later than the write clock", async () => {
     const anHourAhead = new Date(Date.now() + 60 * 60 * 1000);
-    await expect(
-      policies.publish({
+    expect(
+      await policies.publish({
         policy: v1,
         auditId: "aud_pol_future",
         organizationId: orgId,
         actor,
         occurredAt: anHourAhead,
       }),
-    ).rejects.toThrow("later than the write clock");
+    ).toEqual({ outcome: "rejected", reason: "outside_write_clock" });
 
     const placedAt = writeNow();
     await holds.place({
@@ -505,5 +505,17 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         db,
       ),
     ).rejects.toThrow("payout_holds_release_ck");
+  });
+
+  test("the table refuses a lowercase currency and a version that skips a number, even when written directly", async () => {
+    await publish(v1, "aud_pol_direct_1");
+    await expect(
+      sql`insert into payout_holds (id, publisher_id, currency, amount_minor, reason, expires_at, released_at, created_by, created_at)
+        values ('pho_pol_18', ${publisherId}, 'gbp', 1, 'review', null, null, ${actor.id}, ${writeNow()})`.execute(db),
+    ).rejects.toThrow(/violates check constraint/);
+    await expect(
+      sql`insert into payout_policies (currency, version, minimum_minor, effective_from, created_at, published_by_organization_id)
+        values ('GBP', 3, 1, ${new Date("2027-01-01T00:00:00.000Z")}, ${writeNow()}, ${orgId})`.execute(db),
+    ).rejects.toThrow("version must follow the latest");
   });
 });

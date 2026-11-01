@@ -8,7 +8,7 @@ export const payoutPolicy: Migration = {
   async up(db: Kysely<unknown>) {
     await db.schema
       .createTable("payout_policies")
-      .addColumn("currency", "text", (column) => column.notNull())
+      .addColumn("currency", "text", (column) => column.notNull().check(sql`currency ~ '^[A-Z]{3}$'`))
       .addColumn("version", "integer", (column) => column.notNull().check(sql`version >= 1`))
       .addColumn("minimum_minor", "bigint", (column) => column.notNull().check(sql`minimum_minor >= 0`))
       .addColumn("effective_from", "timestamptz", (column) => column.notNull())
@@ -22,7 +22,7 @@ export const payoutPolicy: Migration = {
       .createTable("payout_holds")
       .addColumn("id", "text", (column) => column.primaryKey())
       .addColumn("publisher_id", "text", (column) => column.notNull().references("publishers.id"))
-      .addColumn("currency", "text", (column) => column.notNull())
+      .addColumn("currency", "text", (column) => column.notNull().check(sql`currency ~ '^[A-Z]{3}$'`))
       .addColumn("amount_minor", "bigint", (column) => column.notNull().check(sql`amount_minor > 0`))
       .addColumn("reason", "text", (column) => column.notNull().check(sql`length(trim(reason)) > 0`))
       .addColumn("expires_at", "timestamptz")
@@ -44,6 +44,23 @@ export const payoutPolicy: Migration = {
     // A hold may change only once: released_at goes from NULL to a value, and nothing else on it changes.
     await sql`create function payout_policies_immutable() returns trigger language plpgsql as $$
       begin raise exception 'payout_policies rows are immutable'; end $$`.execute(db);
+    await sql`create function payout_policies_order() returns trigger language plpgsql as $$
+      declare prev record;
+      begin
+        select version, effective_from into prev from payout_policies
+          where currency = new.currency order by version desc limit 1;
+        if prev is null then
+          if new.version <> 1 then raise exception 'payout_policies: the first version of a currency is 1'; end if;
+        else
+          if new.version <> prev.version + 1 then raise exception 'payout_policies: version must follow the latest'; end if;
+          if new.effective_from < prev.effective_from then
+            raise exception 'payout_policies: effective date must not precede the latest version';
+          end if;
+        end if;
+        return new;
+      end $$`.execute(db);
+    await sql`create trigger payout_policies_order_guard before insert on payout_policies
+      for each row execute function payout_policies_order()`.execute(db);
     await sql`create trigger payout_policies_immutable before update or delete on payout_policies
       for each row execute function payout_policies_immutable()`.execute(db);
     await sql`create trigger payout_policies_no_truncate before truncate on payout_policies
