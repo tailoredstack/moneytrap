@@ -132,7 +132,7 @@ Goal: approved properties see the programs they may promote, decided by a pure e
 |---|---|---|---|---|---|---|
 | WP-4.1 | Connector port and capability profile | A | 1.2 | `app/src/ports/network-connector.ts`, `domain/src/networks/capability.ts` | §6.1 | Each operation in §6.1 typed; capability states `unsupported`, `temporarily_unavailable`, `not_authorized` |
 | WP-4.2 | Recorded-fixture network simulator | A | 4.1, 1.12 | `kit/src/network-sim/` | Conformance CT-009, CT-012, CT-015 | Deterministic transactions, adjustments, malformed payloads, disabled credential |
-| WP-4.3 | Real connector adapter | A | 4.1, partner decision (Plan Q1, decided: ADR-013) | `packages/adapter-network-rakuten/` | §6.1; ADR-013 (supersedes ADR-012) | Passes the same adapter contract suite as the simulator |
+| WP-4.3 | Real connector adapter | A | 4.1, partner decision (Plan Q1, decided: ADR-013), Rakuten contract confirmed by project owner | `packages/adapter-network-rakuten/` | §6.1; ADR-013 (supersedes ADR-012) | Passes the same adapter contract suite as the simulator |
 | WP-4.4 | Network account and credentials | A | 4.1, 1.5 | `pg/src/networks/`, `server/src/adapters/secret-box.ts` | §4.4; DM-016 | Credentials encrypted with key ID; never returned by any endpoint |
 | WP-4.5 | Advertiser and program source facts | B | 4.1, 1.5 | `domain/src/catalog/`, `pg/src/catalog/`, migration `0004_catalog.ts` | DM-019 to DM-022; §4.2 source revision | Source identity and revision kept; upserts create revisions |
 | WP-4.6 | Catalog sync job | B | 4.5, 1.7 | `app/src/networks/sync-catalog.ts`, `server/src/worker/sync.ts` | API-073, API-074; CT-015 | Cursor and freshness watermark; malformed payload quarantined, never approved |
