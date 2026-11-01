@@ -12,6 +12,9 @@ export const ID_PREFIXES = {
   networkAccount: "nac",
   advertiser: "adv",
   program: "prg",
+  importBatch: "imb",
+  importRow: "imr",
+  conversionSource: "cvs",
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;
