@@ -22,6 +22,7 @@ import { clicksRecorded } from "./0017_clicks_recorded";
 import { conversions } from "./0018_conversions";
 import { statements } from "./0019_statements";
 import { settlementReceipts } from "./0020_settlement_receipts";
+import { payoutMethods } from "./0021_payout_methods";
 
 // Every migration is imported here statically so the compiled binary carries the set and
 // reads no files at runtime (ADR-003). Add new entries in filename order.
@@ -49,6 +50,7 @@ const migrations: Record<string, Migration> = {
   "0018_conversions": conversions,
   "0019_statements": statements,
   "0020_settlement_receipts": settlementReceipts,
+  "0021_payout_methods": payoutMethods,
 };
 
 export const migrationProvider: MigrationProvider = {
