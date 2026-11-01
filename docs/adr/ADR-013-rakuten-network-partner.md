@@ -6,7 +6,7 @@
 
 ## Context
 
-ADR-012 kept WP-4.3 deferred until a network partner was contracted and sandbox access existed. It also required a follow-up ADR to name the network. Plan Q1 is now decided: the team signed up with Rakuten Advertising as the first affiliate network partner.
+ADR-012 kept WP-4.3 deferred until a network partner was contracted and sandbox access existed. It also required a follow-up ADR to name the network. Plan Q1 is now decided: the project owner reports that the team has signed up with Rakuten Advertising as the first affiliate network partner.
 
 Rakuten Advertising is the network the team will build the first connector against. Its public developer documentation covers the affiliate APIs, and its developer guide covers how to try them out. The team reports that sandbox and API access are available now.
 
