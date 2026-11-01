@@ -8,7 +8,7 @@
 
 ADR-012 kept WP-4.3 deferred until a network partner was contracted and sandbox access existed. It also required a follow-up ADR to name the network. Plan Q1 is now decided: the team signed up with Rakuten Advertising as the first affiliate network partner.
 
-Rakuten Advertising is the network the team will build the first connector against. Its public developer documentation covers the affiliate APIs, and its developer guide covers how to try them out. The team reports that sandbox and API access are available now. Rakuten also runs an established affiliate network in Southeast Asia through its ACCESSTRADE and Involve Asia sub-networks, which fits the project's SEA target.
+Rakuten Advertising is the network the team will build the first connector against. Its public developer documentation covers the affiliate APIs, and its developer guide covers how to try them out. The team reports that sandbox and API access are available now.
 
 ## Decision
 
@@ -20,7 +20,7 @@ Rakuten Advertising is the network the team will build the first connector again
 ## Reason
 
 - Sandbox and API access are reported as available now. That lets WP-4.3 build against real responses instead of guessing an API shape, which was the risk ADR-012 named.
-- Rakuten is an established affiliate network in SEA through its ACCESSTRADE and Involve Asia sub-networks, which matches the market the plan targets.
+- Rakuten publishes a documented affiliate API and developer guide, which the project plan's network criteria (API coverage, sandbox) require.
 
 ## Evidence
 
@@ -32,6 +32,7 @@ Rakuten Advertising is the network the team will build the first connector again
 
 - The adapter design, its file layout, or its mapping of Rakuten responses onto the `NetworkConnector` operations. WP-4.3 owns those.
 - Whether Rakuten is contracted for production use, its commercial terms, or its fee schedule.
+- The wedge country and currency (plan open question 2). That question stays open. Rakuten's settlement currency is not confirmed here.
 - Any second network. Other networks are out of scope until a later ADR names them.
 - The exact endpoint paths and token lifetimes. The developer portal pages were not fully readable when this ADR was written, so WP-4.3 must confirm them against the live portal and its sandbox.
 - Optimize consent, which the plan previously reserved for ADR-013. That work package needs a new number (see the note in `docs/adr/README.md`).

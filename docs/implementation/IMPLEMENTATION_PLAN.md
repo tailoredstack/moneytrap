@@ -274,4 +274,4 @@ Goal: opted-in publishers get consent-aware, policy-controlled link rewriting wi
 | M7 | 8 | Developer conformance suite (contract, rate-limit, signature, pagination, idempotency) |
 | M8 | 9 | Optimize zero-rewrite and opt-out suite |
 
-**Open items this plan adds:** ADR-012 (network adapter choice, depends on Plan Q1) and ADR-013 (Optimize consent, depends on WP-9.0).
+**Open items this plan adds:** ADR-012 (network adapter choice, superseded by ADR-013) and ADR-013 (Rakuten Advertising selected as first network; Plan Q1 decided). The plan originally reserved ADR-013 for Optimize consent (depends on WP-9.0); that work package needs a new number.
