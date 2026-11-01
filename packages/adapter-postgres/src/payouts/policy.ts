@@ -125,12 +125,26 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
   };
 }
 
+// A hold's placement and release times come from the caller, so the adapter bounds them against the database clock. A time
+// earlier than the write clock minus the tolerance is refused, so a hold cannot be placed or released retroactively.
+// Five minutes covers the gap between a caller reading its clock and the transaction starting (WP-7.6 review).
+const WRITE_CLOCK_TOLERANCE_MS = 5 * 60 * 1000;
+
+async function refuseBackdated(tx: Transaction<unknown>, at: Date): Promise<void> {
+  const clock = await sql<{ db_now: Date }>`select now() as db_now`.execute(tx);
+  const floor = clock.rows[0]?.db_now.getTime() ?? 0;
+  if (at.getTime() < floor - WRITE_CLOCK_TOLERANCE_MS) {
+    throw new Error("payout_holds: timestamp is earlier than the write clock");
+  }
+}
+
 // A hold belongs to a publisher of the organization it is written for. Placing or releasing one for another organization
 // is refused, and the release reports false, so a hold outside the tenant is never changed.
 export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
   return {
     async place({ hold, organizationId, auditId, actor, occurredAt }) {
       await withTx(db, async (tx) => {
+        await refuseBackdated(tx, occurredAt);
         const owned = await sql`select 1 from publishers where id = ${hold.publisherId}
           and organization_id = ${organizationId} for share`.execute(tx);
         if (owned.rows.length === 0) throw new Error("payout: publisher is not in the organization");
@@ -157,6 +171,7 @@ export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
 
     async release({ id, organizationId, auditId, actor, releasedAt }) {
       return withTx(db, async (tx) => {
+        await refuseBackdated(tx, releasedAt);
         const updated = await sql<{ id: string }>`update payout_holds set released_at = ${releasedAt}
           where id = ${id} and released_at is null
             and publisher_id in (select id from publishers where organization_id = ${organizationId})

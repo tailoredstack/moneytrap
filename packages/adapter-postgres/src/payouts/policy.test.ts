@@ -21,6 +21,8 @@ function inEffect(policies: readonly PayoutPolicy[], at: Date): PayoutPolicy {
 }
 
 const now = new Date("2026-03-01T10:00:00.000Z");
+// Hold writes are bounded against the database clock, so they use the real write time.
+const writeNow = () => new Date();
 const actor = { type: "user", id: "usr_pol_one" };
 const orgId = "org_pol_one";
 const publisherId = "pub_pol_one";
@@ -141,7 +143,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       organizationId: orgId,
       auditId: "aud_hold_1",
       actor,
-      occurredAt: now,
+      occurredAt: writeNow(),
     });
 
     const active = await holds.listForPublisher(orgId, publisherId, "GBP");
@@ -150,11 +152,11 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       policy: createPayoutPolicy(v1),
       availableMinor: 90000n,
       holds: active,
-      at: now,
+      at: writeNow(),
     });
     expect(decision).toMatchObject({ eligible: false, exclusions: ["held"] });
 
-    const releasedAt = new Date("2026-03-02T00:00:00.000Z");
+    const releasedAt = writeNow();
     expect(
       await holds.release({ id: "pho_pol_1", organizationId: orgId, auditId: "aud_hold_2", actor, releasedAt }),
     ).toBe(true);
@@ -180,7 +182,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         organizationId: "org_pol_two",
         auditId: "aud_hold_7",
         actor,
-        occurredAt: now,
+        occurredAt: writeNow(),
       }),
     ).rejects.toThrow("payout: publisher is not in the organization");
 
@@ -196,7 +198,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       organizationId: orgId,
       auditId: "aud_hold_8",
       actor,
-      occurredAt: now,
+      occurredAt: writeNow(),
     });
     expect(
       await holds.release({
@@ -204,7 +206,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         organizationId: "org_pol_two",
         auditId: "aud_hold_9",
         actor,
-        releasedAt: now,
+        releasedAt: writeNow(),
       }),
     ).toBe(false);
   });
@@ -222,9 +224,15 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       organizationId: orgId,
       auditId: "aud_hold_4",
       actor,
-      occurredAt: now,
+      occurredAt: writeNow(),
     });
-    await holds.release({ id: "pho_pol_2", organizationId: orgId, auditId: "aud_hold_5", actor, releasedAt: now });
+    await holds.release({
+      id: "pho_pol_2",
+      organizationId: orgId,
+      auditId: "aud_hold_5",
+      actor,
+      releasedAt: writeNow(),
+    });
 
     const rows = await sql<{ action: string }>`select action from audit_logs
       where id in ('aud_hold_4', 'aud_hold_5') order by occurred_at, id`.execute(db);
@@ -245,7 +253,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         organizationId: orgId,
         auditId: "aud_hold_6",
         actor,
-        occurredAt: now,
+        occurredAt: writeNow(),
       }),
     ).rejects.toThrow(/violates check constraint/);
   });
@@ -264,7 +272,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       organizationId: orgId,
       auditId: "aud_hold_10",
       actor,
-      occurredAt: now,
+      occurredAt: writeNow(),
     });
 
     await expect(sql`update payout_policies set minimum_minor = 1`.execute(db)).rejects.toThrow("immutable");
@@ -304,13 +312,14 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       organizationId: orgId,
       auditId: "aud_hold_13",
       actor,
-      occurredAt: now,
+      occurredAt: writeNow(),
     });
     expect(await holds.listForPublisher("org_pol_three", publisherId, "GBP")).toEqual([]);
     expect(await holds.listForPublisher(orgId, publisherId, "GBP")).toHaveLength(1);
   });
 
   test("a release cannot precede the placement", async () => {
+    const placedAt = writeNow();
     await holds.place({
       hold: {
         id: "pho_pol_7",
@@ -323,7 +332,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       organizationId: orgId,
       auditId: "aud_hold_11",
       actor,
-      occurredAt: now,
+      occurredAt: placedAt,
     });
     await expect(
       holds.release({
@@ -331,8 +340,32 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         organizationId: orgId,
         auditId: "aud_hold_12",
         actor,
-        releasedAt: new Date("2026-02-01T00:00:00.000Z"),
+        releasedAt: new Date(placedAt.getTime() - 1000),
       }),
     ).rejects.toThrow("payout_holds_release_ck");
+  });
+
+  test("a hold cannot be placed or released with a time earlier than the write clock", async () => {
+    const anHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await expect(
+      holds.place({
+        hold: { id: "pho_pol_9", publisherId, currency: "GBP", amountMinor: 1n, reason: "review", expiresAt: null },
+        organizationId: orgId,
+        auditId: "aud_hold_14",
+        actor,
+        occurredAt: anHourAgo,
+      }),
+    ).rejects.toThrow("earlier than the write clock");
+
+    await holds.place({
+      hold: { id: "pho_pol_10", publisherId, currency: "GBP", amountMinor: 1n, reason: "review", expiresAt: null },
+      organizationId: orgId,
+      auditId: "aud_hold_15",
+      actor,
+      occurredAt: writeNow(),
+    });
+    await expect(
+      holds.release({ id: "pho_pol_10", organizationId: orgId, auditId: "aud_hold_16", actor, releasedAt: anHourAgo }),
+    ).rejects.toThrow("earlier than the write clock");
   });
 });
