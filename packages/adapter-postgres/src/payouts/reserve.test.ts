@@ -361,12 +361,14 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
       const batch = await sql<{ state: string; approved_by: string | null }>`
         select state, approved_by from payout_batches where id = ${batchId}`.execute(world.db);
       expect(batch.rows[0]).toEqual({ state: "prepared", approved_by: null });
-      const audits = await sql<{ action: string; actor_id: string }>`
-        select action, actor_id from audit_logs where entity_id = ${batchId} order by occurred_at, action`.execute(
+      const audits = await sql<{ action: string; actor_id: string; metadata: Record<string, unknown> }>`
+        select action, actor_id, metadata from audit_logs where entity_id = ${batchId} order by occurred_at, action`.execute(
         world.db,
       );
       expect(audits.rows.map((row) => row.action)).toEqual(["payout_batch.prepared", "payout_batch.approval_denied"]);
-      expect(audits.rows.find((row) => row.action === "payout_batch.approval_denied")?.actor_id).toBe(userId);
+      const denied = audits.rows.find((row) => row.action === "payout_batch.approval_denied");
+      expect(denied?.actor_id).toBe(userId);
+      expect(denied?.metadata).toMatchObject({ preparedBy: userId, attemptedBy: userId, reason: "self_approval" });
     });
   });
 

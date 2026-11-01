@@ -488,7 +488,7 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect((await h.world.store.find(h.world.organizationId, batch.id))?.state).toBe("prepared");
         }));
 
-      test("a balance reversed after preparation stops the approval, and the batch can still be cancelled (TP-W7-014)", () =>
+      test("a balance reversed before approval stops the approval, and the batch can still be cancelled (TP-W7-014, sequential case only; the read-to-lock window is OZE-3285)", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);
           await h.fund(2, 7_000n);
@@ -511,7 +511,7 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
           expect((await h.world.store.find(h.world.organizationId, batch.id))?.state).toBe("approved");
         }));
 
-      test("approving while another batch reserves the same publisher never overbooks its funds", () =>
+      test("a reservation after an approval never holds more than the publisher has (approve's own lock is OZE-3285)", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);
           const first = ok(await h.prepare({ cap_minor: "4000" })).value.batch;

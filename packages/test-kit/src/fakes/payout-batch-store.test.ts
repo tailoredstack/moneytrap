@@ -82,7 +82,7 @@ describe("fake payout batch store audit", () => {
         approvedBy: checkerId,
         approvedAt: "2026-11-02T09:30:00.000Z",
         currency: "GBP",
-        payoutCount: "1",
+        payoutCount: 1,
         totalMinor: "5000",
       },
     });
