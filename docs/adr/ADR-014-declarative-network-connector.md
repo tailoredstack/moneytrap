@@ -2,7 +2,7 @@
 
 - Status: Accepted, 2026-11-01 (gate: declarative-engine spike, OZE-3275)
 - Date: 2026-11-01
-- Work package: none yet. The spike and the dashboard work are tracked in Linear (OZE-3275, OZE-3274); the plan gets work package rows only if the spike passes.
+- Work package: none yet. The spike and the dashboard work are tracked in Linear (OZE-3275, OZE-3274); the plan gets rows for the engine only if a follow-up ADR accepts it after the spike. The dashboard account work gets its own rows either way.
 
 ## Context
 
@@ -21,14 +21,14 @@ The dashboard already has the pieces for accounts: WP-4.4 stores sealed credenti
 - The direction to evaluate is one declarative connector engine in `packages/adapter-network-declarative/`. It implements `NetworkConnector` by running a network definition: auth, per-operation request and paging, field and status mappings, capability states, and the single https host the credential may be sent to. Logic a definition cannot express is a named hook in the engine, not a script in the definition.
 - A spike decides it. The spike builds the engine and a Rakuten definition and passes only if all of these hold:
   - The engine passes `runNetworkConnectorContract` for Rakuten.
-  - Every test in `packages/adapter-network-rakuten/src/rakuten-connector.test.ts` that checks behavior (not the adapter's internals) runs unchanged against the engine, using the same fake upstream, and passes. The spike lists any test it excludes and why.
+  - Every test in `packages/adapter-network-rakuten/src/rakuten-connector.test.ts` that checks behavior (not the adapter's internals) runs unchanged against the engine, using the same fake upstream, and passes. Only a test of the adapter's internals may be excluded (for example config validation or the cursor encoding). A test that calls a `NetworkConnector` method and checks its result or its upstream requests may not be. The spike lists every exclusion with its reason, and the follow-up ADR reviews that list.
   - No hook, hook parameter, or error text names Rakuten. Each hook is described by the API behavior it handles, for example "a date range limited to N days per request".
   - The spike records the full list of hooks it needed.
 - A passing spike does not adopt the engine. It leads to a follow-up ADR that accepts or rejects the engine on the spike's results, and only an accepted engine gets work package rows in the plan. Until then nothing in this ADR changes how networks are added.
 - The engine enforces these rules for every definition. A definition cannot weaken them:
   - Every failure is a typed `ConnectorFailure`, and a partial result is never returned as complete.
-  - Money becomes `bigint` minor units through the currency exponent (ADR-005). A decimal string is parsed with `parseMoney`. A JSON number is converted at the currency exponent and refused if it does not round-trip, so it is never rounded.
-  - The credential, and any token made from it, is sent only to the one https host the definition declares. The host is fixed in the definition and never comes from account configuration or from a response. Redirects are refused. A paging link in a response is used only for its page value, never fetched as given. Plain http is allowed only for a loopback test server, as in the Rakuten adapter.
+  - Money becomes `bigint` minor units through the currency exponent (ADR-005). A decimal string is parsed with `parseMoney`. A JSON number is converted at the currency exponent and refused if it does not round-trip or if its magnitude is 1e15 or more, so it is never rounded and never reaches `BigInt` as exponent notation.
+  - The credential, and any token made from it, is sent only to the one https host the definition declares. The host is fixed in the definition and never comes from account configuration or from a response. Redirects are refused. A paging link in a response is used only for its page value, never fetched as given. A definition is https-only. The engine's base-URL check allows plain http only for a loopback host (`localhost`, `127.0.0.1`), the same check the Rakuten adapter makes, so a local test server works.
   - The credential and tokens never reach a result, error, diagnostic, or log.
   - An operation the definition does not support fails as `unsupported`.
 - Definitions are reviewed files in the repo. A definition is used in production only after it passes the contract suite against recorded fixtures.
@@ -48,7 +48,7 @@ The dashboard already has the pieces for accounts: WP-4.4 stores sealed credenti
 
 ## Revisit trigger
 
-Reopen this decision when the spike reports, when a second network is contracted, or when adding a network by code costs more than the engine would.
+The spike's report goes to the follow-up ADR, which decides on the engine. Reopen this decision when a second network is contracted, since that is the first test of a definition beyond Rakuten, or when the follow-up ADR shows that adding a network by code costs more than the engine would. The cost is compared on the spike's own record: the hooks it needed and the size of the Rakuten definition against the Rakuten adapter.
 
 ## Fallback
 
