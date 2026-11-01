@@ -15,7 +15,10 @@ type Stored = {
   created_at: Date;
 };
 
-export function createStatementStore(db: Kysely<unknown>): StatementStore {
+export function createStatementStore(
+  db: Kysely<unknown>,
+  options: { signDownloadUrl?: (objectRef: string) => Promise<string> } = {},
+): StatementStore {
   const decode = (row: Stored): StatementRecord => ({
     id: row.id as StatementRecord["id"],
     publisherId: row.publisher_id as StatementRecord["publisherId"],
@@ -29,16 +32,23 @@ export function createStatementStore(db: Kysely<unknown>): StatementStore {
     createdAt: new Date(row.created_at),
   });
   return {
-    async publisherForUser(userId, organizationId) {
+    async listForOrganization(userId, organizationId) {
+      if (!userId) return [];
+      const { rows } = await sql<Stored>`select s.* from statements s join publishers p on p.id = s.publisher_id
+        join memberships m on m.organization_id = p.organization_id where m.user_id = ${userId} and p.organization_id = ${organizationId}
+        order by s.period_start desc, s.revision asc`.execute(db);
+      return rows.map(decode);
+    },
+    async findForOrganization(userId, organizationId, statementId) {
       if (!userId) return null;
-      const { rows } = await sql<{ publisher_id: string }>`select p.id as publisher_id from publishers p
-        join memberships m on m.organization_id = p.organization_id where m.user_id = ${userId} and p.organization_id = ${organizationId} order by p.id limit 1`.execute(
-        db,
-      );
-      return (rows[0]?.publisher_id as StatementRecord["publisherId"] | undefined) ?? null;
+      const { rows } = await sql<Stored>`select s.* from statements s join publishers p on p.id = s.publisher_id
+        join memberships m on m.organization_id = p.organization_id where m.user_id = ${userId}
+        and p.organization_id = ${organizationId} and s.id = ${statementId}`.execute(db);
+      return rows[0] ? decode(rows[0]) : null;
     },
     async downloadUrl(objectRef) {
-      return objectRef;
+      if (!options.signDownloadUrl) throw new Error("statement download URL signer is not configured");
+      return options.signDownloadUrl(objectRef);
     },
     async findClosed(publisherId, currency, periodStart, periodEnd) {
       const { rows } =

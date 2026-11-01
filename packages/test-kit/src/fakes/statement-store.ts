@@ -31,4 +31,19 @@ export class FakeStatementStore implements StatementStore {
   async list(publisherId: Id<"publisher">): Promise<StatementRecord[]> {
     return this.records.filter((record) => record.publisherId === publisherId);
   }
+
+  async listForOrganization(
+    _userId: Id<"user"> | undefined,
+    _organizationId: Id<"organization">,
+  ): Promise<StatementRecord[]> {
+    return [...this.records];
+  }
+
+  async findForOrganization(
+    _userId: Id<"user"> | undefined,
+    _organizationId: Id<"organization">,
+    statementId: Id<"statement">,
+  ): Promise<StatementRecord | null> {
+    return this.records.find((record) => record.id === statementId) ?? null;
+  }
 }

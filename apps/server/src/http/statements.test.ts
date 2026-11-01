@@ -37,8 +37,10 @@ describe("statement API routes (TP-W6-049)", () => {
           findClosed: (...args) => store.findClosed(...args),
           recordClosed: (item) => store.recordClosed(item),
           list: (id) => store.list(id),
-          publisherForUser: async (_user, org) => (org === organizationId ? (publisherId as never) : null),
-          downloadUrl: async (ref) => ref,
+          listForOrganization: async (_user, org) => (org === organizationId ? [record as never] : []),
+          findForOrganization: async (_user, org, id) =>
+            org === organizationId && id === record.id ? (record as never) : null,
+          downloadUrl: async (ref) => `https://files.example.test/${ref}`,
         },
         principal: async () => ({ userId: "u", memberships: [{ organizationId, role: "owner" }] }) as never,
       }),
@@ -50,7 +52,7 @@ describe("statement API routes (TP-W6-049)", () => {
     expect(list.status).toBe(200);
     expect((await list.json()).data[0].content_hash).toBe(record.contentHash);
     expect(detail.status).toBe(302);
-    expect(detail.headers.get("location")).toBe(record.objectRef);
+    expect(detail.headers.get("location")).toBe(`https://files.example.test/${record.objectRef}`);
   });
   test("denies a caller without balances:read", async () => {
     const store = new FakeStatementStore();
@@ -60,12 +62,53 @@ describe("statement API routes (TP-W6-049)", () => {
           findClosed: (...args) => store.findClosed(...args),
           recordClosed: (item) => store.recordClosed(item),
           list: (id) => store.list(id),
-          publisherForUser: async () => publisherId as never,
+          listForOrganization: async () => [],
+          findForOrganization: async () => record as never,
         },
         principal: async () => ({ userId: "u", memberships: [{ organizationId, role: "viewer" }] }) as never,
       }),
     );
     const response = await app.handle(new Request(`http://localhost/v1/organizations/${organizationId}/statements`));
     expect(response.status).toBe(403);
+  });
+  test("denies statement downloads to a viewer without balances:read", async () => {
+    const store = new FakeStatementStore();
+    const app = createApp({ clock: { now: () => new Date() }, ids: { next: () => "x" } as never, readiness: [] }).use(
+      apiRoutes(auth, undefined, undefined, undefined, undefined, undefined, {
+        store: {
+          findClosed: (...args) => store.findClosed(...args),
+          recordClosed: (item) => store.recordClosed(item),
+          list: (id) => store.list(id),
+          listForOrganization: async () => [],
+          findForOrganization: async () => record as never,
+        },
+        principal: async () => ({ userId: "u", memberships: [{ organizationId, role: "viewer" }] }) as never,
+      }),
+    );
+    const response = await app.handle(
+      new Request(`http://localhost/v1/organizations/${organizationId}/statements/${record.id}/download`),
+    );
+    expect(response.status).toBe(403);
+  });
+  test("rejects malformed filters and unsupported currencies", async () => {
+    const store = new FakeStatementStore();
+    const app = createApp({ clock: { now: () => new Date() }, ids: { next: () => "x" } as never, readiness: [] }).use(
+      apiRoutes(auth, undefined, undefined, undefined, undefined, undefined, {
+        store: {
+          findClosed: (...args) => store.findClosed(...args),
+          recordClosed: (item) => store.recordClosed(item),
+          list: (id) => store.list(id),
+          listForOrganization: async () => [],
+          findForOrganization: async () => record as never,
+        },
+        principal: async () => ({ userId: "u", memberships: [{ organizationId, role: "finance" }] }) as never,
+      }),
+    );
+    for (const query of ["year=abc", "month=13", "currency=XXX-NOPE"]) {
+      const response = await app.handle(
+        new Request(`http://localhost/v1/organizations/${organizationId}/statements?${query}`),
+      );
+      expect(response.status).toBe(400);
+    }
   });
 });
