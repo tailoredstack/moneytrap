@@ -123,9 +123,12 @@ export function toUnpartneredAdvertiser(body: unknown): Partnership {
 // ID so the text is stable between calls.
 export function termsOf(offers: readonly unknown[]): string {
   const lines = offers
-    .map((raw) => asObject(raw))
-    .sort((a, b) => Number(a.goid) - Number(b.goid))
-    .map((offer) => {
+    .map((raw) => {
+      const offer = asObject(raw);
+      return { offer, id: offerId(offer) };
+    })
+    .sort((a, b) => a.id - b.id)
+    .map(({ offer }) => {
       const parts = [`${text(offer.name)} (${text(offer.type)})`];
       if (typeof offer.terms_url === "string" && offer.terms_url !== "") parts.push(`terms: ${offer.terms_url}`);
       const commission = baseCommission(offer);
@@ -133,6 +136,12 @@ export function termsOf(offers: readonly unknown[]): string {
       return parts.join("; ");
     });
   return lines.join("\n");
+}
+
+// The group offer ID orders the offers. An offer with no integer ID cannot be placed, so the whole answer is refused.
+function offerId(offer: Json): number {
+  if (typeof offer.goid !== "number" || !Number.isSafeInteger(offer.goid)) throw new MappingError("malformed_body");
+  return offer.goid;
 }
 
 function baseCommission(offer: Json): string {
@@ -181,6 +190,8 @@ export function moneyOf(amount: unknown, currency: unknown): Money {
   if (!isCurrencyCode(currency)) throw new MappingError("unsupported_currency");
   const exponent = exponentOf(currency);
   const fixed = amount.toFixed(exponent);
+  // A value with more fraction digits than the currency has would be rounded by toFixed, which changes the money.
+  if (Number(fixed) !== amount) throw new MappingError("malformed_body");
   return Money.of(BigInt(exponent === 0 ? fixed : fixed.replace(".", "")), currency);
 }
 

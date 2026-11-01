@@ -89,7 +89,8 @@ export class RakutenClient {
 
       const { status } = response.response;
       if (status === 401) {
-        this.token = null;
+        // Only the token this call used is dropped. Another call may already have replaced it.
+        if (this.token?.value === token.token.value) this.token = null;
         continue;
       }
       return this.interpret(operation, response.response);

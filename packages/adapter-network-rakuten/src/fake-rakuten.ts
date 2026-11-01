@@ -7,6 +7,7 @@ import type { FetchLike } from "./client";
 export const FAKE_CLIENT_ID = "test-client-id-0001";
 export const FAKE_CLIENT_SECRET = "test-client-secret-SENTINEL-7f3a";
 export const FAKE_ACCOUNT_ID = "4242";
+export const FAKE_TOKEN_KEY = Buffer.from(`${FAKE_CLIENT_ID}:${FAKE_CLIENT_SECRET}`, "utf8").toString("base64");
 
 export type FakeMode = "healthy" | "disabled-credential" | "upstream-unavailable";
 
@@ -95,7 +96,7 @@ export function createFakeRakuten(options: FakeRakutenOptions) {
   const ttl = options.tokenTtlSeconds ?? 3600;
   const requests: FakeRequest[] = [];
   const state = { issued: 0, validTokens: new Set<string>(), tokenCalls: 0 };
-  const expectedKey = Buffer.from(`${FAKE_CLIENT_ID}:${FAKE_CLIENT_SECRET}`, "utf8").toString("base64");
+  const expectedKey = FAKE_TOKEN_KEY;
 
   const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
     new Response(JSON.stringify(body), {

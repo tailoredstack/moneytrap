@@ -14,8 +14,9 @@ export type ConnectorContractScenario = "healthy" | "disabled-credential" | "ups
 
 export interface ConnectorContractFixture {
   connector: NetworkConnector;
-  // Values that must never appear in any result, such as the credential the connector was built with.
-  secrets: readonly string[];
+  // Values that must never appear in any result, such as the credential the connector was built with and any token it
+  // obtained. It is read after the calls, so a getter can include values that only exist once the connector has run.
+  readonly secrets: readonly string[];
 }
 
 // The records the `healthy` scenario serves, so the suite can assert on them without knowing the upstream.
@@ -263,11 +264,12 @@ export function runNetworkConnectorContract(adapters: ReadonlyArray<ConnectorCon
 
     test("TP-W4-007 no result or failure carries a credential, and a failure has only its typed fields", async () => {
       for (const scenario of ["healthy", "disabled-credential", "upstream-unavailable"] as const) {
-        const { connector, secrets } = create(scenario);
+        const fixture = create(scenario);
+        const { connector } = fixture;
         for (const operation of CONNECTOR_OPERATIONS) {
           const result = await CALLS[operation](connector, data);
           const text = scan(result);
-          for (const secret of secrets) expect(text).not.toContain(secret);
+          for (const secret of fixture.secrets) expect(text).not.toContain(secret);
           if (!result.ok) {
             expect(Object.keys(result.failure).every((key) => key === "state" || key === "retryAfterSeconds")).toBe(
               true,

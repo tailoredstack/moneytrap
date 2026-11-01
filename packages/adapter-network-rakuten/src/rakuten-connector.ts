@@ -99,7 +99,7 @@ export class RakutenConnector implements NetworkConnector {
       clientId: config.clientId,
       clientSecret: config.clientSecret,
       accountId: config.accountId,
-      baseUrl: (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, ""),
+      baseUrl: secureBaseUrl(config.baseUrl ?? DEFAULT_BASE_URL),
       clock: config.clock,
       fetch: config.fetch ?? ((url, init) => fetch(url, init)),
       requestTimeoutMs: config.requestTimeoutMs ?? 15_000,
@@ -286,8 +286,11 @@ export class RakutenConnector implements NetworkConnector {
       if (page !== null) query.page = String(page);
       const reply = await this.client.get(operation, "/v1/offers", query);
       if (reply.kind === "failure") return { failure: { ok: false, failure: reply.failure } };
-      // No offers for an advertiser is an empty list, not an error.
-      if (reply.kind === "not_found") return { value: offers };
+      // No offers for an advertiser is an empty list, but a page that disappears mid-list would make the terms partial.
+      if (reply.kind === "not_found") {
+        if (count === 0) return { value: offers };
+        throw new MappingError("malformed_body");
+      }
       const body = asObject(reply.body);
       offers.push(...asArray(body.offers));
       page = nextPage(body, page);
@@ -325,6 +328,21 @@ export class RakutenConnector implements NetworkConnector {
   }
 }
 
+// The credential travels to this host, so it must be https. Plain http is accepted only for a local test server.
+function secureBaseUrl(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new RangeError("Rakuten connector config: baseUrl must be a URL");
+  }
+  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) {
+    throw new RangeError("Rakuten connector config: baseUrl must use https");
+  }
+  return value.replace(/\/+$/, "");
+}
+
 function cursorRefused(): RangeError {
   return new RangeError("cursor was not issued for this query");
 }
@@ -350,12 +368,14 @@ function nextPage(body: Json, requested: number | null): number | null {
   if (next === undefined || next === null || next === "") return null;
   if (typeof next !== "string") throw new MappingError("malformed_body");
 
-  let page: number;
+  let param: string | null;
   try {
-    page = Number(new URL(next, "https://rakuten.invalid").searchParams.get("page"));
+    param = new URL(next, "https://rakuten.invalid").searchParams.get("page");
   } catch {
     throw new MappingError("malformed_body");
   }
+  if (param === null || param.trim() === "") throw new MappingError("malformed_body");
+  const page = Number(param);
   const current = typeof meta.page === "number" ? meta.page : requested;
   if (!Number.isInteger(page) || page < 0 || (current !== null && page <= current)) {
     throw new MappingError("malformed_body");
