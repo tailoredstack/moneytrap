@@ -7,10 +7,19 @@ const WRITE_CLOCK_TOLERANCE_MS = 1000;
 
 export class FakePayoutPolicyStore implements PayoutPolicyStore {
   readonly policies: PayoutPolicy[] = [];
+  readonly audit: { action: string; entityId: string; actor: { type: string; id: string } }[] = [];
 
   constructor(private readonly writeClock: () => Date = () => new Date()) {}
 
-  async publish({ policy, occurredAt }: { policy: PayoutPolicy; occurredAt: Date }): Promise<PublishPolicyResult> {
+  async publish({
+    policy,
+    occurredAt,
+    actor,
+  }: {
+    policy: PayoutPolicy;
+    occurredAt: Date;
+    actor: { type: string; id: string };
+  }): Promise<PublishPolicyResult> {
     const now = this.writeClock().getTime();
     if (occurredAt.getTime() < now - WRITE_CLOCK_TOLERANCE_MS) {
       throw new Error("payout_policies: timestamp is earlier than the write clock");
@@ -37,6 +46,7 @@ export class FakePayoutPolicyStore implements PayoutPolicyStore {
       return { outcome: "rejected", reason: "effective_in_past" };
     }
     this.policies.push({ ...policy });
+    this.audit.push({ action: "payout_policy_published", entityId: `${policy.currency}:${policy.version}`, actor });
     return { outcome: "published" };
   }
 
