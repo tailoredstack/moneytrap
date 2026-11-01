@@ -9,6 +9,7 @@ import { type ProgramApprovalWiring, programApprovalRoutes } from "./program-app
 import { redirectRoutes } from "./redirect";
 import { type ReportWiring, reportRoutes } from "./reports";
 import { sessionRoutes } from "./sessions";
+import { type StatementWiring, statementRoutes } from "./statements";
 
 // Every route the server serves, apart from the health probes that createApp mounts. Each one declares its guard
 // from the table in guards/routes.ts, so an undeclared route stops the server from starting.
@@ -19,6 +20,7 @@ export function apiRoutes(
   redirect?: RedirectDeps,
   approvals?: ProgramApprovalWiring,
   networkAccounts?: NetworkAccountWiring,
+  statements?: StatementWiring,
 ) {
   return new Elysia({ name: "api" })
     .use(authRoutes(auth, options))
@@ -26,6 +28,7 @@ export function apiRoutes(
     .use(reportRoutes(reports))
     .use(programApprovalRoutes(approvals))
     .use(networkAccountRoutes(networkAccounts))
+    .use(statementRoutes(statements))
     .use(redirectRoutes(redirect))
     .get("/api/health", guard("GET /api/health"), () => ({ status: "ok" }))
     .get("/*", guard("GET /*"), ({ request }) => {
