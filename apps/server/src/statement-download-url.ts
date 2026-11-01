@@ -1,6 +1,6 @@
 export async function signStatementDownloadUrl(
   objectRef: string,
-  options: { baseUrl?: string; secret?: string; now: Date },
+  options: { baseUrl?: string | undefined; secret?: string | undefined; now: Date },
 ): Promise<string> {
   if (!options.baseUrl || !options.secret) throw new Error("statement download signing is not configured");
   const expires = Math.floor(options.now.getTime() / 1000) + 300;

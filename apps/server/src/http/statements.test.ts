@@ -45,7 +45,9 @@ describe("statement API routes (TP-W6-049)", () => {
         principal: async () => ({ userId: "u", memberships: [{ organizationId, role: "owner" }] }) as never,
       }),
     );
-    const list = await app.handle(new Request(`http://localhost/v1/organizations/${organizationId}/statements`));
+    const list = await app.handle(
+      new Request(`http://localhost/v1/organizations/${organizationId}/statements?currency=USD`),
+    );
     const detail = await app.handle(
       new Request(`http://localhost/v1/organizations/${organizationId}/statements/${record.id}/download`),
     );
@@ -107,7 +109,7 @@ describe("statement API routes (TP-W6-049)", () => {
         principal: async () => ({ userId: "u", memberships: [{ organizationId, role: "finance" }] }) as never,
       }),
     );
-    for (const query of ["year=abc", "month=13", "currency=XXX-NOPE"]) {
+    for (const query of ["year=abc", "year=1e3", "year=2026.5", "month=13", "currency=XXX-NOPE", "currency="]) {
       const response = await app.handle(
         new Request(`http://localhost/v1/organizations/${organizationId}/statements?${query}`),
       );
