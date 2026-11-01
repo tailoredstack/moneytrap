@@ -190,7 +190,7 @@ Goal: imported network transactions become correct, auditable publisher earnings
 
 ### Wave 6 follow-up packages
 
-The current migration registry includes `0024_better_auth_admin.ts` after `0023_payout_batches`. These follow-ups own distinct migration files and register them in serialized order: `0025_attribution_persistence.ts` before `0026_transaction_pull_cursors.ts`. Dependencies below include only the blocked-by relations for these follow-ups; registry sequencing is called out explicitly where it applies. OZE-3265 carries Linear lane label `lane-E`. For OZE-3265, TP-W6-050/051 are end-to-end assertions owned by OZE-3265 and exercise/reuse WP-6.9 balance behavior and WP-6.4 reversal behavior. The Wave 6 test-plan rows TP-W6-044–052 merged to `main` in PR #163. These rows describe planned acceptance criteria and do not assert that implementation has passed.
+The current migration registry includes `0024_better_auth_admin.ts` after `0023_payout_batches`. The OZE-3262 and OZE-3261 follow-ups own distinct migration files registered in serialized order: `0025_attribution_persistence.ts` before `0026_transaction_pull_cursors.ts`. Dependencies below include only the blocked-by relations for these follow-ups; registry sequencing is called out explicitly where it applies. OZE-3265 carries Linear lane label `lane-E`. For OZE-3265, TP-W6-050/051 are end-to-end assertions owned by OZE-3265 and exercise/reuse WP-6.9 balance behavior and WP-6.4 reversal behavior. The Wave 6 test-plan rows TP-W6-044–052 merged to `main` in PR #163. These rows describe planned acceptance criteria and do not assert that implementation has passed.
 
 | Issue / WP | Lane | Depends on | Package / path | Tests | Done when |
 |---|---|---|---|---|---|
