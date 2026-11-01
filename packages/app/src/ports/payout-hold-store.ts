@@ -10,7 +10,8 @@ export interface HoldActor {
 export interface PayoutHoldStore {
   place(input: {
     // placedAt is the occurredAt of the write, so the stored hold always carries its placement time.
-    hold: Omit<PayoutHold, "placedAt">;
+    // A hold is always placed unreleased. Only release sets releasedAt, so every release has its own audit row.
+    hold: Omit<PayoutHold, "placedAt" | "releasedAt">;
     organizationId: string;
     auditId: string;
     actor: HoldActor;
