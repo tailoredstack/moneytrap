@@ -330,6 +330,26 @@ describe("RakutenConnector Advanced Reports", () => {
     const result = await connector.discoverPrograms({ advertiserSourceId: "100", cursor: null });
     expect(result.ok && result.value.items[0]).toMatchObject({ channels: [], eligibility: null });
   });
+
+  test("an impossible report payment date fails closed without returning evidence", async () => {
+    const { connector } = setup({
+      webSecurityToken: "web-token",
+      wrap: (inner) => async (url, init) => {
+        const response = await inner(url, init);
+        if (new URL(url).searchParams.get("reportid") !== "23") return response;
+        const csv = await response.text();
+        return new Response(csv.replace("11/01/2026", "02/31/2026"), {
+          status: 200,
+          headers: { "content-type": "text/csv" },
+        });
+      },
+    });
+    const result = await connector.retrieveSettlementEvidence({ ...range, cursor: null });
+    expect(result).toEqual({
+      ok: false,
+      failure: { state: "temporarily_unavailable", retryAfterSeconds: null },
+    });
+  });
 });
 
 describe("RakutenConnector independent pacing", () => {

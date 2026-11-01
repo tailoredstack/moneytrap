@@ -505,6 +505,14 @@ function reportDate(value: string | undefined): Date {
   const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
   const at = match ? new Date(Date.UTC(Number(match[3]), Number(match[1]) - 1, Number(match[2]))) : new Date(value);
   if (Number.isNaN(at.getTime())) throw new MappingError("malformed_body");
+  if (
+    match &&
+    (at.getUTCFullYear() !== Number(match[3]) ||
+      at.getUTCMonth() !== Number(match[1]) - 1 ||
+      at.getUTCDate() !== Number(match[2]))
+  ) {
+    throw new MappingError("malformed_body");
+  }
   return at;
 }
 
