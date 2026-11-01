@@ -85,7 +85,25 @@ describeWithDatabase("route source (WP-5.6, ADR-007)", () => {
         version: 2,
       },
       eligible: true,
+      allowedHosts: [],
     });
+  });
+
+  test("returns the program's latest allow-list, so a later revision that drops the host takes effect (WP-5.7)", async () => {
+    const revise = (seq: number, hosts: string[]) =>
+      sql`insert into program_revisions (program_id, revision_seq, source_revision, payload, observed_at, created_at)
+        values (${programId}, ${seq}, ${`rev-${seq}`}, ${JSON.stringify({ allowedHosts: hosts })}::jsonb, ${now}, ${now})`.execute(
+        db,
+      );
+    await revise(1, [host]);
+    expect((await createRouteSource(db).findByToken(linkId))?.allowedHosts).toEqual([host]);
+
+    await revise(2, ["other.example.com"]);
+    expect((await createRouteSource(db).findByToken(linkId))?.allowedHosts).toEqual(["other.example.com"]);
+  });
+
+  test("returns an empty allow-list when the program has no revision (fails closed)", async () => {
+    expect((await createRouteSource(db).findByToken(linkId))?.allowedHosts).toEqual([]);
   });
 
   test("uses the latest evaluation, so a later deny makes the route ineligible", async () => {

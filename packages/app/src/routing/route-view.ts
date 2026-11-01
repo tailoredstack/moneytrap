@@ -1,29 +1,34 @@
-import type { Id, Link, LinkStatus } from "@moneytrap/domain";
+import { type Id, type Link, type LinkStatus, validateDestination } from "@moneytrap/domain";
 import type { RouteCache } from "../ports/route-cache";
 import type { RouteSource, RouteSourceRecord } from "../ports/route-source";
 
 // What the redirect path needs to decide one link (ADR-007, blueprint §5.3). Lane B owns this shape, and WP-5.2 reads it,
-// so its fields stay stable. `decision` is the answer the redirect acts on: allow only when the link is active and eligible.
+// so its fields stay stable. `decision` is the answer the redirect acts on: allow only when the link is active, eligible,
+// and its destination still passes the allow-list. `allowedHosts` is carried so the redirect can re-run that check on a cache hit.
 export interface RouteView {
   readonly linkId: Id<"link">;
   readonly destination: string;
   readonly state: LinkStatus;
   readonly eligible: boolean;
+  readonly allowedHosts: readonly string[];
   readonly decision: "allow" | "deny";
   readonly version: number;
 }
 
 export type RouteViewResult = { kind: "found"; view: RouteView } | { kind: "missing" } | { kind: "unavailable" };
 
-// Built from the link aggregate and the eligibility the source reports for its property and program. Pure, so the
-// same link always yields the same view.
-export function buildRouteView(link: Link, eligible: boolean): RouteView {
+// Built from the link aggregate, the eligibility the source reports for its property and program, and the program's
+// allow-list. The destination uses the WP-5.1 rule, so a host no longer on the list decides deny. Pure, so the same
+// inputs always yield the same view.
+export function buildRouteView(link: Link, eligible: boolean, allowedHosts: readonly string[]): RouteView {
+  const destinationAllowed = validateDestination(link.destinationUrl, allowedHosts).ok;
   return {
     linkId: link.id,
     destination: link.destinationUrl,
     state: link.status,
     eligible,
-    decision: link.status === "active" && eligible ? "allow" : "deny",
+    allowedHosts,
+    decision: link.status === "active" && eligible && destinationAllowed ? "allow" : "deny",
     version: link.version,
   };
 }
@@ -73,7 +78,7 @@ export async function readRouteView(
   }
   if (!record) return { kind: "missing" };
 
-  const view = buildRouteView(record.link, record.eligible);
+  const view = buildRouteView(record.link, record.eligible, record.allowedHosts);
   if (loadedAt !== null) {
     // Not awaited, so a slow cache write never delays the response. A failed write leaves Postgres authoritative.
     withDeadline(Promise.resolve().then(() => deps.cache.put(token, view, loadedAt))).catch(() => {});
