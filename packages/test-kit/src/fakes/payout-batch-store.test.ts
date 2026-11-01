@@ -18,6 +18,7 @@ runPayoutBatchStoreContract([
         userId,
         async addPublisher(input) {
           store.publisherOrganization.set(input.publisherId, input.organizationId);
+          store.publisherStatus.set(input.publisherId, input.status ?? "approved");
           store.addMethod({ id: input.methodId, publisherId: input.publisherId, currency: input.currency });
         },
         async close() {},
