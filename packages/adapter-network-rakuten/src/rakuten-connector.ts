@@ -61,6 +61,10 @@ const DAY_MS = 86_400_000;
 const EVENTS_WINDOW_MS = 29 * DAY_MS;
 const EVENTS_HISTORY_MS = 100 * DAY_MS;
 const MAX_OFFER_PAGES = 20;
+// Event rows are timed to the second, so a row can sit up to a second outside a window that ends mid-second.
+const SECOND_SLOP_MS = 1000;
+// A guard against an upstream that ignores `page` and returns the same rows for ever.
+const MAX_EVENT_PAGES = 1000;
 
 // list_adjustments: the Events API says commission changes are not reflected after the fact, and no adjustments API is
 // published. retrieve_settlement_evidence: the payment reports (Advanced Reports) need a separate web security token and
@@ -204,17 +208,18 @@ export class RakutenConnector implements NetworkConnector {
   ): Promise<ConnectorResult<Page<TransactionRecord>>> {
     const operation = "list_transactions";
     const scope = `${input.from.getTime()}..${input.to.getTime()}`;
-    const windows = splitRange(input);
     const position = parseCursor(input.cursor, { operation, scope, size: 2 });
     const [windowIndex, pageNumber] = position ?? [0, 1];
     if (windowIndex === undefined || pageNumber === undefined || pageNumber < 1) throw cursorRefused();
-    if (position && windowIndex >= windows.length) throw cursorRefused();
 
     // The Events API keeps only the last 100 days, so an older range cannot be served in full. It is refused, not
-    // answered with the part that remains.
-    if (input.from.getTime() < this.client.now().getTime() - EVENTS_HISTORY_MS) {
-      return { ok: false, failure: { state: "unsupported" } };
-    }
+    // answered with the part that remains. This runs before the range is split, so a very old start costs nothing.
+    const now = this.client.now().getTime();
+    if (input.from.getTime() < now - EVENTS_HISTORY_MS) return { ok: false, failure: { state: "unsupported" } };
+
+    // Nothing can have happened after now, so the range stops a day past it. That bounds the windows for any `to`.
+    const windows = splitRange({ from: input.from, to: new Date(Math.min(input.to.getTime(), now + DAY_MS)) });
+    if (position && windowIndex >= windows.length) throw cursorRefused();
     const window = windows[windowIndex];
     if (window === undefined) {
       return { ok: true, value: { items: [], nextCursor: null, watermark: this.client.now() } };
@@ -222,22 +227,37 @@ export class RakutenConnector implements NetworkConnector {
 
     return this.guarded(operation, async () => {
       const reply = await this.client.get(operation, "/events/1.0/transactions", {
-        transaction_date_start: eventsDate(window.from),
-        // The end is inclusive upstream, and a window ends where the next one starts.
-        transaction_date_end: eventsDate(new Date(window.to.getTime() - 1000)),
+        // The API takes whole seconds. The start rounds down and the end rounds up to the last second before the window
+        // ends, so no row in the window is left out. The filter below removes the sub-second excess.
+        transaction_date_start: eventsDate(new Date(Math.floor(window.from.getTime() / 1000) * 1000)),
+        transaction_date_end: eventsDate(new Date(Math.ceil(window.to.getTime() / 1000) * 1000 - 1000)),
         limit: String(this.pageSize),
         page: String(pageNumber),
       });
       if (reply.kind !== "ok") return this.failureOf(operation, reply);
 
-      const rows = asArray(reply.body);
-      const items = rows
-        .map(toTransaction)
-        .filter((item) => item.occurredAt >= input.from && item.occurredAt < input.to);
-      // A full page may have more behind it. A short page ends the window.
+      const items: TransactionRecord[] = [];
+      let rows = 0;
+      for (const row of asArray(reply.body)) {
+        const item = toTransaction(row);
+        const at = item.occurredAt.getTime();
+        // A row far outside the window it was asked for means the upstream reads the query dates differently from the
+        // documented UTC. That is refused rather than filtered, so rows are never lost quietly.
+        if (at < window.from.getTime() - SECOND_SLOP_MS || at >= window.to.getTime() + SECOND_SLOP_MS) {
+          throw new MappingError("malformed_body");
+        }
+        if (item.occurredAt >= input.from && item.occurredAt < input.to) items.push(item);
+        rows += 1;
+      }
+      // The window ends at the first empty page. A short page is not taken as the end, because the API may cap the
+      // page size below the one asked for, and the rows behind a short page would be lost.
       let nextCursor: string | null = null;
-      if (rows.length >= this.pageSize) nextCursor = issueCursor(operation, scope, [windowIndex, pageNumber + 1]);
-      else if (windowIndex + 1 < windows.length) nextCursor = issueCursor(operation, scope, [windowIndex + 1, 1]);
+      if (rows > 0) {
+        if (pageNumber >= MAX_EVENT_PAGES) throw new MappingError("malformed_body");
+        nextCursor = issueCursor(operation, scope, [windowIndex, pageNumber + 1]);
+      } else if (windowIndex + 1 < windows.length) {
+        nextCursor = issueCursor(operation, scope, [windowIndex + 1, 1]);
+      }
       return { ok: true, value: { items, nextCursor, watermark: reply.at } };
     });
   }

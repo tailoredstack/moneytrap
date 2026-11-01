@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { CONNECTOR_OPERATIONS } from "@moneytrap/domain";
 import { FakeClock } from "@moneytrap/test-kit";
 import type { Diagnostic, FetchLike } from "./client";
-import { createFakeRakuten, FAKE_ACCOUNT_ID, FAKE_CLIENT_ID, FAKE_CLIENT_SECRET, type FakeMode } from "./fake-rakuten";
+import {
+  createFakeRakuten,
+  eventsStyleDate,
+  FAKE_ACCOUNT_ID,
+  FAKE_CLIENT_ID,
+  FAKE_CLIENT_SECRET,
+  type FakeMode,
+} from "./fake-rakuten";
 import { RAKUTEN_CAPABILITIES, RakutenConnector } from "./rakuten-connector";
 
 const NOW = "2026-11-01T00:00:00.000Z";
@@ -541,6 +548,85 @@ describe("RakutenConnector transactions (Events API)", () => {
 
     expect(result.ok).toBe(false);
     expect(diagnostics).toEqual([{ operation: "list_transactions", kind: "malformed_body" }]);
+  });
+
+  test("a row far outside the requested window fails the page instead of being filtered out", async () => {
+    const { connector, diagnostics } = setup({
+      wrap: (inner) => async (url, init) => {
+        const response = await inner(url, init);
+        if (new URL(url).pathname !== "/events/1.0/transactions") return response;
+        const rows = (await response.json()) as Array<{ transaction_date: string }>;
+        // Rakuten reading the query dates in another zone would answer with rows hours away from the window.
+        if (rows[0]) rows[0].transaction_date = eventsStyleDate(new Date("2026-10-14T15:00:00.000Z"));
+        return new Response(JSON.stringify(rows), { status: 200 });
+      },
+    });
+
+    const result = await connector.listTransactions({ ...range, cursor: null });
+
+    expect(result.ok).toBe(false);
+    expect(diagnostics).toEqual([{ operation: "list_transactions", kind: "malformed_body" }]);
+  });
+
+  test("an upstream that caps the page size below the one asked for still returns every row", async () => {
+    const { connector } = setup({
+      pageSize: 100,
+      // The upstream answers with at most one row a page, whatever limit it is asked for.
+      wrap: (inner) => (url, init) => {
+        const target = new URL(url);
+        if (target.pathname === "/events/1.0/transactions") target.searchParams.set("limit", "1");
+        return inner(target.toString(), init);
+      },
+    });
+
+    const rows = await allRows(connector);
+
+    expect(rows.map((row) => row.sourceId)).toEqual(["TX-1", "TX-2", "TX-3", "TX-4"]);
+  });
+
+  test("a sub-second range edge keeps a row whose whole second is inside and drops one that is not", async () => {
+    const { connector } = setup();
+
+    // TX-1 is at 2026-10-22T00:00:00.000Z and TX-2 at 2026-10-24T00:00:00.000Z.
+    const result = await connector.listTransactions({
+      from: new Date("2026-10-22T00:00:00.500Z"),
+      to: new Date("2026-10-24T00:00:00.700Z"),
+      cursor: null,
+    });
+    const rows = [];
+    let next = result.ok ? result.value.nextCursor : null;
+    rows.push(...(result.ok ? result.value.items : []));
+    while (next !== null) {
+      const page = await connector.listTransactions({
+        from: new Date("2026-10-22T00:00:00.500Z"),
+        to: new Date("2026-10-24T00:00:00.700Z"),
+        cursor: next,
+      });
+      if (!page.ok) throw new Error("page failed");
+      rows.push(...page.value.items);
+      next = page.value.nextCursor;
+    }
+
+    expect(rows.map((row) => row.sourceId)).toEqual(["TX-2"]);
+  });
+
+  test("a very old start is refused at once, and a far-future end does not build millions of windows", async () => {
+    const { connector, upstream } = setup();
+
+    const old = await connector.listTransactions({
+      from: new Date("1970-01-01T00:00:00.000Z"),
+      to: new Date("2026-11-01T00:00:00.000Z"),
+      cursor: null,
+    });
+    const future = await connector.listTransactions({
+      from: new Date("2026-10-30T00:00:00.000Z"),
+      to: new Date("9999-12-31T00:00:00.000Z"),
+      cursor: null,
+    });
+
+    expect(old).toEqual({ ok: false, failure: { state: "unsupported" } });
+    expect(future.ok).toBe(true);
+    expect(upstream.requests.filter((r) => r.path === "/events/1.0/transactions")).toHaveLength(1);
   });
 
   test("a cursor for a different range is refused", async () => {
