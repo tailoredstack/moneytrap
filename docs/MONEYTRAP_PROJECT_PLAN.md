@@ -200,6 +200,8 @@ Assumed: a small product team with one product manager, one designer, a staff-le
 
 ## 9. Open questions (need a decision, not more research)
 
+Question 1 is decided and stays listed so the numbering that other docs cite still holds.
+
 1. **Which affiliate network is first?** Decided: Rakuten Advertising (ADR-013). Selection criteria were API coverage, program breadth, and fit with the redirect model.
 2. **Which country and currency for the wedge?** Recommend the country where the first network settles in its own currency, to avoid FX in M5.
 3. **Who runs publisher review in M2?** Recommend an internal ops hire or contractor, not automation.
