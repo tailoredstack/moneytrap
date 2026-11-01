@@ -247,7 +247,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         actor,
         occurredAt: now,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/violates check constraint/);
   });
 
   test("the database refuses to change a policy row, delete a hold, or edit a hold beyond its release", async () => {
@@ -287,6 +287,27 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
     const rows = await sql<{ id: string; organization_id: string }>`select id, organization_id from audit_logs
       where action = 'payout_policy_published' order by id`.execute(db);
     expect(rows.rows).toEqual([{ id: "aud_pol_audit_ok", organization_id: orgId }]);
+
+    // The policy row names the organization whose actor published it.
+    const stored = await sql<{
+      published_by_organization_id: string;
+    }>`select published_by_organization_id from payout_policies
+      where currency = 'GBP' and version = 1`.execute(db);
+    expect(stored.rows[0]?.published_by_organization_id).toBe(orgId);
+  });
+
+  test("holds are unreadable from another organization", async () => {
+    await sql`insert into organizations (id, name, country, base_currency, status, created_by, created_at, updated_at)
+      values ('org_pol_three', 'org_pol_three', 'GB', 'GBP', 'active', ${actor.id}, ${now}, ${now})`.execute(db);
+    await holds.place({
+      hold: { id: "pho_pol_8", publisherId, currency: "GBP", amountMinor: 1n, reason: "review", expiresAt: null },
+      organizationId: orgId,
+      auditId: "aud_hold_13",
+      actor,
+      occurredAt: now,
+    });
+    expect(await holds.listForPublisher("org_pol_three", publisherId, "GBP")).toEqual([]);
+    expect(await holds.listForPublisher(orgId, publisherId, "GBP")).toHaveLength(1);
   });
 
   test("a release cannot precede the placement", async () => {
@@ -312,6 +333,6 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
         actor,
         releasedAt: new Date("2026-02-01T00:00:00.000Z"),
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow("payout_holds_release_ck");
   });
 });
