@@ -68,7 +68,9 @@ export class FakeConversionImportStore implements ConversionImportStore {
     if (this.failAfterRows !== null && this.applyCalls > this.failAfterRows) {
       throw new Error("import interrupted");
     }
-    const stored = this.rows.find((row) => row.batchId === input.batchId && row.externalRowRef === input.externalRowRef);
+    const stored = this.rows.find(
+      (row) => row.batchId === input.batchId && row.externalRowRef === input.externalRowRef,
+    );
     if (stored) return stored.outcome;
 
     const factKey = `${input.networkId}|${input.externalRowRef}`;
@@ -78,7 +80,12 @@ export class FakeConversionImportStore implements ConversionImportStore {
     const decision = decideRevision(latest, { sourceRevision: input.sourceRevision, payload: input.payload });
 
     if (decision.kind === "unchanged") {
-      this.rows.push({ batchId: input.batchId, externalRowRef: input.externalRowRef, outcome: "unchanged", revisionSeq: latest?.revisionSeq ?? null });
+      this.rows.push({
+        batchId: input.batchId,
+        externalRowRef: input.externalRowRef,
+        outcome: "unchanged",
+        revisionSeq: latest?.revisionSeq ?? null,
+      });
       return "unchanged";
     }
     const revisionSeq = (latest?.revisionSeq ?? 0) + 1;
@@ -95,9 +102,16 @@ export class FakeConversionImportStore implements ConversionImportStore {
   }
 
   async recordQuarantine(input: RecordQuarantineInput): Promise<RowOutcome> {
-    const stored = this.rows.find((row) => row.batchId === input.batchId && row.externalRowRef === input.externalRowRef);
+    const stored = this.rows.find(
+      (row) => row.batchId === input.batchId && row.externalRowRef === input.externalRowRef,
+    );
     if (stored) return stored.outcome;
-    this.rows.push({ batchId: input.batchId, externalRowRef: input.externalRowRef, outcome: "quarantined", revisionSeq: null });
+    this.rows.push({
+      batchId: input.batchId,
+      externalRowRef: input.externalRowRef,
+      outcome: "quarantined",
+      revisionSeq: null,
+    });
     return "quarantined";
   }
 
@@ -110,6 +124,8 @@ export class FakeConversionImportStore implements ConversionImportStore {
 
   private latestRevision(factId: Id<"conversionSource">) {
     const latest = this.revisions.filter((revision) => revision.sourceFactId === factId).at(-1);
-    return latest ? { sourceRevision: latest.sourceRevision, payload: latest.payload, revisionSeq: latest.revisionSeq } : null;
+    return latest
+      ? { sourceRevision: latest.sourceRevision, payload: latest.payload, revisionSeq: latest.revisionSeq }
+      : null;
   }
 }
