@@ -78,12 +78,16 @@ export function isHoldActive(hold: PayoutHold, at: Date): boolean {
 // Available is the cleared amount (WP-6.9); the minimum and holds decide only whether it is paid now, not what it is.
 export function evaluatePayout(input: {
   policy: PayoutPolicy;
+  publisherId: string;
   availableMinor: bigint;
   holds: readonly PayoutHold[];
   at: Date;
 }): PayoutDecision {
-  const { policy, availableMinor, at } = input;
-  const holds = input.holds.filter((hold) => hold.currency === policy.currency && isHoldActive(hold, at));
+  const { policy, availableMinor, at, publisherId } = input;
+  // Only this publisher's holds in the policy's currency can exclude it, so a mixed list cannot hold back another publisher.
+  const holds = input.holds.filter(
+    (hold) => hold.publisherId === publisherId && hold.currency === policy.currency && isHoldActive(hold, at),
+  );
 
   const exclusions: PayoutExclusion[] = [];
   if (holds.length > 0) exclusions.push("held");
