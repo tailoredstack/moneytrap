@@ -36,6 +36,41 @@ export function stepUpWindowSeconds(raw: string | undefined): number {
   return seconds;
 }
 
+// Origins, besides the base URL, that Better Auth accepts on requests that carry a cookie. Operators set TRUSTED_ORIGINS
+// as a comma-separated list of full origins, for example http://localhost:3000,http://localhost:5190. Unset or empty
+// means none. Each entry must be exactly an http or https origin as a browser sends it in the Origin header: no path,
+// no trailing slash, no credentials, no default port, and no wildcard. A bad entry is refused at startup, as
+// STEP_UP_WINDOW_SECONDS is, because Better Auth would otherwise never match it and the failure would show up later as
+// INVALID_ORIGIN.
+export function trustedOrigins(raw: string | undefined): string[] {
+  const origins = new Set<string>();
+  for (const entry of (raw ?? "").split(",").map((item) => item.trim())) {
+    if (!entry) continue;
+    const origin = httpOrigin(entry);
+    if (!origin) {
+      throw new Error(
+        `TRUSTED_ORIGINS must be a comma-separated list of http or https origins such as http://localhost:3000; got "${entry}"`,
+      );
+    }
+    origins.add(origin);
+  }
+  return [...origins];
+}
+
+function httpOrigin(entry: string): string | undefined {
+  if (entry.includes("*")) return undefined;
+  let url: URL;
+  try {
+    url = new URL(entry);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+  // `origin` drops any path, query, fragment, credentials, and default port. Only an entry that is already that form
+  // is an origin.
+  return url.origin === entry.toLowerCase() ? url.origin : undefined;
+}
+
 export type AuthConfigDeps = {
   pool: Pool;
   secret: string;
@@ -49,6 +84,9 @@ export type AuthConfigDeps = {
   // Proxies in front of the server, as CIDRs. Better Auth reads the client IP from the address past the last trusted
   // hop. Empty means no proxy is trusted, so the IP comes from the socket peer (see authRoutes).
   trustedProxies?: string[];
+  // Origins Better Auth trusts besides baseURL, for example the web app on another host or port. baseURL is always
+  // trusted. Each entry is a full origin, never a pattern (see trustedOrigins).
+  trustedOrigins?: string[];
 };
 
 // Better Auth verifies email tokens statelessly and never records their use, so a second click on the same
@@ -350,6 +388,7 @@ export function authOptions({
   rateLimitCounter,
   rateLimitPolicy: policy = AUTH_RATE_LIMIT_POLICY,
   trustedProxies = [],
+  trustedOrigins: extraOrigins = [],
 }: AuthConfigDeps): BetterAuthOptions {
   const limits: RateLimitSettings = { secret, policy };
   // biome-ignore lint/suspicious/noExplicitAny: Better Auth takes its own schema types, not ours
@@ -391,6 +430,10 @@ export function authOptions({
     },
     secret,
     baseURL,
+    // Without a cookie Better Auth skips the origin check. With one, the Origin header must match this list, so a
+    // page on another origin cannot ride a session. The base URL stays first so an empty TRUSTED_ORIGINS keeps today's
+    // behavior.
+    trustedOrigins: [...new Set([new URL(baseURL).origin, ...extraOrigins])],
     // Sensitive routes, including disabling MFA, need a session created within the step-up window (TP-W2-019).
     session: {
       freshAge: stepUpWindow,
