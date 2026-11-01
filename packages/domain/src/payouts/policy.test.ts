@@ -116,23 +116,23 @@ describe("evaluatePayout (TP-W7-009, TP-W7-010)", () => {
     expect(decision.eligible).toBe(false);
   });
 
-  test("a historical decision keeps its policy version when a later version is published", () => {
+  test("a decision made before v2 is published is unchanged when it is replayed after v2 exists", () => {
     const v1 = policy({ version: 1, minimumMinor: 5000n });
     const v2 = policy({ version: 2, minimumMinor: 10000n, effectiveFrom: new Date("2026-06-01T00:00:00.000Z") });
     const before = new Date("2026-03-01T00:00:00.000Z");
-    const historical = evaluatePayout({
+    const decidedThen = evaluatePayout({
+      policy: inEffect([v1], before),
+      availableMinor: 7000n,
+      holds: [],
+      at: before,
+    });
+    const replayNow = evaluatePayout({
       policy: inEffect([v1, v2], before),
       availableMinor: 7000n,
       holds: [],
       at: before,
     });
-    const replay = evaluatePayout({
-      policy: inEffect([v1, v2], before),
-      availableMinor: 7000n,
-      holds: [],
-      at: before,
-    });
-    expect(historical).toEqual(replay);
-    expect(historical).toMatchObject({ eligible: true, policyVersion: 1 });
+    expect(replayNow).toEqual(decidedThen);
+    expect(decidedThen).toMatchObject({ eligible: true, policyVersion: 1 });
   });
 });

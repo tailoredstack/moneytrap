@@ -254,4 +254,33 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       }),
     ).rejects.toThrow();
   });
+
+  test("the database refuses to change a policy row, delete a hold, or edit a hold beyond its release", async () => {
+    await publish(v1, "aud_pol_1");
+    await holds.place({
+      hold: {
+        id: "pho_pol_6",
+        publisherId,
+        currency: "GBP",
+        amountMinor: 1n,
+        reason: "review",
+        expiresAt: null,
+        releasedAt: null,
+      },
+      organizationId: orgId,
+      auditId: "aud_hold_10",
+      actor,
+      occurredAt: now,
+    });
+
+    await expect(sql`update payout_policies set minimum_minor = 1`.execute(db)).rejects.toThrow("immutable");
+    await expect(sql`delete from payout_policies`.execute(db)).rejects.toThrow("immutable");
+    await expect(sql`delete from payout_holds where id = 'pho_pol_6'`.execute(db)).rejects.toThrow("never deleted");
+    await expect(sql`update payout_holds set amount_minor = 99 where id = 'pho_pol_6'`.execute(db)).rejects.toThrow(
+      "released once",
+    );
+    await expect(sql`update payout_holds set released_at = null where id = 'pho_pol_6'`.execute(db)).rejects.toThrow(
+      "released once",
+    );
+  });
 });

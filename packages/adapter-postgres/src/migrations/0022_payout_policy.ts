@@ -19,7 +19,7 @@ export const payoutPolicy: Migration = {
     await db.schema
       .createTable("payout_holds")
       .addColumn("id", "text", (column) => column.primaryKey())
-      .addColumn("publisher_id", "text", (column) => column.notNull().references("publishers.id").onDelete("cascade"))
+      .addColumn("publisher_id", "text", (column) => column.notNull().references("publishers.id"))
       .addColumn("currency", "text", (column) => column.notNull())
       .addColumn("amount_minor", "bigint", (column) => column.notNull().check(sql`amount_minor > 0`))
       .addColumn("reason", "text", (column) => column.notNull().check(sql`length(trim(reason)) > 0`))
@@ -33,9 +33,29 @@ export const payoutPolicy: Migration = {
       .on("payout_holds")
       .columns(["publisher_id", "currency"])
       .execute();
+
+    // Immutability is enforced by the database, not only by the adapter (DM-045). A policy row is never changed or removed.
+    // A hold may change only once: released_at goes from NULL to a value, and nothing else on it changes.
+    await sql`create function payout_policies_immutable() returns trigger language plpgsql as $$
+      begin raise exception 'payout_policies rows are immutable'; end $$`.execute(db);
+    await sql`create trigger payout_policies_immutable before update or delete on payout_policies
+      for each row execute function payout_policies_immutable()`.execute(db);
+    await sql`create function payout_holds_guard() returns trigger language plpgsql as $$
+      begin
+        if tg_op = 'DELETE' then raise exception 'payout_holds rows are never deleted'; end if;
+        if old.released_at is not null or new.released_at is null
+          or (new.id, new.publisher_id, new.currency, new.amount_minor, new.reason, new.expires_at, new.created_by, new.created_at)
+            is distinct from (old.id, old.publisher_id, old.currency, old.amount_minor, old.reason, old.expires_at, old.created_by, old.created_at)
+        then raise exception 'payout_holds may only be released once'; end if;
+        return new;
+      end $$`.execute(db);
+    await sql`create trigger payout_holds_guard before update or delete on payout_holds
+      for each row execute function payout_holds_guard()`.execute(db);
   },
 
   async down(db: Kysely<unknown>) {
+    await sql`drop function if exists payout_holds_guard() cascade`.execute(db);
+    await sql`drop function if exists payout_policies_immutable() cascade`.execute(db);
     await db.schema.dropTable("payout_holds").ifExists().execute();
     await db.schema.dropTable("payout_policies").ifExists().execute();
   },
