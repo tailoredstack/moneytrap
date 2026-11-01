@@ -43,18 +43,27 @@ export function stepUpWindowSeconds(raw: string | undefined): number {
 // STEP_UP_WINDOW_SECONDS is, because Better Auth would otherwise never match it and the failure would show up later as
 // INVALID_ORIGIN.
 export function trustedOrigins(raw: string | undefined): string[] {
-  const origins = new Set<string>();
-  for (const entry of (raw ?? "").split(",").map((item) => item.trim())) {
-    if (!entry) continue;
-    const origin = httpOrigin(entry);
-    if (!origin) {
-      throw new Error(
-        `TRUSTED_ORIGINS must be a comma-separated list of http or https origins such as http://localhost:3000; got "${entry}"`,
-      );
-    }
-    origins.add(origin);
+  return [
+    ...new Set(
+      (raw ?? "")
+        .split(",")
+        .filter((item) => item.trim())
+        .map(requireOrigin),
+    ),
+  ];
+}
+
+// One entry as the origin Better Auth would match. The error names the entry with any credentials hidden, so a
+// `user:pass@` typo is not written to the logs.
+function requireOrigin(entry: string): string {
+  const origin = httpOrigin(entry.trim());
+  if (!origin) {
+    const shown = entry.trim().replace(/\/\/[^/?#]*@/, "//***@");
+    throw new Error(
+      `TRUSTED_ORIGINS must be a comma-separated list of http or https origins such as http://localhost:3000; got "${shown}"`,
+    );
   }
-  return [...origins];
+  return origin;
 }
 
 function httpOrigin(entry: string): string | undefined {
@@ -85,7 +94,7 @@ export type AuthConfigDeps = {
   // hop. Empty means no proxy is trusted, so the IP comes from the socket peer (see authRoutes).
   trustedProxies?: string[];
   // Origins Better Auth trusts besides baseURL, for example the web app on another host or port. baseURL is always
-  // trusted. Each entry is a full origin, never a pattern (see trustedOrigins).
+  // trusted. Each entry is a full origin, never a pattern: authOptions refuses any other entry, as trustedOrigins does.
   trustedOrigins?: string[];
 };
 
@@ -433,7 +442,7 @@ export function authOptions({
     // Without a cookie Better Auth skips the origin check. With one, the Origin header must match this list, so a
     // page on another origin cannot ride a session. The base URL stays first so an empty TRUSTED_ORIGINS keeps today's
     // behavior.
-    trustedOrigins: [...new Set([new URL(baseURL).origin, ...extraOrigins])],
+    trustedOrigins: [...new Set([new URL(baseURL).origin, ...extraOrigins.map(requireOrigin)])],
     // Sensitive routes, including disabling MFA, need a session created within the step-up window (TP-W2-019).
     session: {
       freshAge: stepUpWindow,
