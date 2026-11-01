@@ -22,10 +22,14 @@ const reports = {
 };
 // The redirect is wired with inert deps for the same reason. These tests register the route and never call it.
 const redirect = { cache: {}, source: {}, clicks: {}, clock, onClickError: () => {} } as never;
+// The approval route is wired with an inert store for the same reason. These tests never call it.
+const approvals = { db: {}, store: {}, clock, ids, principal: async () => null } as never;
 
 describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
   test("every route the app serves declares a guard", () => {
-    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth, undefined, reports, redirect));
+    const app = createApp({ clock, ids, readiness: [] }).use(
+      apiRoutes(stubAuth, undefined, reports, redirect, approvals),
+    );
     expect(undeclaredRoutes(app.routes)).toEqual([]);
   });
 
@@ -46,7 +50,9 @@ describe("route guard coverage (Blueprint §7, TP-W2-035)", () => {
   });
 
   test("the guard table has no entry for a route the app does not serve", () => {
-    const app = createApp({ clock, ids, readiness: [] }).use(apiRoutes(stubAuth, undefined, reports, redirect));
+    const app = createApp({ clock, ids, readiness: [] }).use(
+      apiRoutes(stubAuth, undefined, reports, redirect, approvals),
+    );
     const served = new Set(app.routes.map((route) => `${route.method} ${route.path}`));
     const stale = Object.keys(ROUTE_GUARDS).filter((key) => !served.has(key));
     expect(stale).toEqual([]);

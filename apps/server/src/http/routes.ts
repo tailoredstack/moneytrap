@@ -4,6 +4,7 @@ import { serveWebAsset } from "../assets";
 import type { createAuth } from "../auth/config";
 import { type AuthHandler, authRoutes } from "./auth";
 import { guard } from "./guards/enforce";
+import { type ProgramApprovalWiring, programApprovalRoutes } from "./program-approval";
 import { redirectRoutes } from "./redirect";
 import { type ReportWiring, reportRoutes } from "./reports";
 import { sessionRoutes } from "./sessions";
@@ -15,11 +16,13 @@ export function apiRoutes(
   options: { trustProxy: boolean } = { trustProxy: true },
   reports?: ReportWiring,
   redirect?: RedirectDeps,
+  approvals?: ProgramApprovalWiring,
 ) {
   return new Elysia({ name: "api" })
     .use(authRoutes(auth, options))
     .use(sessionRoutes(auth))
     .use(reportRoutes(reports))
+    .use(programApprovalRoutes(approvals))
     .use(redirectRoutes(redirect))
     .get("/api/health", guard("GET /api/health"), () => ({ status: "ok" }))
     .get("/*", guard("GET /*"), ({ request }) => {
