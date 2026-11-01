@@ -81,7 +81,8 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
       return withTx(db, async (tx): Promise<PublishPolicyResult> => {
         // The publish time is bounded like a hold's time, so a publish cannot be backdated to change a past decision.
         // The lock is taken before any clock is read, so a publish that waited for it checks the clock as it is now.
-        // A time outside the window is a typed refusal, not an error, so a long wait is never reported as a crash.
+        // Publish waits on the lock, so an out-of-window time found after the wait is a typed refusal, not an error. Holds take
+        // no lock, and an out-of-window hold time is a caller mistake, so they report it as an error.
         await sql`select pg_advisory_xact_lock(hashtext(${`payout_policy:${policy.currency}`}))`.execute(tx);
         if (await writeClockViolation(tx, occurredAt)) return { outcome: "rejected", reason: "outside_write_clock" };
         const latest = await sql<PolicyRow>`select currency, version, minimum_minor, effective_from from payout_policies
