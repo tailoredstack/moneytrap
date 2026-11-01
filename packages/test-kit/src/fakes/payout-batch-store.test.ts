@@ -129,12 +129,15 @@ test("fake refuses a self-approval with an audit row, and refuses a repeat appro
       availability,
       audit: { id: fixtureId("audit", n), actor: { type: "user", id: approver }, occurredAt: at },
     });
+  // The preparer's attempt is refused and audited with both people (TP-W7-049).
+  expect(await approve(userId, 6)).toEqual({ outcome: "refused", reason: "self_approval" });
   await approve(checkerId, 4);
   await approve(checkerId, 5);
-  expect(store.audit.filter((row) => row.action === "payout_batch.approval_denied").at(-1)?.metadata).toMatchObject({
-    attemptedBy: checkerId,
-    reason: "already_approved",
-  });
+  const denied = store.audit.filter((row) => row.action === "payout_batch.approval_denied");
+  expect(denied.map((row) => row.metadata)).toEqual([
+    expect.objectContaining({ preparedBy: userId, attemptedBy: userId, reason: "self_approval" }),
+    expect.objectContaining({ preparedBy: userId, attemptedBy: checkerId, reason: "already_approved" }),
+  ]);
 });
 
 test("fake writes exactly one approval audit row when approvals race (TP-W7-048)", async () => {
