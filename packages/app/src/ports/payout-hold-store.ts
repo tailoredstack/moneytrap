@@ -1,7 +1,8 @@
 import type { CurrencyCode, PayoutHold } from "@moneytrap/domain";
 
+// A hold is written by a user. created_by references user.id, so the port admits only a user actor.
 export interface HoldActor {
-  type: string;
+  type: "user";
   id: string;
 }
 

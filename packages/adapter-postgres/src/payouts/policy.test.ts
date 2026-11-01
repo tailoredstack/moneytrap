@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { HoldActor } from "@moneytrap/app/src/ports/payout-hold-store";
 import {
   createPayoutPolicy,
   evaluatePayout,
@@ -23,7 +24,7 @@ function inEffect(policies: readonly PayoutPolicy[], at: Date): PayoutPolicy {
 const now = new Date("2026-03-01T10:00:00.000Z");
 // Hold writes are bounded against the database clock, so they use the real write time.
 const writeNow = () => new Date();
-const actor = { type: "user", id: "usr_pol_one" };
+const actor: HoldActor = { type: "user", id: "usr_pol_one" };
 const orgId = "org_pol_one";
 const publisherId = "pub_pol_one";
 
