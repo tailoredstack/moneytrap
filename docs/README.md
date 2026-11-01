@@ -8,7 +8,7 @@ Start here. Everything needed to begin building is in this folder.
 | [Implementation blueprint](MONEYTRAP_IMPLEMENTATION_BLUEPRINT.md) | Stack, repo layout, actions/queries model, auth and permissions, test layers, ADR list, first two weeks |
 | [Implementation plan](implementation/IMPLEMENTATION_PLAN.md) | Work packages WP-0.1 … WP-9.7 with paths, dependencies, and done-when criteria |
 | [Waves](implementation/WAVES.md) | How work packages group into waves and parallel lanes, with the critical path |
-| [Decision records](adr/README.md) | ADR-001 … ADR-011 with status, evidence, and fallbacks |
+| [Decision records](adr/README.md) | ADR-001 … ADR-013 with status, evidence, and fallbacks |
 | [Test plans](test-plans/README.md) | One test plan per wave, test IDs `TP-W<wave>-<nnn>` |
 | [UI skeletons](ui/SKELETONS.md) | Layout wireframes for the screens, by wave |
 
