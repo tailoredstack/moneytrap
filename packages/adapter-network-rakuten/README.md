@@ -32,13 +32,30 @@ Sources, all on `developers.rakutenadvertising.com`: the Affiliate APIs OpenAPI 
 Documented limits the adapter respects: the token endpoint and each API allow 100 calls a minute; the Events API holds
 about the last 100 days, takes at most a 30-day range, and is documented as directional rather than final.
 
+## What was verified live
+
+One read-only run against `api.linksynergy.com` with the project's Rakuten application (the live smoke test, plus a probe
+that printed response shapes only):
+
+- `POST /token` with the base64 credential as Bearer and a body of `scope={account-id}` alone returns 200. No
+  `grant_type` is needed.
+- `GET /v2/advertisers` returns advertisers with a numeric `id` and `network`, and a `_metadata._links.next` link.
+- `GET /v2/advertisers/{id}` returns the advertiser with `network`, `can_partner`, and `policies.international_capabilities.ships_to`.
+- `GET /v1/partnerships/{id}` returns 404 with a `{msg, code}` body when there is no partnership. `GET /v1/partnerships`
+  returns an empty `partnerships` list for this account.
+- `GET /events/1.0/transactions` accepts the `YYYY-MM-DD HH:mm:ss` query dates, `limit`, and `page`, and returns `[]`.
+
+The account has no partnerships and no transactions yet, so the live run could not exercise approved programs, offers,
+deep links, or real transaction rows. Those are covered by the fake upstream built from the published specification.
+`POST /v1/links/deep_links` was not called live, because it writes a link into the dashboard.
+
 ## Mappings that are decisions, not documented facts
 
 - A program is the publisher's partnership with an advertiser. Its source ID is the advertiser ID.
 - Partnership status maps `active` to approved, `pending` to pending, and the self/decline/remove states to rejected.
   `extended` is not described in the guide, so it maps to no approval.
 - The revision is a digest of the mapped fields, because Rakuten sends none.
-- Countries come from the advertiser's Rakuten network (1 US, 3 GB, 5 CA, 7 FR, 8 BR, 9 DE, 41 AU). The APIs expose no
+- Countries come from the advertiser's Rakuten `network` (1 US, 3 GB, 5 CA, 7 FR, 8 BR, 9 DE, 41 AU). The APIs expose no
   channel list or eligibility text, so `channels` is empty and eligibility is `null`. The eligibility policy therefore
   denies every channel until a source for channels exists.
 - A transaction's amount is `commissions`. The Events API sends no status: a row is `approved` when `lock_status` is
@@ -47,11 +64,10 @@ about the last 100 days, takes at most a 30-day range, and is documented as dire
 
 ## Not verified
 
-- No public sandbox host is documented, so the adapter targets `api.linksynergy.com` and takes a base URL override.
-- The token request body: the guide's `curl` sends only `scope`, while its text also mentions `grant_type=password`. The
-  adapter follows the `curl` example.
+- No public sandbox host is documented, so the adapter targets `api.linksynergy.com` (production) and takes a base URL
+  override. The live run was read-only.
 - What `is_event` means for cancellations, the meaning of a negative amount, and the Events time zone for query dates
   (read as UTC). Rows in BRL, which the platform does not carry, fail the page rather than being dropped.
 - The response format of `GET /v1/partnerships/{id}`: the specification names the object `partnership`, the guide's
   example `partnerships`. Both are accepted.
-- The behavior of the partnership and offers endpoints for an advertiser the publisher has no partnership with.
+- The `GET /v1/offers` response for real offers, and the `POST /v1/links/deep_links` response, which no live call reached.

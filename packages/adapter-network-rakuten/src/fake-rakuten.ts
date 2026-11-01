@@ -160,7 +160,9 @@ export function createFakeRakuten(options: FakeRakutenOptions) {
     const advertiserMatch = /^\/v2\/advertisers\/(\d+)$/.exec(path);
     if (advertiserMatch) {
       const advertiser = ADVERTISERS.find((candidate) => String(candidate.id) === advertiserMatch[1]);
-      return advertiser ? ok({ _metadata: {}, advertiser }) : json(404, { error: "not found" });
+      return advertiser
+        ? ok({ _metadata: {}, advertiser: { ...advertiser, network: 1, can_partner: true } })
+        : json(404, { error: "not found" });
     }
 
     const partnershipMatch = /^\/v1\/partnerships\/(\d+)$/.exec(path);

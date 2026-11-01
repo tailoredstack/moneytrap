@@ -273,12 +273,12 @@ describe("RakutenConnector catalog", () => {
     expect(upstream.requests.some((request) => request.path === "/v1/offers")).toBe(false);
   });
 
-  test("an advertiser with no partnership is reported with no approval, never as approved", async () => {
+  test("an advertiser with no partnership is reported with no approval and its network country, never as approved", async () => {
     const { connector } = setup();
 
     const result = await connector.discoverPrograms({ advertiserSourceId: "300", cursor: null });
 
-    expect(result.ok && result.value.items[0]).toMatchObject({ sourceId: "300", approval: null, countries: [] });
+    expect(result.ok && result.value.items[0]).toMatchObject({ sourceId: "300", approval: null, countries: ["US"] });
   });
 
   test("an unknown partnership status is left unknown instead of being read as approved", async () => {
