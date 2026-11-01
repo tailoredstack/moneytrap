@@ -20,12 +20,13 @@ Rakuten Advertising is the network the team will build the first connector again
 ## Reason
 
 - Sandbox and API access are reported as available now. That lets WP-4.3 build against real responses instead of guessing an API shape, which was the risk ADR-012 named.
-- Rakuten publishes a documented affiliate API and developer guide, which the project plan's network criteria (API coverage, sandbox) require.
+- Rakuten publishes a documented affiliate API and a developer guide (see Evidence). Whether its API covers the plan's criteria (transactions, adjustments, sandbox) is not verified here. WP-4.3 must confirm it.
 
 ## Evidence
 
 - Rakuten Advertising affiliate API documentation: https://developers.rakutenadvertising.com/documentation/en-US/affiliate_apis
 - Rakuten Advertising developer guide: https://developers.rakutenadvertising.com/guides/try_out_apis
+- Plan Q1 decision and signup: the team's decision, given to this ADR by the project owner. It is not backed by a document in this repo.
 - Sandbox and API access: the team's report that both are available now. This ADR does not restate the sandbox URL, token type, or any credential value. Those belong in the secret store and the adapter's configuration.
 
 ## What this ADR does not decide

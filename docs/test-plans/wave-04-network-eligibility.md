@@ -12,7 +12,7 @@ Catalog data from a network is versioned, quarantined when malformed, and never 
 
 - Wave 3 gate passed (approved publisher and property exist).
 - Network simulator (WP-4.2) built; contract suite defined.
-- Partner decision (Project plan Q1) recorded, or simulator-only scope agreed for M3 gate.
+- Partner decision (Project plan Q1) recorded: Rakuten Advertising, ADR-013.
 
 ## 3. Test matrix
 
