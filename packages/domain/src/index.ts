@@ -1,6 +1,7 @@
 export * from "./access/organization";
 export * from "./access/permissions";
 export * from "./catalog/source-fact";
+export * from "./conversions/conversion";
 export * from "./conversions/source-fact";
 export * from "./eligibility/policy";
 export * from "./errors/codes";

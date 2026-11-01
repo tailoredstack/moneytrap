@@ -4,6 +4,7 @@ export { FakeClickQueue } from "./fakes/click-queue";
 export { FakeClickReportStore } from "./fakes/click-report-store";
 export { FakeClickStore } from "./fakes/click-store";
 export { FakeConversionImportStore } from "./fakes/conversion-import-store";
+export { FakeConversionStatusStore } from "./fakes/conversion-status-store";
 export { FakeDnsResolver } from "./fakes/dns-resolver";
 export { FakeIdGenerator } from "./fakes/id-generator";
 export { FakeIdempotencyStore } from "./fakes/idempotency-store";
