@@ -6,7 +6,8 @@ export interface HoldActor {
 }
 
 // Holds are added and released, never edited or deleted (DM-045). Release sets releasedAt once; a second release, or a
-// release of an unknown hold, changes nothing and returns false.
+// release of an unknown hold, changes nothing and returns false. The write-clock window is checked first, so a release
+// time outside the window throws even for an unknown hold.
 export interface PayoutHoldStore {
   place(input: {
     // placedAt is the occurredAt of the write, so the stored hold always carries its placement time.
