@@ -89,7 +89,7 @@ describe("fake payout batch store audit", () => {
   });
 });
 
-test("fake audits every known-batch approval refusal with the actor and reason", async () => {
+test("fake refuses a self-approval with an audit row, and refuses a repeat approval as already approved", async () => {
   const store = new FakePayoutBatchStore();
   const publisherId = fixtureId("publisher", 2);
   const methodId = fixtureId("payoutMethod", 2);

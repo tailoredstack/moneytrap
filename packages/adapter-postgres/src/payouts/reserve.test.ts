@@ -521,6 +521,15 @@ describeWithDatabase("payout batch tables (DM-047, DM-048)", () => {
     });
   });
 
+  test("a payout cannot be approved before its batch (payouts first is refused)", async () => {
+    await withPostgres(async (world) => {
+      const { payoutId } = await reserveOne(world);
+      await expect(sql`update payouts set state = 'approved' where id = ${payoutId}`.execute(world.db)).rejects.toThrow(
+        /the batch is not approved/,
+      );
+    });
+  });
+
   test("an approval in one transaction with its payouts still commits", async () => {
     await withPostgres(async (world) => {
       const { batchId, payoutId } = await reserveOne(world);

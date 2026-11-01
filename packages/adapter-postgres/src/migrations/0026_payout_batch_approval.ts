@@ -74,8 +74,9 @@ export const payoutBatchApproval: Migration = {
         return new;
       end $$`.execute(db);
 
-    // A batch cannot be approved while any of its payouts is still reserved. The check runs at commit, so the approval and the
-    // payout updates can be made in one transaction in either order. Direct SQL that approves the batch alone is refused here.
+    // A batch cannot be approved while any of its payouts is still reserved. The check runs at commit, so the approval and its
+    // payout updates must be made in one transaction, batch first: a payout cannot be approved before its batch (payouts_guard
+    // checks the batch at once). Direct SQL that approves the batch alone is refused here.
     await sql`create function payout_batches_approved_guard() returns trigger language plpgsql as $$
       begin
         if exists (select 1 from payouts p where p.batch_id = new.id and p.state = 'reserved')
@@ -89,16 +90,16 @@ export const payoutBatchApproval: Migration = {
 
   // Restores the prepared/cancelled rules. It fails while an approved batch exists, because its rows cannot be put back.
   async down(db: Kysely<unknown>) {
-    await sql`drop trigger if exists payout_batches_approved_ct on payout_batches`.execute(db);
-    await sql`drop function if exists payout_batches_approved_guard() cascade`.execute(db);
     // Approved rows cannot be put back into the old state checks, and approval history must not be dropped with the columns.
-    // Refusing here, before any change, leaves the schema as it was whether or not the migrator wraps the run in a transaction.
+    // This check runs first, so a refusal changes nothing, whether or not the migrator wraps the run in a transaction.
     const approved = await sql<{
       n: string;
     }>`select count(*)::text as n from payout_batches where state = 'approved'`.execute(db);
     if (approved.rows[0]?.n !== "0") {
       throw new Error("0026_payout_batch_approval cannot roll back while approved payout batches exist");
     }
+    await sql`drop trigger if exists payout_batches_approved_ct on payout_batches`.execute(db);
+    await sql`drop function if exists payout_batches_approved_guard() cascade`.execute(db);
     await sql`drop index if exists audit_logs_payout_batch_approved_uq`.execute(db);
     await sql`create or replace function payouts_guard() returns trigger language plpgsql as $$
       begin

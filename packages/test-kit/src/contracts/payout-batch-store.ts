@@ -542,7 +542,7 @@ export function runPayoutBatchStoreContract(targets: PayoutBatchContractTarget[]
         }));
 
       // TP-W7-015: whatever order batches are prepared, cancelled, and approved in, reservations never exceed available.
-      test("property: random prepare, cancel, and approve interleavings never reserve more than available (TP-W7-015)", () =>
+      test("property: random prepare, cancel, and approve interleavings never reserve more than available (TP-W7-015, partial: reversal and dispatch are not in the loop)", () =>
         withWorld(async (h) => {
           await h.fund(1, 10_000n);
           await h.fund(2, 6_000n);
