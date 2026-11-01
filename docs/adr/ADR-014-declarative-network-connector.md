@@ -2,7 +2,7 @@
 
 - Status: Accepted, 2026-11-01 (gate: declarative-engine spike, OZE-3275)
 - Date: 2026-11-01
-- Work package: none yet. The spike and the dashboard work are tracked in Linear (OZE-3275, OZE-3274); the plan gets rows for the engine only if a follow-up ADR accepts it after the spike. The dashboard account work gets its own rows either way.
+- Work package: none yet. The spike and the dashboard work are tracked in Linear (the spike in OZE-3275, the dashboard account work in OZE-3276, the Rakuten follow-ups in OZE-3274); the plan gets rows for the engine only if a follow-up ADR accepts it after the spike. The dashboard account work gets its own rows either way.
 
 ## Context
 
@@ -27,7 +27,7 @@ The dashboard already has the pieces for accounts: WP-4.4 stores sealed credenti
 - A passing spike does not adopt the engine. It leads to a follow-up ADR that accepts or rejects the engine on the spike's results, and only an accepted engine gets work package rows in the plan. Until then nothing in this ADR changes how networks are added.
 - The engine enforces these rules for every definition. A definition cannot weaken them:
   - Every failure is a typed `ConnectorFailure`, and a partial result is never returned as complete.
-  - Money becomes `bigint` minor units through the currency exponent (ADR-005). A decimal string is parsed with `parseMoney`. A JSON number is converted at the currency exponent and refused if it does not round-trip or if its magnitude is 1e15 or more, so it is never rounded and never reaches `BigInt` as exponent notation.
+  - Money becomes `bigint` minor units through the currency exponent (ADR-005). A decimal string is parsed with `parseMoney`. A JSON number is converted at the currency exponent and refused if it does not round-trip or if its magnitude is 1e15 or more, so it is never rounded and never reaches `BigInt` as exponent notation. A refused amount fails the call as a retryable `temporarily_unavailable` with a diagnostic that names only the kind, as the Rakuten adapter does, and no partial page is returned.
   - The credential, and any token made from it, is sent only to the one https host the definition declares. The host is fixed in the definition and never comes from account configuration or from a response. Redirects are refused. A paging link in a response is used only for its page value, never fetched as given. A definition is https-only. The engine's base-URL check allows plain http only for a loopback host (`localhost`, `127.0.0.1`), the same check the Rakuten adapter makes, so a local test server works.
   - The credential and tokens never reach a result, error, diagnostic, or log.
   - An operation the definition does not support fails as `unsupported`.
