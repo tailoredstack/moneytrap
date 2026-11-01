@@ -43,7 +43,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely. Indexing is the
 - Link the PR to the thread, and watch it while it waits on checks or reviews. Each package's own thread watches its own PR. The coordinating thread does not watch child PRs.
 
 **5. Run the delegated review loop**
-- Start a read-only, full-diff review with OpenCode `opencode/beam-free` (Beam Free) at high reasoning (`variant: high`). If it hits its usage limit, fall back in this order: haiku 5.5 low, then codex gpt-6-luna low, then copilot gpt-6-luna low.
+- Start a read-only, full-diff review with OpenCode `opencode/beam-free` (Beam Free) at low reasoning (`variant: low`). If it hits its usage limit, fall back in this order: haiku 5.5 low, then codex gpt-6-luna low, then copilot gpt-6-luna low.
 - Run at most three reviews at once across all threads. Start the next review when one finishes. Each package still gets its own review.
 - Run every reviewer with full-access permission, and keep it read-only in the brief.
 - The reviewer posts its review on the pull request, not only as text in the thread. It posts the main review comment first: the summary, starting with `<!-- ccr-overview-v2 -->`. Then it posts the per-file review: one inline thread comment per finding, starting with `### [High | Medium | Low] <Issue title>`, in file order. Use the formats in `docs/MONEYTRAP_REVIEW.md`. Put this order requirement in every reviewer brief, including fallback reviewers.
