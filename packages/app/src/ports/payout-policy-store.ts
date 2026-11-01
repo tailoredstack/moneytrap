@@ -9,7 +9,7 @@ export interface PublishActor {
 // refused and nothing is written. That keeps the decisions made under earlier versions reproducible (TP-W7-011).
 export type PublishPolicyResult =
   | { outcome: "published" }
-  | { outcome: "rejected"; reason: "version_taken" | "version_gap" | "effective_before_latest" };
+  | { outcome: "rejected"; reason: "version_taken" | "version_gap" | "effective_before_latest" | "effective_in_past" };
 
 export interface PayoutPolicyStore {
   publish(input: {

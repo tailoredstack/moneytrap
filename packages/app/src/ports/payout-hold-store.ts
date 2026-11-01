@@ -22,5 +22,6 @@ export interface PayoutHoldStore {
     actor: HoldActor;
     releasedAt: Date;
   }): Promise<boolean>;
-  listForPublisher(publisherId: string, currency: CurrencyCode): Promise<PayoutHold[]>;
+  // Reads are scoped to the organization, like writes, so another tenant's holds are never returned.
+  listForPublisher(organizationId: string, publisherId: string, currency: CurrencyCode): Promise<PayoutHold[]>;
 }

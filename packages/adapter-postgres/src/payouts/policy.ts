@@ -87,6 +87,11 @@ export function createPayoutPolicyStore(db: Kysely<unknown>): PayoutPolicyStore 
         if (top && policy.effectiveFrom.getTime() < top.effective_from.getTime()) {
           return { outcome: "rejected", reason: "effective_before_latest" };
         }
+        // Once a version exists, a decision may already rest on it. A new version cannot take effect in the past, so the
+        // policy in effect at an instant that was already decided never changes. The first version has no such history.
+        if (top && policy.effectiveFrom.getTime() < occurredAt.getTime()) {
+          return { outcome: "rejected", reason: "effective_in_past" };
+        }
 
         await sql`insert into payout_policies (currency, version, minimum_minor, effective_from, created_at)
           values (${policy.currency}, ${policy.version}, ${policy.minimumMinor.toString()}, ${policy.effectiveFrom}, ${occurredAt})`.execute(
@@ -170,11 +175,12 @@ export function createPayoutHoldStore(db: Kysely<unknown>): PayoutHoldStore {
       });
     },
 
-    async listForPublisher(publisherId, currency) {
-      const result = await sql<HoldRow>`select id, publisher_id, currency, amount_minor, reason, expires_at, released_at
-        from payout_holds where publisher_id = ${publisherId} and currency = ${currency} order by created_at, id`.execute(
-        db,
-      );
+    async listForPublisher(organizationId, publisherId, currency) {
+      const result =
+        await sql<HoldRow>`select h.id, h.publisher_id, h.currency, h.amount_minor, h.reason, h.expires_at, h.released_at
+        from payout_holds h join publishers p on p.id = h.publisher_id
+        where p.organization_id = ${organizationId} and h.publisher_id = ${publisherId} and h.currency = ${currency}
+        order by h.created_at, h.id`.execute(db);
       return result.rows.map(toHold);
     },
   };

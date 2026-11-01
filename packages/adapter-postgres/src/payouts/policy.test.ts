@@ -88,6 +88,13 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
     expect(await publish(v2, "aud_pol_5")).toEqual({ outcome: "published" });
   });
 
+  test("a new version cannot take effect before the publish time (no backdating)", async () => {
+    await publish(v1, "aud_pol_1");
+    const backdated = { ...v2, effectiveFrom: new Date("2026-02-01T00:00:00.000Z") };
+    expect(await publish(backdated, "aud_pol_6")).toEqual({ outcome: "rejected", reason: "effective_in_past" });
+    expect(await policies.list("GBP")).toHaveLength(1);
+  });
+
   test("a new version leaves the earlier version and the decisions made under it unchanged (TP-W7-011)", async () => {
     await publish(v1, "aud_pol_1");
     const before = new Date("2026-03-01T00:00:00.000Z");
@@ -138,7 +145,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       occurredAt: now,
     });
 
-    const active = await holds.listForPublisher(publisherId, "GBP");
+    const active = await holds.listForPublisher(orgId, publisherId, "GBP");
     expect(active.map((hold: PayoutHold) => hold.reason)).toEqual(["chargeback review"]);
     const decision = evaluatePayout({
       policy: createPayoutPolicy(v1),
@@ -155,7 +162,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
     expect(
       await holds.release({ id: "pho_pol_1", organizationId: orgId, auditId: "aud_hold_3", actor, releasedAt }),
     ).toBe(false);
-    expect((await holds.listForPublisher(publisherId, "GBP"))[0]?.releasedAt).toEqual(releasedAt);
+    expect((await holds.listForPublisher(orgId, publisherId, "GBP"))[0]?.releasedAt).toEqual(releasedAt);
   });
 
   test("a hold cannot be placed on, or released from, a publisher of another organization", async () => {

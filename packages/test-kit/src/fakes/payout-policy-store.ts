@@ -5,7 +5,7 @@ import type { CurrencyCode, PayoutPolicy } from "@moneytrap/domain";
 export class FakePayoutPolicyStore implements PayoutPolicyStore {
   readonly policies: PayoutPolicy[] = [];
 
-  async publish({ policy }: { policy: PayoutPolicy }): Promise<PublishPolicyResult> {
+  async publish({ policy, occurredAt }: { policy: PayoutPolicy; occurredAt: Date }): Promise<PublishPolicyResult> {
     const sameCurrency = this.policies.filter((existing) => existing.currency === policy.currency);
     if (sameCurrency.some((existing) => existing.version === policy.version)) {
       return { outcome: "rejected", reason: "version_taken" };
@@ -20,6 +20,9 @@ export class FakePayoutPolicyStore implements PayoutPolicyStore {
     if (latest === null && policy.version !== 1) return { outcome: "rejected", reason: "version_gap" };
     if (latest !== null && policy.effectiveFrom.getTime() < latest.effectiveFrom.getTime()) {
       return { outcome: "rejected", reason: "effective_before_latest" };
+    }
+    if (latest !== null && policy.effectiveFrom.getTime() < occurredAt.getTime()) {
+      return { outcome: "rejected", reason: "effective_in_past" };
     }
     this.policies.push({ ...policy });
     return { outcome: "published" };
