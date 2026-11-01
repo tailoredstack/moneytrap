@@ -31,7 +31,7 @@ To set up one package by hand, run its `setup` script (for example `bun run setu
 
 ### Local email
 
-`apps/server/.env.example` sets `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM`, so the server sends its verification, reset, and invitation emails to Mailpit. Open http://127.0.0.1:8025 to read them and follow the link. With `SMTP_HOST` unset or empty, the server keeps messages in memory and delivers nothing.
+`apps/server/.env.example` sets `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM`, so the server sends its verification, reset, and invitation emails to Mailpit. Open http://127.0.0.1:8025 to read them and follow the link. Mailpit has to be running while `SMTP_HOST` is set. If the server cannot reach it, the request that sends the email fails with an error instead of dropping the email unnoticed. With `SMTP_HOST` unset or empty, the server keeps messages in memory and delivers nothing. If you change the Mailpit SMTP port with `MONEYTRAP_SMTP_PORT`, set `SMTP_PORT` to the same value.
 
 ### Dev owner (local use only)
 

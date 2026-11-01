@@ -29,7 +29,7 @@ services:
       retries: 5
 
   # Local mail capture: the server sends over SMTP on 1025 and the web UI on 8025 lists what arrived. Nothing is
-  # delivered outside this machine.
+  # delivered outside this machine. If you change MONEYTRAP_SMTP_PORT, set SMTP_PORT in apps/server/.env to the same value.
   mailpit:
     image: axllent/mailpit:v1.29
     ports:

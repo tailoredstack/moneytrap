@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import type { NotificationMessage } from "@moneytrap/app";
+import type { NotificationMessage, Notifier } from "@moneytrap/app";
 import { runNotifierContract } from "@moneytrap/test-kit/src/contracts/notifier";
 import { type MailTransport, SmtpNotifier } from "./smtp-notifier";
 
@@ -19,21 +19,28 @@ function recordingTransport(): { transport: MailTransport; mails: Mail[] } {
 
 const FROM = "Moneytrap <no-reply@moneytrap.test>";
 
-// The contract sends these keys in this order; the SMTP mail itself carries no key.
-const contractKeys = ["verify-email:usr_1:tok_1", "verify-email:usr_2:tok_2"];
-
+// The mail carries no key, so the fixture pairs each mail with the key of the send that produced it: the key the
+// caller passed, for a send that reached the transport. A send the adapter dropped adds no mail and no key.
 runNotifierContract([
   {
     name: "SmtpNotifier",
     create: () => {
       const { transport, mails } = recordingTransport();
+      const smtp = new SmtpNotifier(transport, FROM);
+      const keys: string[] = [];
+      const notifier: Notifier = {
+        async send(message) {
+          const before = mails.length;
+          await smtp.send(message);
+          if (mails.length > before) keys.push(message.dedupKey);
+        },
+      };
       return {
-        notifier: new SmtpNotifier(transport, FROM),
+        notifier,
         sent: () =>
           mails.map(
             (mail, index): NotificationMessage => ({
-              // The mail carries no key, so the contract's keys are recovered by order.
-              dedupKey: contractKeys[index] ?? "",
+              dedupKey: keys[index] ?? "",
               to: mail.to,
               subject: mail.subject,
               body: mail.text,

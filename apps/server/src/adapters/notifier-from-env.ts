@@ -14,7 +14,9 @@ export function notifierFromEnv(env: Record<string, string | undefined>): Notifi
   if (!from) throw new Error("SMTP_FROM is required when SMTP_HOST is set");
 
   const rawPort = env.SMTP_PORT?.trim();
-  const port = rawPort ? Number(rawPort) : DEFAULT_SMTP_PORT;
+  // Digits only: Number() would also accept "0x1f" and "1e3", and a typo must not point the mailer at another port.
+  const port =
+    rawPort === undefined || rawPort === "" ? DEFAULT_SMTP_PORT : /^\d+$/.test(rawPort) ? Number(rawPort) : NaN;
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error(`SMTP_PORT must be a port number between 1 and 65535, got "${rawPort}"`);
   }
