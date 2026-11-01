@@ -45,7 +45,10 @@ Money moves safely. Only matched and cleared funds become available. Concurrent 
 | TP-W7-012 | Two concurrent batch preparations for same funds | Exactly one reservation per amount; other fails or reserves less | WP-7.7, CT-022 |
 | TP-W7-013 | Reservation key reused | Idempotent; same reservation returned | WP-7.7 |
 | TP-W7-014 | Prepare batch, then balance changes (reversal) | Batch cannot exceed available at approval | WP-7.7 |
-| TP-W7-015 | Property test: random interleavings of prepare, cancel, approve | Reserved never exceeds available; no negative available without deficit record | WP-7.7 |
+| TP-W7-015 | Property test: random interleavings of prepare, cancel, approve | Reserved never exceeds available; no negative available without deficit record | WP-7.7 (prepare, cancel), WP-7.8 (approve) |
+| TP-W7-036 | Batch prepared with a release cap | Total reserved never exceeds the cap; publishers beyond it are listed as `over_cap`; a reservation cut below the policy minimum is skipped | WP-7.7 |
+| TP-W7-037 | Cancel a prepared batch | Its reservations are freed for a later batch; a second cancel changes nothing; another organization's batch is not found | WP-7.7 |
+| TP-W7-038 | Prepare finds nothing to reserve | No batch is written and the reservation key stays free | WP-7.7 |
 
 ### 3.4 Maker-checker
 
