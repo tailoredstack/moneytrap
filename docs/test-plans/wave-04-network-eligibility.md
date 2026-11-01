@@ -91,6 +91,7 @@ Catalog data from a network is versioned, quarantined when malformed, and never 
 | ID | Scenario | Expected | Refs |
 |---|---|---|---|
 | TP-W4-032 | CT-009, CT-010 (eligibility part), CT-015 against simulator | Green | WP-4.12 |
+| TP-W4-047 | Seven consecutive simulated days share one catalog store and advancing fake clock; every malformed payload variant is quarantined on each run, never stored as a program or represented as approved | Seven syncs complete with no silent approvals; quarantined payload set covers every malformed variant | WP-4.12, OZE-3286 |
 
 ## 4. Exit criteria
 
