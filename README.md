@@ -14,7 +14,7 @@ It is safe to run again. Each step prints `skipped` when it is already done:
 
 1. Creates each missing `.env` from its `.env.example`. An existing `.env` is never overwritten.
 2. Generates `BETTER_AUTH_SECRET` in `apps/server/.env` when it is still the placeholder.
-3. Starts Postgres (127.0.0.1:5433) and Redis (127.0.0.1:6380) with `ops/docker-compose.yml`.
+3. Starts Postgres (127.0.0.1:5433), Redis (127.0.0.1:6380), and Mailpit (SMTP 127.0.0.1:1025, web UI 127.0.0.1:8025) with `ops/docker-compose.yml`.
 4. Installs dependencies with `bun install`.
 5. Applies pending migrations with `bun run db:migrate`.
 6. Seeds the dev organization and owner with `bun run seed`.
@@ -28,6 +28,10 @@ The web app needs no `.env`. `apps/web/.env` is optional. Copy `apps/web/.env.ex
 The steps can also run on their own. `bun run db:migrate` reads `DATABASE_URL` from the root `.env`, and `bun run seed` inserts the dev rows. The seed is idempotent, so a second run inserts nothing and does not reset the password.
 
 To set up one package by hand, run its `setup` script (for example `bun run setup` in `apps/server`). `apps/web` has no `setup` script because it needs no one-time work.
+
+### Local email
+
+`apps/server/.env.example` sets `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM`, so the server sends its verification, reset, and invitation emails to Mailpit. Open http://127.0.0.1:8025 to read them and follow the link. With `SMTP_HOST` unset or empty, the server keeps messages in memory and delivers nothing.
 
 ### Dev owner (local use only)
 

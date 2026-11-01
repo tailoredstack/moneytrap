@@ -13,7 +13,7 @@ import {
 } from "@moneytrap/adapter-redis";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
-import { NotifyDev } from "./adapters/notify-dev";
+import { notifierFromEnv } from "./adapters/notifier-from-env";
 import { createApp } from "./app";
 import { createAuth, trustedOrigins } from "./auth/config";
 import { notifierMailer } from "./auth/mailer";
@@ -72,9 +72,9 @@ function serve(): void {
     rateLimitPolicy: rateLimitPolicy(Bun.env),
     trustedProxies,
     trustedOrigins: extraOrigins,
-    // Dev sink: messages stay in memory until the production Notifier adapter lands. Verification and
-    // reset links are not delivered outside this process yet.
-    mailer: notifierMailer(new NotifyDev()),
+    // SMTP when SMTP_HOST is set (Mailpit locally). Otherwise the dev sink keeps messages in memory, and verification
+    // and reset links are not delivered outside this process. There is no production email provider yet.
+    mailer: notifierMailer(notifierFromEnv(Bun.env)),
   });
 
   // Reads for the report routes. They use their own pool, separate from Better Auth's.
