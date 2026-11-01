@@ -228,8 +228,12 @@ describe("against a real git branch", () => {
     commit("drop version");
     git("checkout", "-q", "feature");
     git("merge", "-q", "--ff-only", "main");
+    write(SPEC_VERSION_FILE, specText("0"));
+    commit("add version 0");
+    // The base reads as "0", so adding "0" is no bump. Reading the base as missing would let it pass.
+    expect(collectDrift(repo, "main").errors).toHaveLength(1);
     write(SPEC_VERSION_FILE, specText("1.0"));
-    commit("add version");
+    commit("add version 1.0");
     expect(collectDrift(repo, "main").errors).toEqual([]);
   });
   test("an uncommitted spec change is seen too", () => {

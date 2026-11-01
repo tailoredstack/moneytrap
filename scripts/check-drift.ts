@@ -201,7 +201,8 @@ if (import.meta.main) {
   if (report.tests.length > 0 && !process.argv.includes("--skip-conformance")) {
     console.log(`check-drift: running ${report.tests.length} conformance file(s): ${report.tests.join(", ")}`);
     const run = spawnSync("bun", ["test", ...report.tests.map((t) => `./${t}`)], { cwd: root, stdio: "inherit" });
-    if (run.status !== 0) errors.push("touched conformance cases are not green");
+    if (run.error) errors.push(`could not run the conformance tests: ${run.error.message}`);
+    else if (run.status !== 0) errors.push("touched conformance cases are not green");
   }
   for (const id of report.uncovered)
     console.log(`check-drift: note: ${id} changed but no conformance test names it yet`);
