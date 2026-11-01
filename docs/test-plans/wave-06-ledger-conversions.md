@@ -101,6 +101,22 @@ The job reads the ledger tables and checks them against the ledger's own invaria
 | TP-W6-042 | Run the job twice, and run it with journals returned in another order | Same report; no row written in any table; one read-only transaction | WP-X.3 |
 | TP-W6-043 | Run the entry point as a process | Exit 0 clean, 1 on variance, 2 without `DATABASE_URL`; JSON report on stdout with string amounts | WP-X.3 |
 
+### 3.9 Postgres follow-up coverage
+
+These rows add persistence and real-store coverage for Wave 6 follow-ups. Wave 7 payable/paid behavior and Wave 8 API-047 are outside this section.
+
+| ID | Scenario | Expected | Refs |
+|---|---|---|---|
+| TP-W6-044 | Persist a conversion matched to a click, resolving publisher through the linked link; persist `last_click_in_window` | Postgres reload preserves the match, publisher attribution, and qualifying-window timestamp | OZE-3262, WP-6.7 |
+| TP-W6-045 | Import unmatched conversions and repeated exceptions for one conversion | Every unmatched import creates an exception; exception uniqueness is per conversion; no publisher is assigned without a qualifying click | OZE-3262, WP-6.7, CT-020 |
+| TP-W6-046 | Pull a multi-page Postgres transaction feed, stop, restart, and resume | Resume uses the persisted cursor and completes without omissions or duplicates; fake and Postgres cursor contract tests pass | OZE-3261, WP-6.8 |
+| TP-W6-047 | Read PublisherBalanceSource from Postgres with attributed conversions, latest status, adjustments, and clearance | Matches app-source behavior; adjustments are netted into `recognizedMinor`; clearance changes availability consistently | OZE-3263, WP-6.9, CT-016, CT-017; needs-finance-review |
+| TP-W6-048 | Persist and reload a statement; regenerate a closed period through the real Postgres store | Statement content/hash remains immutable for the closed period; regeneration does not alter stored content | OZE-3264, WP-6.10, API-052, API-053 |
+| TP-W6-049 | Serve statement routes through the application with persisted Postgres statement data | API-052 and API-053 routes return the stored statement contract; route tests exercise the served handlers | OZE-3264, WP-6.10, API-052, API-053 |
+| TP-W6-050 | Approve a conversion through its use case against the real ledger, then replay approval | Exactly one ledger posting is created for the approved conversion | OZE-3265, WP-6.9, CT-016 |
+| TP-W6-051 | Reverse an approved conversion through its use case against the real ledger | A linked reversal is created exactly once; original conversion and journal remain unchanged | OZE-3265, WP-6.4, WP-6.9, CT-016 |
+| TP-W6-052 | Read Wave 6 earnings through the Postgres EarningsSource adapter with fresh and stale source states | Fake/Postgres parity; stale source returns `data_stale`, never zero; response carries currency and `as_of` | OZE-3266, WP-6.11 |
+
 ## 4. Exit criteria
 
 - All TP-W6 green; property suites run ≥ 10,000 cases in nightly and ≥ 1,000 per PR.
