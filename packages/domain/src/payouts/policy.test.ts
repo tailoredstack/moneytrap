@@ -75,18 +75,31 @@ describe("isHoldActive", () => {
 
 describe("evaluatePayout (TP-W7-009, TP-W7-010)", () => {
   test("below the minimum the publisher is excluded and the amount is not payable", () => {
-    const decision = evaluatePayout({ policy: policy(), availableMinor: 4999n, holds: [], at });
+    const decision = evaluatePayout({
+      publisherId: "pub_test",
+      policy: policy(),
+      availableMinor: 4999n,
+      holds: [],
+      at,
+    });
     expect(decision).toMatchObject({ eligible: false, payableMinor: 0n, exclusions: ["below_minimum"] });
   });
 
   test("at the minimum the publisher is eligible for the full available amount", () => {
-    const decision = evaluatePayout({ policy: policy(), availableMinor: 5000n, holds: [], at });
+    const decision = evaluatePayout({
+      publisherId: "pub_test",
+      policy: policy(),
+      availableMinor: 5000n,
+      holds: [],
+      at,
+    });
     expect(decision).toMatchObject({ eligible: true, payableMinor: 5000n, exclusions: [], policyVersion: 1 });
   });
 
   test("an active hold excludes the publisher and returns the active holds with their reasons", () => {
     const active = hold({ reason: "chargeback review" });
     const decision = evaluatePayout({
+      publisherId: "pub_test",
       policy: policy(),
       availableMinor: 90000n,
       holds: [active, hold({ id: "pho_released", releasedAt: at })],
@@ -98,18 +111,31 @@ describe("evaluatePayout (TP-W7-009, TP-W7-010)", () => {
 
   test("a replay before the hold was placed does not see it", () => {
     const placedLater = hold({ placedAt: new Date("2026-07-01T00:00:00.000Z") });
-    const decision = evaluatePayout({ policy: policy(), availableMinor: 9000n, holds: [placedLater], at });
+    const decision = evaluatePayout({
+      publisherId: "pub_test",
+      policy: policy(),
+      availableMinor: 9000n,
+      holds: [placedLater],
+      at,
+    });
     expect(decision).toMatchObject({ eligible: true, exclusions: [] });
   });
 
   test("a replay before a release instant still sees the hold as active", () => {
     const releasedLater = hold({ releasedAt: new Date("2026-07-01T00:00:00.000Z") });
-    const decision = evaluatePayout({ policy: policy(), availableMinor: 9000n, holds: [releasedLater], at });
+    const decision = evaluatePayout({
+      publisherId: "pub_test",
+      policy: policy(),
+      availableMinor: 9000n,
+      holds: [releasedLater],
+      at,
+    });
     expect(decision).toMatchObject({ eligible: false, exclusions: ["held"] });
   });
 
   test("a hold in another currency does not exclude the publisher", () => {
     const decision = evaluatePayout({
+      publisherId: "pub_test",
       policy: policy(),
       availableMinor: 9000n,
       holds: [hold({ currency: "EUR" })],
@@ -119,7 +145,13 @@ describe("evaluatePayout (TP-W7-009, TP-W7-010)", () => {
   });
 
   test("zero available is never payable, even with a zero minimum", () => {
-    const decision = evaluatePayout({ policy: policy({ minimumMinor: 0n }), availableMinor: 0n, holds: [], at });
+    const decision = evaluatePayout({
+      publisherId: "pub_test",
+      policy: policy({ minimumMinor: 0n }),
+      availableMinor: 0n,
+      holds: [],
+      at,
+    });
     expect(decision.eligible).toBe(false);
   });
 
@@ -128,12 +160,14 @@ describe("evaluatePayout (TP-W7-009, TP-W7-010)", () => {
     const v2 = policy({ version: 2, minimumMinor: 10000n, effectiveFrom: new Date("2026-06-01T00:00:00.000Z") });
     const before = new Date("2026-03-01T00:00:00.000Z");
     const decidedThen = evaluatePayout({
+      publisherId: "pub_test",
       policy: inEffect([v1], before),
       availableMinor: 7000n,
       holds: [],
       at: before,
     });
     const replayNow = evaluatePayout({
+      publisherId: "pub_test",
       policy: inEffect([v1, v2], before),
       availableMinor: 7000n,
       holds: [],
@@ -141,5 +175,17 @@ describe("evaluatePayout (TP-W7-009, TP-W7-010)", () => {
     });
     expect(replayNow).toEqual(decidedThen);
     expect(decidedThen).toMatchObject({ eligible: true, policyVersion: 1 });
+  });
+
+  test("another publisher's active hold does not exclude this publisher", () => {
+    const others = hold({ publisherId: "pub_other" });
+    const decision = evaluatePayout({
+      publisherId: "pub_test",
+      policy: policy(),
+      availableMinor: 9000n,
+      holds: [others],
+      at,
+    });
+    expect(decision).toMatchObject({ eligible: true, exclusions: [] });
   });
 });

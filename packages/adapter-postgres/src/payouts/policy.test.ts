@@ -8,8 +8,10 @@ import {
   policyInEffect,
 } from "@moneytrap/domain";
 import { Kysely, PostgresDialect, sql } from "kysely";
+import { Migrator } from "kysely/migration";
 import { Pool } from "pg";
 import { migrate } from "../migrate";
+import { migrationProvider } from "../migrations/index";
 import { createPayoutHoldStore, createPayoutPolicyStore } from "./policy";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -102,6 +104,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
     await publish(v1, "aud_pol_1");
     const before = new Date("2026-03-01T00:00:00.000Z");
     const decidedBefore = evaluatePayout({
+      publisherId,
       policy: inEffect(await policies.list("GBP"), before),
       availableMinor: 7000n,
       holds: [],
@@ -117,6 +120,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
     ]);
     expect(policyInEffect(stored, "GBP", before)).toEqual(v1);
     const decidedAfter = evaluatePayout({
+      publisherId,
       policy: inEffect(stored, before),
       availableMinor: 7000n,
       holds: [],
@@ -150,6 +154,7 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
     const active = await holds.listForPublisher(orgId, publisherId, "GBP");
     expect(active.map((hold: PayoutHold) => hold.reason)).toEqual(["chargeback review"]);
     const decision = evaluatePayout({
+      publisherId,
       policy: createPayoutPolicy(v1),
       availableMinor: 90000n,
       holds: active,
@@ -554,5 +559,39 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
       sql`insert into payout_holds (id, publisher_id, currency, amount_minor, reason, expires_at, released_at, created_by, created_at)
         values ('pho_pol_20', ${publisherId}, 'GBP', 1, 'review', null, null, 'usr_missing', ${placedAt})`.execute(db),
     ).rejects.toThrow(/foreign key/);
+  });
+
+  test("a hold's amount, reason, and placement cannot change even on the one release", async () => {
+    const placedAt = writeNow();
+    await holds.place({
+      hold: { id: "pho_pol_21", publisherId, currency: "GBP", amountMinor: 5n, reason: "review", expiresAt: null },
+      organizationId: orgId,
+      auditId: "aud_hold_27",
+      actor,
+      occurredAt: placedAt,
+    });
+    await expect(sql`update payout_holds set amount_minor = 9 where id = 'pho_pol_21'`.execute(db)).rejects.toThrow(
+      "released once",
+    );
+    await expect(sql`update payout_holds set reason = 'changed' where id = 'pho_pol_21'`.execute(db)).rejects.toThrow(
+      "released once",
+    );
+    await expect(
+      sql`update payout_holds set created_at = ${new Date(placedAt.getTime() - 100)} where id = 'pho_pol_21'`.execute(
+        db,
+      ),
+    ).rejects.toThrow("released once");
+  });
+
+  test("the migration reverts to 0021 and applies again on the same schema", async () => {
+    const migrator = new Migrator({ db, provider: migrationProvider });
+    const down = await migrator.migrateTo("0021_payout_methods");
+    expect(down.error).toBeUndefined();
+    const gone = await sql<{ n: string }>`select count(*)::text as n from information_schema.tables
+      where table_schema = current_schema() and table_name in ('payout_policies', 'payout_holds')`.execute(db);
+    expect(gone.rows[0]?.n).toBe("0");
+    const up = await migrator.migrateToLatest();
+    expect(up.error).toBeUndefined();
+    expect(await policies.list("GBP")).toEqual([]);
   });
 });
