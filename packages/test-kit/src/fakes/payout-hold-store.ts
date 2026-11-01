@@ -15,8 +15,9 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
     hold,
     organizationId,
     actor,
+    occurredAt,
   }: {
-    hold: PayoutHold;
+    hold: Omit<PayoutHold, "placedAt">;
     organizationId: string;
     actor: HoldActor;
     auditId: string;
@@ -25,7 +26,7 @@ export class FakePayoutHoldStore implements PayoutHoldStore {
     if (this.publisherOrganization.get(hold.publisherId) !== organizationId) {
       throw new Error("payout: publisher is not in the organization");
     }
-    this.holds.push({ ...hold });
+    this.holds.push({ ...hold, placedAt: occurredAt });
     this.holdOrganization.set(hold.id, organizationId);
     this.audit.push({ action: "payout_hold_placed", entityId: hold.id, actor });
   }

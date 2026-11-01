@@ -276,6 +276,8 @@ describeWithDatabase("payout policy and holds (DM-045, TP-W7-009 to TP-W7-011)",
     await expect(sql`update payout_policies set minimum_minor = 1`.execute(db)).rejects.toThrow("immutable");
     await expect(sql`delete from payout_policies`.execute(db)).rejects.toThrow("immutable");
     await expect(sql`delete from payout_holds where id = 'pho_pol_6'`.execute(db)).rejects.toThrow("never deleted");
+    await expect(sql`truncate payout_holds`.execute(db)).rejects.toThrow("never deleted");
+    await expect(sql`truncate payout_policies`.execute(db)).rejects.toThrow("immutable");
     await expect(sql`update payout_holds set amount_minor = 99 where id = 'pho_pol_6'`.execute(db)).rejects.toThrow(
       "released once",
     );

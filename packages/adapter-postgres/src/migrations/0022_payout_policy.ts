@@ -40,9 +40,11 @@ export const payoutPolicy: Migration = {
       begin raise exception 'payout_policies rows are immutable'; end $$`.execute(db);
     await sql`create trigger payout_policies_immutable before update or delete on payout_policies
       for each row execute function payout_policies_immutable()`.execute(db);
+    await sql`create trigger payout_policies_no_truncate before truncate on payout_policies
+      for each statement execute function payout_policies_immutable()`.execute(db);
     await sql`create function payout_holds_guard() returns trigger language plpgsql as $$
       begin
-        if tg_op = 'DELETE' then raise exception 'payout_holds rows are never deleted'; end if;
+        if tg_op in ('DELETE', 'TRUNCATE') then raise exception 'payout_holds rows are never deleted'; end if;
         if old.released_at is not null or new.released_at is null
           or (new.id, new.publisher_id, new.currency, new.amount_minor, new.reason, new.expires_at, new.created_by, new.created_at)
             is distinct from (old.id, old.publisher_id, old.currency, old.amount_minor, old.reason, old.expires_at, old.created_by, old.created_at)
@@ -51,6 +53,8 @@ export const payoutPolicy: Migration = {
       end $$`.execute(db);
     await sql`create trigger payout_holds_guard before update or delete on payout_holds
       for each row execute function payout_holds_guard()`.execute(db);
+    await sql`create trigger payout_holds_no_truncate before truncate on payout_holds
+      for each statement execute function payout_holds_guard()`.execute(db);
   },
 
   async down(db: Kysely<unknown>) {
